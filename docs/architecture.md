@@ -15,6 +15,7 @@ Marker interface for all events. Uses Java 21 sealed types to restrict implement
 **Implementations:**
 - `TimeEvent` - Represents a point in time
 - `SetTimeAlarm` - Request to set a time-based alarm
+- `WorkQueueMessage` - Work queue message with status for schedule management
 
 ### SideEffect (Sealed Interface)
 ```
@@ -25,6 +26,8 @@ Marker interface for all side effects produced by event processing. Side effects
 **Implementations:**
 - `AlarmSet` - Indicates an alarm was successfully set
 - `AlarmTriggered` - Indicates an alarm was triggered
+- `ScheduleCreated` - Indicates a schedule was created for a work queue
+- `ScheduleAborted` - Indicates a schedule was aborted for a work queue
 
 ### EventProcessor (Interface)
 ```
@@ -95,12 +98,16 @@ com.wonderingwizard
 │   └── EventProcessingEngine.java  # Main engine
 ├── events/
 │   ├── TimeEvent.java          # Time tick event
-│   └── SetTimeAlarm.java       # Alarm setting event
+│   ├── SetTimeAlarm.java       # Alarm setting event
+│   └── WorkQueueMessage.java   # Work queue status message
 ├── sideeffects/
 │   ├── AlarmSet.java           # Alarm set confirmation
-│   └── AlarmTriggered.java     # Alarm trigger notification
+│   ├── AlarmTriggered.java     # Alarm trigger notification
+│   ├── ScheduleCreated.java    # Schedule creation confirmation
+│   └── ScheduleAborted.java    # Schedule abortion notification
 ├── processors/
-│   └── TimeAlarmProcessor.java # Time alarm handling
+│   ├── TimeAlarmProcessor.java # Time alarm handling
+│   └── WorkQueueProcessor.java # Work queue schedule handling
 └── Main.java                   # Demo entry point
 ```
 

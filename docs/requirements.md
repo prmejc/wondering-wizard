@@ -69,3 +69,71 @@ INFO: Side effect: AlarmTriggered[alarmName=alarm a, triggeredAt=...]
 - `src/main/java/com/wonderingwizard/sideeffects/AlarmTriggered.java`
 - `src/main/java/com/wonderingwizard/processors/TimeAlarmProcessor.java`
 - `src/main/java/com/wonderingwizard/engine/EventProcessingEngine.java`
+
+---
+
+### F-2: Schedule Creation
+
+**Status:** Implemented
+
+**Description:**
+Implement a WorkQueueProcessor that manages schedule creation based on work queue messages. The processor should:
+
+1. Accept `WorkQueueMessage` events with a `workQueueId` and `status` field
+2. Create a new schedule when a message with status "Active" is received for a new workQueueId
+3. Be idempotent for duplicate "Active" messages with the same workQueueId
+4. Abort the schedule when a message with status "Inactive" is received for an existing workQueueId
+
+**Requested Behavior:**
+
+```java
+engine.register(new WorkQueueProcessor());
+
+var sideEffects1 = engine.processEvent(new WorkQueueMessage("queue-1", "Active"));
+var sideEffects2 = engine.processEvent(new WorkQueueMessage("queue-1", "Active"));
+var sideEffects3 = engine.processEvent(new WorkQueueMessage("queue-1", "Inactive"));
+```
+
+**Expected Results:**
+- `sideEffects1` should contain a `ScheduleCreated` side effect for "queue-1"
+- `sideEffects2` should be empty (idempotent - schedule already exists)
+- `sideEffects3` should contain a `ScheduleAborted` side effect for "queue-1"
+
+**Additional Requirements:**
+- All events going into the engine should be logged
+- All resulting side effects should be logged
+- Multiple workQueueIds should be handled independently
+- Schedules can be reactivated after being aborted
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Register `WorkQueueProcessor` with engine | Processor registered successfully, logged |
+| 2 | Process `WorkQueueMessage("queue-1", "Active")` | Returns `[ScheduleCreated]`, event and side effect logged |
+| 3 | Process `WorkQueueMessage("queue-1", "Active")` (duplicate) | Empty side effects list (idempotent), event logged |
+| 4 | Process `WorkQueueMessage("queue-1", "Inactive")` | Returns `[ScheduleAborted]`, event and side effect logged |
+
+**Test Execution:**
+```bash
+# Run tests
+mvn test -Dtest=WorkQueueProcessorTest
+```
+
+**Expected Output:**
+```
+INFO: Processing event: WorkQueueMessage[workQueueId=queue-1, status=Active]
+INFO: Side effect: ScheduleCreated[workQueueId=queue-1]
+
+INFO: Processing event: WorkQueueMessage[workQueueId=queue-1, status=Active]
+INFO: No side effects produced
+
+INFO: Processing event: WorkQueueMessage[workQueueId=queue-1, status=Inactive]
+INFO: Side effect: ScheduleAborted[workQueueId=queue-1]
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/events/WorkQueueMessage.java`
+- `src/main/java/com/wonderingwizard/sideeffects/ScheduleCreated.java`
+- `src/main/java/com/wonderingwizard/sideeffects/ScheduleAborted.java`
+- `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java`

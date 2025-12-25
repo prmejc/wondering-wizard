@@ -6,5 +6,7 @@ package com.wonderingwizard.engine;
  */
 public sealed interface SideEffect permits
         com.wonderingwizard.sideeffects.AlarmSet,
-        com.wonderingwizard.sideeffects.AlarmTriggered {
+        com.wonderingwizard.sideeffects.AlarmTriggered,
+        com.wonderingwizard.sideeffects.ScheduleCreated,
+        com.wonderingwizard.sideeffects.ScheduleAborted {
 }
