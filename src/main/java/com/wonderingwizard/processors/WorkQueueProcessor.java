@@ -6,6 +6,7 @@ import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.SetTimeAlarm;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
+import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
 
@@ -16,11 +17,11 @@ import java.util.Map;
 /**
  * Processor that handles work queue messages and manages schedule creation.
  * <p>
- * When a WorkQueueMessage with status "Active" is processed:
+ * When a WorkQueueMessage with status ACTIVE is processed:
  * - If no schedule exists for the workQueueId, a new schedule is created (ScheduleCreated side effect)
  * - If a schedule already exists for the workQueueId, no side effect is produced (idempotent)
  * <p>
- * When a WorkQueueMessage with status "Inactive" is processed:
+ * When a WorkQueueMessage with status INACTIVE is processed:
  * - If a schedule exists for the workQueueId, it is aborted (ScheduleAborted side effect)
  * - If no schedule exists, no side effect is produced
  */
@@ -39,15 +40,13 @@ public class WorkQueueProcessor implements EventProcessor {
 
     private List<SideEffect> handleWorkQueueMessage(WorkQueueMessage message) {
         String workQueueId = message.workQueueId();
-        String status = message.status();
+        WorkQueueStatus status = message.status();
 
-        if ("Active".equals(status)) {
-            return handleActiveStatus(workQueueId);
-        } else if ("Inactive".equals(status)) {
-            return handleInactiveStatus(workQueueId);
-        }
-
-        return List.of();
+        return switch (status) {
+            case ACTIVE -> handleActiveStatus(workQueueId);
+            case INACTIVE -> handleInactiveStatus(workQueueId);
+            case null -> List.of();
+        };
     }
 
     private List<SideEffect> handleActiveStatus(String workQueueId) {
