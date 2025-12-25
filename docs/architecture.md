@@ -37,6 +37,8 @@ Interface for processor plugins. Each processor:
 - Receives events via `process(Event event)`
 - Returns a list of `SideEffect` (may be empty)
 - Has a name for logging purposes
+- Supports state capture via `captureState()` for undo functionality
+- Supports state restoration via `restoreState(Object state)`
 
 ### EventProcessingEngine
 ```
@@ -48,6 +50,7 @@ The main coordinator that:
 - Logs all incoming events
 - Logs all resulting side effects
 - Aggregates side effects from all processors
+- Maintains state history for step-back/undo functionality
 
 ## Data Flow
 
@@ -86,6 +89,76 @@ The main coordinator that:
 4. **Type Safety**: Sealed interfaces enable exhaustive pattern matching with compile-time guarantees.
 
 5. **Observable**: All events and side effects are logged for debugging and monitoring.
+
+6. **Reversible**: State can be reverted using the step-back functionality (Memento pattern).
+
+## Step-Back (Undo) Architecture
+
+The engine supports reverting to previous states using the Memento design pattern.
+
+### How It Works
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    EventProcessingEngine                         │
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │                    State History                          │   │
+│  │  [Snapshot 0] → [Snapshot 1] → [Snapshot 2] → ...        │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                              ▲                                   │
+│                              │ captureState() before each event  │
+│                              │                                   │
+│  ┌──────────┐    ┌───────────────────────────────────────┐      │
+│  │  Event   │───▶│   Process Event (state captured first) │      │
+│  └──────────┘    └───────────────────────────────────────┘      │
+│                                                                  │
+│  ┌──────────┐    ┌───────────────────────────────────────┐      │
+│  │ stepBack │───▶│   Restore last snapshot, remove it     │      │
+│  └──────────┘    └───────────────────────────────────────┘      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### State Snapshot Structure
+
+Each snapshot contains the state of all registered processors:
+
+```
+Map<EventProcessor, Object> snapshot = {
+    TimeAlarmProcessor  → Map<String, Instant> pendingAlarms,
+    WorkQueueProcessor  → Map<String, Boolean> activeSchedules,
+    ...
+}
+```
+
+### Implementing State Methods in a Processor
+
+```java
+public class MyProcessor implements EventProcessor {
+    private final Map<String, MyData> state = new HashMap<>();
+
+    @Override
+    public Object captureState() {
+        return new HashMap<>(state);  // Defensive copy
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public void restoreState(Object snapshot) {
+        if (!(snapshot instanceof Map)) {
+            throw new IllegalArgumentException("Invalid state type");
+        }
+        state.clear();
+        state.putAll((Map<String, MyData>) snapshot);
+    }
+}
+```
+
+### Memory Considerations
+
+- Each processed event adds a snapshot to history
+- Use `clearHistory()` to free memory when undo is not needed
+- Consider implementing a max history depth for long-running systems
 
 ## Package Structure
 

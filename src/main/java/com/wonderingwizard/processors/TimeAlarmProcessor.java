@@ -56,4 +56,19 @@ public class TimeAlarmProcessor implements EventProcessor {
 
         return triggeredAlarms;
     }
+
+    @Override
+    public Object captureState() {
+        return new HashMap<>(pendingAlarms);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public void restoreState(Object state) {
+        if (!(state instanceof Map)) {
+            throw new IllegalArgumentException("Invalid state type for TimeAlarmProcessor");
+        }
+        pendingAlarms.clear();
+        pendingAlarms.putAll((Map<String, Instant>) state);
+    }
 }

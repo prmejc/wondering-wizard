@@ -141,3 +141,97 @@ INFO: Side effect: ScheduleAborted[workQueueId=queue-1]
 - `src/main/java/com/wonderingwizard/sideeffects/ScheduleCreated.java`
 - `src/main/java/com/wonderingwizard/sideeffects/ScheduleAborted.java`
 - `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java`
+
+---
+
+### F-3: Step Back (Undo)
+
+**Status:** Implemented
+
+**Description:**
+Implement step-back functionality using the Memento pattern to allow reverting the engine to the state before the last processed event. This enables undo capability across all registered processors.
+
+1. Each processor must support state capture and restoration
+2. The engine captures state snapshots before processing each event
+3. Calling `stepBack()` restores all processors to their previous state
+4. Multiple step-backs are supported (full history)
+
+**Requested Behavior:**
+
+```java
+engine.register(new TimeAlarmProcessor());
+engine.register(new WorkQueueProcessor());
+
+var effects1 = engine.processEvent(new SetTimeAlarm("alarm1", triggerTime));
+var effects2 = engine.processEvent(new SetTimeAlarm("alarm2", triggerTime));
+
+// Oops, didn't want alarm2
+boolean success = engine.stepBack();  // Reverts alarm2 creation
+
+// Check history depth
+int available = engine.getHistorySize();  // Returns 1
+
+// Trigger time - only alarm1 fires
+var effects3 = engine.processEvent(new TimeEvent(afterTriggerTime));
+```
+
+**Expected Results:**
+- `effects1` should contain `AlarmSet` for "alarm1"
+- `effects2` should contain `AlarmSet` for "alarm2"
+- `success` should be `true` (step back succeeded)
+- `available` should be `1` (one more undo available)
+- `effects3` should contain `AlarmTriggered` only for "alarm1" (alarm2 was reverted)
+
+**Additional Requirements:**
+- State snapshots are captured automatically before each `processEvent()` call
+- `stepBack()` returns `false` when no history is available
+- `clearHistory()` frees memory by removing all snapshots
+- Processors must implement `captureState()` and `restoreState(Object state)`
+- State objects are opaque and only used for restoration
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Process `SetTimeAlarm("alarm1", time)` | Returns `[AlarmSet]`, history size = 1 |
+| 2 | Process `SetTimeAlarm("alarm2", time)` | Returns `[AlarmSet]`, history size = 2 |
+| 3 | Call `stepBack()` | Returns `true`, history size = 1 |
+| 4 | Process `TimeEvent(afterTime)` | Returns `[AlarmTriggered]` for alarm1 only |
+| 5 | Call `stepBack()` twice | First returns `true`, second returns `false` |
+
+**Test Execution:**
+```bash
+# Run tests
+mvn test -Dtest=EventProcessingEngineStepBackTest
+```
+
+**Expected Output:**
+```
+INFO: Processing event: SetTimeAlarm[alarmName=alarm1, triggerTime=...]
+INFO: Side effect: AlarmSet[alarmName=alarm1, triggerTime=...]
+
+INFO: Processing event: SetTimeAlarm[alarmName=alarm2, triggerTime=...]
+INFO: Side effect: AlarmSet[alarmName=alarm2, triggerTime=...]
+
+INFO: Stepped back to previous state
+
+INFO: Processing event: TimeEvent[timestamp=...]
+INFO: Side effect: AlarmTriggered[alarmName=alarm1, triggeredAt=...]
+```
+
+**API Reference:**
+
+| Method | Description |
+|--------|-------------|
+| `stepBack()` | Reverts to state before last event. Returns `true` on success, `false` if no history. |
+| `getHistorySize()` | Returns number of available undo steps. |
+| `clearHistory()` | Clears all snapshots to free memory. |
+| `captureState()` | (EventProcessor) Returns opaque state snapshot. |
+| `restoreState(Object)` | (EventProcessor) Restores processor to captured state. |
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/engine/EventProcessor.java` (interface changes)
+- `src/main/java/com/wonderingwizard/engine/EventProcessingEngine.java` (history and stepBack)
+- `src/main/java/com/wonderingwizard/processors/TimeAlarmProcessor.java` (state methods)
+- `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java` (state methods)
+- `src/test/java/com/wonderingwizard/engine/EventProcessingEngineStepBackTest.java` (tests)
