@@ -57,6 +57,13 @@ This is a clean event-driven system following these principles:
   - Persisted to a database
   - Sent as messages to Kafka or similar message brokers
 
+#### Processing Rules
+- **No delays or thread sleeps** - Blocking operations like `Thread.sleep()` or delays are strictly forbidden inside event processing
+- **Time-based logic must use TimeEvent** - If business logic depends on current time:
+  - React to `TimeEvent` which is sent through the system every 5 seconds
+  - The event contains the UTC timestamp of when it was generated
+  - **No direct time lookups allowed** (e.g., `System.currentTimeMillis()`, `Instant.now()`, `LocalDateTime.now()`)
+
 #### Processing Engine
 - The processing engine supports **multiple processing plugins**
 - Plugins are configured at startup time
