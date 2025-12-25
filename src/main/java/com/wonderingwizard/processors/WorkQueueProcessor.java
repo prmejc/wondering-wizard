@@ -70,4 +70,19 @@ public class WorkQueueProcessor implements EventProcessor {
         activeSchedules.remove(workQueueId);
         return List.of(new ScheduleAborted(workQueueId));
     }
+
+    @Override
+    public Object captureState() {
+        return new HashMap<>(activeSchedules);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public void restoreState(Object state) {
+        if (!(state instanceof Map)) {
+            throw new IllegalArgumentException("Invalid state type for WorkQueueProcessor");
+        }
+        activeSchedules.clear();
+        activeSchedules.putAll((Map<String, Boolean>) state);
+    }
 }
