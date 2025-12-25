@@ -45,6 +45,7 @@ customElements.define('my-component', MyComponent);
 - Follow standard Java conventions and naming patterns
 - Use appropriate frameworks as needed (Spring Boot, Quarkus, etc.)
 - Write clean, maintainable, and well-documented code
+- **No string literals for domain values** - Use constants or enums instead of string literals for status values, types, or any domain-specific values (e.g., use `WorkQueueStatus.ACTIVE` instead of `"Active"`)
 
 ### Event-Driven Architecture
 
