@@ -77,3 +77,8 @@ This is a clean event-driven system following these principles:
   - **p90** - 90th percentile processing time
   - **p99** - 99th percentile processing time
 - Use these metrics to monitor and optimize event processing performance
+
+## Testing Requirements
+
+- **Every new feature requires tests** - No feature is complete without corresponding test coverage
+- **Every bug fix requires a test** - Add a test that reproduces the bug before fixing it to prevent regression
