@@ -45,3 +45,28 @@ customElements.define('my-component', MyComponent);
 - Follow standard Java conventions and naming patterns
 - Use appropriate frameworks as needed (Spring Boot, Quarkus, etc.)
 - Write clean, maintainable, and well-documented code
+
+### Event-Driven Architecture
+
+This is a clean event-driven system following these principles:
+
+#### Event Processing Model
+- **Input → Event transformation** - Every input is transformed into an event
+- **Event → Side Effects** - Each event processing results in a list of side effects
+- Side effects can be:
+  - Persisted to a database
+  - Sent as messages to Kafka or similar message brokers
+
+#### Processing Engine
+- The processing engine supports **multiple processing plugins**
+- Plugins are configured at startup time
+- Each plugin processes events independently and produces side effects
+
+#### Observability (OTEL Metrics)
+- Every plugin has its own OpenTelemetry metric
+- Each processing function has its own OTEL metric
+- Metrics track processing duration percentiles:
+  - **p50** - Median processing time
+  - **p90** - 90th percentile processing time
+  - **p99** - 99th percentile processing time
+- Use these metrics to monitor and optimize event processing performance
