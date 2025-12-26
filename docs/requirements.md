@@ -276,6 +276,8 @@ var effects4 = engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE));
 - The `ScheduleCreated` record is extended to include a `List<WorkInstruction>` field
 - Work instructions registered after a schedule is already active should be retrievable on reactivation
 - When a schedule is aborted (INACTIVE), work instructions remain stored for potential reactivation
+- When a `WorkInstructionEvent` with an existing `workInstructionId` is processed with a different `workQueueId`, the instruction is moved to the new queue
+- When a `WorkInstructionEvent` with an existing `workInstructionId` is processed with the same `workQueueId`, the instruction is updated (fetchChe, status)
 
 **Verification:**
 

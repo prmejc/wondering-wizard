@@ -32,6 +32,8 @@ import java.util.Map;
  * <p>
  * When a WorkInstructionEvent is processed:
  * - The work instruction is stored associated with its workQueueId
+ * - If a work instruction with the same ID exists in a different queue, it is moved
+ * - If a work instruction with the same ID exists in the same queue, it is updated
  * - No side effect is produced
  */
 public class WorkQueueProcessor implements EventProcessor {
@@ -50,10 +52,18 @@ public class WorkQueueProcessor implements EventProcessor {
     }
 
     private List<SideEffect> handleWorkInstructionEvent(WorkInstructionEvent event) {
+        String workInstructionId = event.workInstructionId();
         String workQueueId = event.workQueueId();
+
+        // Remove existing instruction with same ID from all queues (handles moves and updates)
+        for (List<WorkInstruction> instructions : workInstructions.values()) {
+            instructions.removeIf(wi -> wi.workInstructionId().equals(workInstructionId));
+        }
+
+        // Add the instruction to the target queue
         WorkInstruction instruction = new WorkInstruction(
-                event.workInstructionId(),
-                event.workQueueId(),
+                workInstructionId,
+                workQueueId,
                 event.fetchChe(),
                 event.status()
         );

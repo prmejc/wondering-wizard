@@ -588,5 +588,123 @@ class WorkQueueProcessorTest {
                 assertEquals("wi-1", created.workInstructions().get(0).workInstructionId());
             }
         }
+
+        @Nested
+        @DisplayName("F-4.7: Work instruction queue changes")
+        class WorkInstructionQueueChanges {
+
+            @Test
+            @DisplayName("Should move work instruction when workQueueId changes")
+            void workInstructionMovedToNewQueue() {
+                // Register work instruction to queue-1
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+
+                // Move work instruction to queue-2
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-2", "CHE-001", PENDING));
+
+                // Activate both queues and verify
+                List<SideEffect> effects1 = engine.processEvent(
+                        new WorkQueueMessage("queue-1", ACTIVE));
+                List<SideEffect> effects2 = engine.processEvent(
+                        new WorkQueueMessage("queue-2", ACTIVE));
+
+                ScheduleCreated created1 = (ScheduleCreated) effects1.get(0);
+                ScheduleCreated created2 = (ScheduleCreated) effects2.get(0);
+
+                assertTrue(created1.workInstructions().isEmpty(),
+                        "queue-1 should have no work instructions after move");
+                assertEquals(1, created2.workInstructions().size(),
+                        "queue-2 should have the moved work instruction");
+                assertEquals("wi-1", created2.workInstructions().get(0).workInstructionId());
+            }
+
+            @Test
+            @DisplayName("Should update work instruction properties when same ID is processed again")
+            void workInstructionUpdatedInSameQueue() {
+                // Register work instruction
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+
+                // Update the same work instruction with new properties
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-002", IN_PROGRESS));
+
+                // Activate and verify only one instruction with updated values
+                List<SideEffect> effects = engine.processEvent(
+                        new WorkQueueMessage("queue-1", ACTIVE));
+
+                ScheduleCreated created = (ScheduleCreated) effects.get(0);
+                assertEquals(1, created.workInstructions().size(),
+                        "Should have only one work instruction (not duplicated)");
+
+                WorkInstruction wi = created.workInstructions().get(0);
+                assertEquals("wi-1", wi.workInstructionId());
+                assertEquals("CHE-002", wi.fetchChe(),
+                        "fetchChe should be updated");
+                assertEquals(IN_PROGRESS, wi.status(),
+                        "status should be updated");
+            }
+
+            @Test
+            @DisplayName("Should correctly track instruction after multiple queue moves")
+            void workInstructionMultipleMoves() {
+                // Register to queue-1
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+
+                // Move to queue-2
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-2", "CHE-001", PENDING));
+
+                // Move to queue-3
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-3", "CHE-001", PENDING));
+
+                // Move back to queue-1
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+
+                // Activate all queues
+                List<SideEffect> effects1 = engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE));
+                List<SideEffect> effects2 = engine.processEvent(new WorkQueueMessage("queue-2", ACTIVE));
+                List<SideEffect> effects3 = engine.processEvent(new WorkQueueMessage("queue-3", ACTIVE));
+
+                ScheduleCreated created1 = (ScheduleCreated) effects1.get(0);
+                ScheduleCreated created2 = (ScheduleCreated) effects2.get(0);
+                ScheduleCreated created3 = (ScheduleCreated) effects3.get(0);
+
+                assertEquals(1, created1.workInstructions().size(),
+                        "queue-1 should have the work instruction");
+                assertTrue(created2.workInstructions().isEmpty(),
+                        "queue-2 should have no work instructions");
+                assertTrue(created3.workInstructions().isEmpty(),
+                        "queue-3 should have no work instructions");
+            }
+
+            @Test
+            @DisplayName("Should not affect other work instructions when one is moved")
+            void moveDoesNotAffectOtherInstructions() {
+                // Register multiple instructions
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-2", "CHE-003", PENDING));
+
+                // Move wi-1 to queue-2
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-2", "CHE-001", PENDING));
+
+                // Activate both queues
+                List<SideEffect> effects1 = engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE));
+                List<SideEffect> effects2 = engine.processEvent(new WorkQueueMessage("queue-2", ACTIVE));
+
+                ScheduleCreated created1 = (ScheduleCreated) effects1.get(0);
+                ScheduleCreated created2 = (ScheduleCreated) effects2.get(0);
+
+                // queue-1 should only have wi-2
+                assertEquals(1, created1.workInstructions().size());
+                assertEquals("wi-2", created1.workInstructions().get(0).workInstructionId());
+
+                // queue-2 should have wi-1 and wi-3
+                assertEquals(2, created2.workInstructions().size());
+                List<String> queue2Ids = created2.workInstructions().stream()
+                        .map(WorkInstruction::workInstructionId)
+                        .toList();
+                assertTrue(queue2Ids.contains("wi-1"));
+                assertTrue(queue2Ids.contains("wi-3"));
+            }
+        }
     }
 }
