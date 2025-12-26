@@ -19,7 +19,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("EventProcessingEngine Step Back")
+@DisplayName("F-3: EventProcessingEngine Step Back")
 class EventProcessingEngineStepBackTest {
 
     private EventProcessingEngine engine;
