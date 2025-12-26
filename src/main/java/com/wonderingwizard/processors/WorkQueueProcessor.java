@@ -1,5 +1,7 @@
 package com.wonderingwizard.processors;
 
+import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
@@ -92,10 +94,24 @@ public class WorkQueueProcessor implements EventProcessor {
             return List.of();
         }
 
-        // Create new schedule with associated work instructions
+        // Create new schedule with takts generated from work instructions
         activeSchedules.put(workQueueId, true);
         List<WorkInstruction> instructions = workInstructions.getOrDefault(workQueueId, List.of());
-        return List.of(new ScheduleCreated(workQueueId, List.copyOf(instructions)));
+        List<Takt> takts = createTaktsFromWorkInstructions(instructions);
+        return List.of(new ScheduleCreated(workQueueId, takts));
+    }
+
+    private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions) {
+        List<Takt> takts = new ArrayList<>();
+        for (int i = 0; i < instructions.size(); i++) {
+            String taktName = Takt.createTaktName(i);
+            List<Action> actions = List.of(
+                    new Action("QC lift container from truck"),
+                    new Action("QC place container on vessel")
+            );
+            takts.add(new Takt(taktName, actions));
+        }
+        return takts;
     }
 
     private List<SideEffect> handleInactiveStatus(String workQueueId) {

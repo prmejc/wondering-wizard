@@ -1,5 +1,6 @@
 package com.wonderingwizard.sideeffects;
 
+import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.SideEffect;
 
 import java.util.List;
@@ -7,17 +8,17 @@ import java.util.List;
 /**
  * Side effect indicating that a schedule has been created for a work queue.
  * <p>
- * When a work queue is activated, any work instructions associated with that
- * work queue are included in this side effect.
+ * When a work queue is activated, takts are generated from the work instructions
+ * associated with that work queue. Each work instruction produces one takt,
+ * named sequentially starting from TAKT100.
  *
  * @param workQueueId the identifier of the work queue for which the schedule was created
- * @param workInstructions the list of work instructions associated with this work queue
+ * @param takts the list of takts in this schedule
  */
-public record ScheduleCreated(String workQueueId, List<WorkInstruction> workInstructions) implements SideEffect {
+public record ScheduleCreated(String workQueueId, List<Takt> takts) implements SideEffect {
 
     /**
-     * Creates a ScheduleCreated with an empty list of work instructions.
-     * Provided for backward compatibility.
+     * Creates a ScheduleCreated with an empty list of takts.
      *
      * @param workQueueId the identifier of the work queue
      */
@@ -27,6 +28,6 @@ public record ScheduleCreated(String workQueueId, List<WorkInstruction> workInst
 
     @Override
     public String toString() {
-        return "ScheduleCreated[workQueueId=" + workQueueId + ", workInstructions=" + workInstructions + "]";
+        return "ScheduleCreated[workQueueId=" + workQueueId + ", takts=" + takts + "]";
     }
 }

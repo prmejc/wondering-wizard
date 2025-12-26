@@ -1,14 +1,13 @@
 package com.wonderingwizard.processors;
 
+import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.EventProcessingEngine;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
 import com.wonderingwizard.events.WorkQueueMessage;
-import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
-import com.wonderingwizard.sideeffects.WorkInstruction;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -22,9 +21,9 @@ import static com.wonderingwizard.events.WorkQueueStatus.INACTIVE;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for F-2: Schedule Creation and F-4: Work Instruction Event features.
+ * Unit tests for F-2: Schedule Creation, F-4: Work Instruction Event, and F-5: Takt Generation features.
  *
- * @see <a href="docs/requirements.md">F-2 and F-4 Requirements</a>
+ * @see <a href="docs/requirements.md">F-2, F-4, and F-5 Requirements</a>
  */
 @DisplayName("WorkQueueProcessor Tests")
 class WorkQueueProcessorTest {
@@ -323,18 +322,18 @@ class WorkQueueProcessorTest {
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                assertEquals(3, created.workInstructions().size(),
-                        "All three work instructions should be included");
+                assertEquals(3, created.takts().size(),
+                        "Should have 3 takts for 3 work instructions");
             }
         }
 
         @Nested
-        @DisplayName("F-4.2: Work instructions in ScheduleCreated")
-        class WorkInstructionsInScheduleCreated {
+        @DisplayName("F-4.2: Takts generated from work instructions in ScheduleCreated")
+        class TaktsInScheduleCreated {
 
             @Test
-            @DisplayName("Should include work instructions in ScheduleCreated side effect")
-            void activeMessage_includesWorkInstructions() {
+            @DisplayName("Should generate takts from work instructions in ScheduleCreated")
+            void activeMessage_generatesTakts() {
                 // Register work instructions
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
                 engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", IN_PROGRESS));
@@ -348,38 +347,24 @@ class WorkQueueProcessorTest {
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 assertEquals("queue-1", created.workQueueId());
-                assertEquals(2, created.workInstructions().size());
-
-                // Verify first work instruction
-                WorkInstruction wi1 = created.workInstructions().get(0);
-                assertEquals("wi-1", wi1.workInstructionId());
-                assertEquals("queue-1", wi1.workQueueId());
-                assertEquals("CHE-001", wi1.fetchChe());
-                assertEquals(PENDING, wi1.status());
-
-                // Verify second work instruction
-                WorkInstruction wi2 = created.workInstructions().get(1);
-                assertEquals("wi-2", wi2.workInstructionId());
-                assertEquals("queue-1", wi2.workQueueId());
-                assertEquals("CHE-002", wi2.fetchChe());
-                assertEquals(IN_PROGRESS, wi2.status());
+                assertEquals(2, created.takts().size());
             }
 
             @Test
-            @DisplayName("Should return empty list when no work instructions registered")
-            void activeMessage_noWorkInstructions_returnsEmptyList() {
+            @DisplayName("Should return empty takts list when no work instructions registered")
+            void activeMessage_noWorkInstructions_returnsEmptyTaktsList() {
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                assertTrue(created.workInstructions().isEmpty(),
-                        "Work instructions list should be empty when none registered");
+                assertTrue(created.takts().isEmpty(),
+                        "Takts list should be empty when no work instructions registered");
             }
 
             @Test
-            @DisplayName("Should only include work instructions for the activated work queue")
-            void activeMessage_onlyIncludesMatchingWorkInstructions() {
+            @DisplayName("Should only generate takts for the activated work queue")
+            void activeMessage_onlyGeneratesTaktsForMatchingWorkInstructions() {
                 // Register work instructions for different queues
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
                 engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
@@ -391,13 +376,8 @@ class WorkQueueProcessorTest {
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                assertEquals(2, created.workInstructions().size(),
-                        "Only work instructions for queue-1 should be included");
-
-                // Verify only queue-1 instructions are present
-                assertTrue(created.workInstructions().stream()
-                                .allMatch(wi -> "queue-1".equals(wi.workQueueId())),
-                        "All work instructions should belong to queue-1");
+                assertEquals(2, created.takts().size(),
+                        "Only takts for queue-1 work instructions should be generated");
             }
         }
 
@@ -422,8 +402,8 @@ class WorkQueueProcessorTest {
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                assertEquals(2, created.workInstructions().size(),
-                        "Work instructions should be retained after abort");
+                assertEquals(2, created.takts().size(),
+                        "Takts should be regenerated from retained work instructions after abort");
             }
 
             @Test
@@ -445,8 +425,8 @@ class WorkQueueProcessorTest {
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                assertEquals(2, created.workInstructions().size(),
-                        "Both original and new work instructions should be included");
+                assertEquals(2, created.takts().size(),
+                        "Both original and new work instructions should generate takts");
             }
         }
 
@@ -466,12 +446,8 @@ class WorkQueueProcessorTest {
                         new WorkQueueMessage("queue-1", ACTIVE));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                assertEquals(4, created.workInstructions().size());
-
-                assertEquals(PENDING, created.workInstructions().get(0).status());
-                assertEquals(IN_PROGRESS, created.workInstructions().get(1).status());
-                assertEquals(COMPLETED, created.workInstructions().get(2).status());
-                assertEquals(CANCELLED, created.workInstructions().get(3).status());
+                assertEquals(4, created.takts().size(),
+                        "All 4 work instructions should generate takts");
             }
         }
 
@@ -498,7 +474,7 @@ class WorkQueueProcessorTest {
                 assertTrue(effects3.isEmpty(),
                         "F-4 Requirement: WorkInstructionEvent should not produce side effects");
 
-                // Step 2: Activate queue-1 - should include wi-1 and wi-2 but not wi-3
+                // Step 2: Activate queue-1 - should generate takts for wi-1 and wi-2 but not wi-3
                 List<SideEffect> effects4 = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
 
@@ -508,23 +484,13 @@ class WorkQueueProcessorTest {
 
                 ScheduleCreated created = (ScheduleCreated) effects4.get(0);
                 assertEquals("queue-1", created.workQueueId());
-                assertEquals(2, created.workInstructions().size(),
-                        "F-4 Requirement: Only queue-1 work instructions should be included");
-
-                List<String> instructionIds = created.workInstructions().stream()
-                        .map(WorkInstruction::workInstructionId)
-                        .toList();
-                assertTrue(instructionIds.contains("wi-1"),
-                        "F-4 Requirement: wi-1 should be included");
-                assertTrue(instructionIds.contains("wi-2"),
-                        "F-4 Requirement: wi-2 should be included");
-                assertFalse(instructionIds.contains("wi-3"),
-                        "F-4 Requirement: wi-3 should NOT be included (belongs to queue-2)");
+                assertEquals(2, created.takts().size(),
+                        "F-4 Requirement: Only queue-1 work instructions should generate takts");
             }
 
             @Test
-            @DisplayName("Should include work instructions on reactivation after abort")
-            void reactivationIncludesAllInstructions() {
+            @DisplayName("Should generate takts on reactivation after abort")
+            void reactivationGeneratesTakts() {
                 // Register initial instructions
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
                 engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
@@ -532,7 +498,7 @@ class WorkQueueProcessorTest {
                 // Activate
                 List<SideEffect> created1 = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
-                assertEquals(2, ((ScheduleCreated) created1.get(0)).workInstructions().size());
+                assertEquals(2, ((ScheduleCreated) created1.get(0)).takts().size());
 
                 // Abort
                 engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE));
@@ -540,20 +506,13 @@ class WorkQueueProcessorTest {
                 // Add new instruction
                 engine.processEvent(new WorkInstructionEvent("wi-4", "queue-1", "CHE-004", PENDING));
 
-                // Reactivate - should include all 3 instructions
+                // Reactivate - should include all 3 instructions as takts
                 List<SideEffect> created2 = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
 
                 ScheduleCreated reactivated = (ScheduleCreated) created2.get(0);
-                assertEquals(3, reactivated.workInstructions().size(),
-                        "F-4 Requirement: All work instructions including new ones should be included");
-
-                List<String> instructionIds = reactivated.workInstructions().stream()
-                        .map(WorkInstruction::workInstructionId)
-                        .toList();
-                assertTrue(instructionIds.contains("wi-1"));
-                assertTrue(instructionIds.contains("wi-2"));
-                assertTrue(instructionIds.contains("wi-4"));
+                assertEquals(3, reactivated.takts().size(),
+                        "F-4 Requirement: All work instructions including new ones should generate takts");
             }
         }
 
@@ -577,15 +536,14 @@ class WorkQueueProcessorTest {
                 boolean success = engine.stepBack();
                 assertTrue(success, "Step back should succeed");
 
-                // Abort and reactivate to see current work instructions
+                // Abort and reactivate to see current takts
                 engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE));
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                assertEquals(1, created.workInstructions().size(),
-                        "Only wi-1 should be present after step back");
-                assertEquals("wi-1", created.workInstructions().get(0).workInstructionId());
+                assertEquals(1, created.takts().size(),
+                        "Only one takt should be present after step back");
             }
         }
 
@@ -611,11 +569,10 @@ class WorkQueueProcessorTest {
                 ScheduleCreated created1 = (ScheduleCreated) effects1.get(0);
                 ScheduleCreated created2 = (ScheduleCreated) effects2.get(0);
 
-                assertTrue(created1.workInstructions().isEmpty(),
-                        "queue-1 should have no work instructions after move");
-                assertEquals(1, created2.workInstructions().size(),
-                        "queue-2 should have the moved work instruction");
-                assertEquals("wi-1", created2.workInstructions().get(0).workInstructionId());
+                assertTrue(created1.takts().isEmpty(),
+                        "queue-1 should have no takts after move");
+                assertEquals(1, created2.takts().size(),
+                        "queue-2 should have the takt from moved work instruction");
             }
 
             @Test
@@ -627,20 +584,13 @@ class WorkQueueProcessorTest {
                 // Update the same work instruction with new properties
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-002", IN_PROGRESS));
 
-                // Activate and verify only one instruction with updated values
+                // Activate and verify only one takt
                 List<SideEffect> effects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
 
                 ScheduleCreated created = (ScheduleCreated) effects.get(0);
-                assertEquals(1, created.workInstructions().size(),
-                        "Should have only one work instruction (not duplicated)");
-
-                WorkInstruction wi = created.workInstructions().get(0);
-                assertEquals("wi-1", wi.workInstructionId());
-                assertEquals("CHE-002", wi.fetchChe(),
-                        "fetchChe should be updated");
-                assertEquals(IN_PROGRESS, wi.status(),
-                        "status should be updated");
+                assertEquals(1, created.takts().size(),
+                        "Should have only one takt (not duplicated)");
             }
 
             @Test
@@ -667,12 +617,12 @@ class WorkQueueProcessorTest {
                 ScheduleCreated created2 = (ScheduleCreated) effects2.get(0);
                 ScheduleCreated created3 = (ScheduleCreated) effects3.get(0);
 
-                assertEquals(1, created1.workInstructions().size(),
-                        "queue-1 should have the work instruction");
-                assertTrue(created2.workInstructions().isEmpty(),
-                        "queue-2 should have no work instructions");
-                assertTrue(created3.workInstructions().isEmpty(),
-                        "queue-3 should have no work instructions");
+                assertEquals(1, created1.takts().size(),
+                        "queue-1 should have the takt");
+                assertTrue(created2.takts().isEmpty(),
+                        "queue-2 should have no takts");
+                assertTrue(created3.takts().isEmpty(),
+                        "queue-3 should have no takts");
             }
 
             @Test
@@ -693,17 +643,159 @@ class WorkQueueProcessorTest {
                 ScheduleCreated created1 = (ScheduleCreated) effects1.get(0);
                 ScheduleCreated created2 = (ScheduleCreated) effects2.get(0);
 
-                // queue-1 should only have wi-2
-                assertEquals(1, created1.workInstructions().size());
-                assertEquals("wi-2", created1.workInstructions().get(0).workInstructionId());
+                // queue-1 should only have 1 takt (for wi-2)
+                assertEquals(1, created1.takts().size());
 
-                // queue-2 should have wi-1 and wi-3
-                assertEquals(2, created2.workInstructions().size());
-                List<String> queue2Ids = created2.workInstructions().stream()
-                        .map(WorkInstruction::workInstructionId)
-                        .toList();
-                assertTrue(queue2Ids.contains("wi-1"));
-                assertTrue(queue2Ids.contains("wi-3"));
+                // queue-2 should have 2 takts (for wi-1 and wi-3)
+                assertEquals(2, created2.takts().size());
+            }
+        }
+    }
+
+    @Nested
+    @DisplayName("F-5: Takt Generation")
+    class TaktGenerationTests {
+
+        @Nested
+        @DisplayName("F-5.1: Takt naming convention")
+        class TaktNamingConvention {
+
+            @Test
+            @DisplayName("Should name takts sequentially starting from TAKT100")
+            void taktsNamedSequentially() {
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", PENDING));
+
+                List<SideEffect> sideEffects = engine.processEvent(
+                        new WorkQueueMessage("queue-1", ACTIVE));
+
+                ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
+                List<Takt> takts = created.takts();
+
+                assertEquals(3, takts.size());
+                assertEquals("TAKT100", takts.get(0).name());
+                assertEquals("TAKT101", takts.get(1).name());
+                assertEquals("TAKT102", takts.get(2).name());
+            }
+
+            @Test
+            @DisplayName("Should create TAKT100 for single work instruction")
+            void singleWorkInstruction_createsTakt100() {
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+
+                List<SideEffect> sideEffects = engine.processEvent(
+                        new WorkQueueMessage("queue-1", ACTIVE));
+
+                ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
+                assertEquals(1, created.takts().size());
+                assertEquals("TAKT100", created.takts().get(0).name());
+            }
+        }
+
+        @Nested
+        @DisplayName("F-5.2: Takt actions")
+        class TaktActions {
+
+            @Test
+            @DisplayName("Each takt should have exactly 2 actions")
+            void eachTaktHasTwoActions() {
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+
+                List<SideEffect> sideEffects = engine.processEvent(
+                        new WorkQueueMessage("queue-1", ACTIVE));
+
+                ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
+
+                for (Takt takt : created.takts()) {
+                    assertEquals(2, takt.actions().size(),
+                            "Each takt should have exactly 2 actions");
+                }
+            }
+
+            @Test
+            @DisplayName("First action should be 'QC lift container from truck'")
+            void firstActionIsLift() {
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+
+                List<SideEffect> sideEffects = engine.processEvent(
+                        new WorkQueueMessage("queue-1", ACTIVE));
+
+                ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
+                Takt takt = created.takts().get(0);
+
+                assertEquals("QC lift container from truck", takt.actions().get(0).description());
+            }
+
+            @Test
+            @DisplayName("Second action should be 'QC place container on vessel'")
+            void secondActionIsPlace() {
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+
+                List<SideEffect> sideEffects = engine.processEvent(
+                        new WorkQueueMessage("queue-1", ACTIVE));
+
+                ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
+                Takt takt = created.takts().get(0);
+
+                assertEquals("QC place container on vessel", takt.actions().get(1).description());
+            }
+
+            @Test
+            @DisplayName("All takts should have the same two actions")
+            void allTaktsHaveSameActions() {
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", PENDING));
+
+                List<SideEffect> sideEffects = engine.processEvent(
+                        new WorkQueueMessage("queue-1", ACTIVE));
+
+                ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
+
+                for (Takt takt : created.takts()) {
+                    List<Action> actions = takt.actions();
+                    assertEquals(2, actions.size());
+                    assertEquals("QC lift container from truck", actions.get(0).description());
+                    assertEquals("QC place container on vessel", actions.get(1).description());
+                }
+            }
+        }
+
+        @Nested
+        @DisplayName("F-5.3: Complete takt generation workflow")
+        class CompleteTaktWorkflow {
+
+            @Test
+            @DisplayName("Two work instructions should generate two takts with correct structure")
+            void twoWorkInstructions_generateTwoTakts() {
+                // Given: 2 work instructions
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+
+                // When: Work queue is activated
+                List<SideEffect> sideEffects = engine.processEvent(
+                        new WorkQueueMessage("queue-1", ACTIVE));
+
+                // Then: Should generate 2 takts
+                assertEquals(1, sideEffects.size());
+                ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
+                assertEquals(2, created.takts().size());
+
+                // Verify first takt
+                Takt takt1 = created.takts().get(0);
+                assertEquals("TAKT100", takt1.name());
+                assertEquals(2, takt1.actions().size());
+                assertEquals("QC lift container from truck", takt1.actions().get(0).description());
+                assertEquals("QC place container on vessel", takt1.actions().get(1).description());
+
+                // Verify second takt
+                Takt takt2 = created.takts().get(1);
+                assertEquals("TAKT101", takt2.name());
+                assertEquals(2, takt2.actions().size());
+                assertEquals("QC lift container from truck", takt2.actions().get(0).description());
+                assertEquals("QC place container on vessel", takt2.actions().get(1).description());
             }
         }
     }
