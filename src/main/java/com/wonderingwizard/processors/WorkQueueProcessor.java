@@ -5,11 +5,14 @@ import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.SetTimeAlarm;
 import com.wonderingwizard.events.TimeEvent;
+import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
+import com.wonderingwizard.sideeffects.WorkInstruction;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,23 +22,47 @@ import java.util.Map;
  * <p>
  * When a WorkQueueMessage with status ACTIVE is processed:
  * - If no schedule exists for the workQueueId, a new schedule is created (ScheduleCreated side effect)
+ * - The ScheduleCreated includes all work instructions registered for that workQueueId
  * - If a schedule already exists for the workQueueId, no side effect is produced (idempotent)
  * <p>
  * When a WorkQueueMessage with status INACTIVE is processed:
  * - If a schedule exists for the workQueueId, it is aborted (ScheduleAborted side effect)
  * - If no schedule exists, no side effect is produced
+ * - Work instructions remain stored for potential reactivation
+ * <p>
+ * When a WorkInstructionEvent is processed:
+ * - The work instruction is stored associated with its workQueueId
+ * - No side effect is produced
  */
 public class WorkQueueProcessor implements EventProcessor {
 
     private final Map<String, Boolean> activeSchedules = new HashMap<>();
+    private final Map<String, List<WorkInstruction>> workInstructions = new HashMap<>();
 
     @Override
     public List<SideEffect> process(Event event) {
         return switch (event) {
             case WorkQueueMessage message -> handleWorkQueueMessage(message);
+            case WorkInstructionEvent instruction -> handleWorkInstructionEvent(instruction);
             case TimeEvent ignored -> List.of();
             case SetTimeAlarm ignored -> List.of();
         };
+    }
+
+    private List<SideEffect> handleWorkInstructionEvent(WorkInstructionEvent event) {
+        String workQueueId = event.workQueueId();
+        WorkInstruction instruction = new WorkInstruction(
+                event.workInstructionId(),
+                event.workQueueId(),
+                event.fetchChe(),
+                event.status()
+        );
+
+        workInstructions
+                .computeIfAbsent(workQueueId, k -> new ArrayList<>())
+                .add(instruction);
+
+        return List.of();
     }
 
     private List<SideEffect> handleWorkQueueMessage(WorkQueueMessage message) {
@@ -55,9 +82,10 @@ public class WorkQueueProcessor implements EventProcessor {
             return List.of();
         }
 
-        // Create new schedule
+        // Create new schedule with associated work instructions
         activeSchedules.put(workQueueId, true);
-        return List.of(new ScheduleCreated(workQueueId));
+        List<WorkInstruction> instructions = workInstructions.getOrDefault(workQueueId, List.of());
+        return List.of(new ScheduleCreated(workQueueId, List.copyOf(instructions)));
     }
 
     private List<SideEffect> handleInactiveStatus(String workQueueId) {
@@ -66,14 +94,24 @@ public class WorkQueueProcessor implements EventProcessor {
             return List.of();
         }
 
-        // Abort the schedule
+        // Abort the schedule (work instructions remain stored)
         activeSchedules.remove(workQueueId);
         return List.of(new ScheduleAborted(workQueueId));
     }
 
     @Override
     public Object captureState() {
-        return new HashMap<>(activeSchedules);
+        Map<String, Object> state = new HashMap<>();
+        state.put("activeSchedules", new HashMap<>(activeSchedules));
+
+        // Deep copy of work instructions
+        Map<String, List<WorkInstruction>> instructionsCopy = new HashMap<>();
+        for (Map.Entry<String, List<WorkInstruction>> entry : workInstructions.entrySet()) {
+            instructionsCopy.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+        }
+        state.put("workInstructions", instructionsCopy);
+
+        return state;
     }
 
     @Override
@@ -82,7 +120,22 @@ public class WorkQueueProcessor implements EventProcessor {
         if (!(state instanceof Map)) {
             throw new IllegalArgumentException("Invalid state type for WorkQueueProcessor");
         }
+
+        Map<String, Object> stateMap = (Map<String, Object>) state;
+
         activeSchedules.clear();
-        activeSchedules.putAll((Map<String, Boolean>) state);
+        Object activeSchedulesState = stateMap.get("activeSchedules");
+        if (activeSchedulesState instanceof Map) {
+            activeSchedules.putAll((Map<String, Boolean>) activeSchedulesState);
+        }
+
+        workInstructions.clear();
+        Object instructionsState = stateMap.get("workInstructions");
+        if (instructionsState instanceof Map) {
+            Map<String, List<WorkInstruction>> instructionsMap = (Map<String, List<WorkInstruction>>) instructionsState;
+            for (Map.Entry<String, List<WorkInstruction>> entry : instructionsMap.entrySet()) {
+                workInstructions.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+            }
+        }
     }
 }

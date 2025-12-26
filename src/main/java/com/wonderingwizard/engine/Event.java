@@ -7,5 +7,6 @@ package com.wonderingwizard.engine;
 public sealed interface Event permits
         com.wonderingwizard.events.TimeEvent,
         com.wonderingwizard.events.SetTimeAlarm,
-        com.wonderingwizard.events.WorkQueueMessage {
+        com.wonderingwizard.events.WorkQueueMessage,
+        com.wonderingwizard.events.WorkInstructionEvent {
 }

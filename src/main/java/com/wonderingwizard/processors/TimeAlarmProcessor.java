@@ -5,6 +5,7 @@ import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.SetTimeAlarm;
 import com.wonderingwizard.events.TimeEvent;
+import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.sideeffects.AlarmSet;
 import com.wonderingwizard.sideeffects.AlarmTriggered;
@@ -33,6 +34,7 @@ public class TimeAlarmProcessor implements EventProcessor {
             case SetTimeAlarm setAlarm -> handleSetAlarm(setAlarm);
             case TimeEvent timeEvent -> handleTimeEvent(timeEvent);
             case WorkQueueMessage ignored -> List.of();
+            case WorkInstructionEvent ignored -> List.of();
         };
     }
 
