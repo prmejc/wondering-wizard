@@ -235,3 +235,84 @@ INFO: Side effect: AlarmTriggered[alarmName=alarm1, triggeredAt=...]
 - `src/main/java/com/wonderingwizard/processors/TimeAlarmProcessor.java` (state methods)
 - `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java` (state methods)
 - `src/test/java/com/wonderingwizard/engine/EventProcessingEngineStepBackTest.java` (tests)
+
+---
+
+### F-4: Work Instruction Event
+
+**Status:** Implemented
+
+**Description:**
+Extend the WorkQueueProcessor to handle work instruction events that are associated with work queues. When a work queue is activated, the resulting `ScheduleCreated` side effect should include all work instructions registered for that work queue.
+
+1. Accept `WorkInstructionEvent` events with `workInstructionId`, `workQueueId`, `fetchChe`, and `status` (using `WorkInstructionStatus` enum)
+2. Store work instructions associated with each workQueueId
+3. When a `WorkQueueMessage` with status `ACTIVE` is processed, include matching work instructions in the `ScheduleCreated` side effect
+
+**Requested Behavior:**
+
+```java
+import static com.wonderingwizard.events.WorkQueueStatus.ACTIVE;
+import static com.wonderingwizard.events.WorkInstructionStatus.PENDING;
+
+engine.register(new WorkQueueProcessor());
+
+// Register work instructions before activating the queue
+var effects1 = engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+var effects2 = engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+var effects3 = engine.processEvent(new WorkInstructionEvent("wi-3", "queue-2", "CHE-003", PENDING));
+
+// Activate work queue - should include associated work instructions
+var effects4 = engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE));
+```
+
+**Expected Results:**
+- `effects1`, `effects2`, `effects3` should be empty (work instructions are registered but don't produce side effects)
+- `effects4` should contain a `ScheduleCreated` side effect for "queue-1" with a list containing work instructions "wi-1" and "wi-2" (not "wi-3" which belongs to "queue-2")
+
+**Additional Requirements:**
+- Work instructions are stored internally until the associated work queue is activated
+- Work instructions for a work queue are included in the `ScheduleCreated` side effect
+- The `ScheduleCreated` record is extended to include a `List<WorkInstruction>` field
+- Work instructions registered after a schedule is already active should be retrievable on reactivation
+- When a schedule is aborted (INACTIVE), work instructions remain stored for potential reactivation
+- When a `WorkInstructionEvent` with an existing `workInstructionId` is processed with a different `workQueueId`, the instruction is moved to the new queue
+- When a `WorkInstructionEvent` with an existing `workInstructionId` is processed with the same `workQueueId`, the instruction is updated (fetchChe, status)
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Register `WorkQueueProcessor` with engine | Processor registered successfully, logged |
+| 2 | Process `WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING)` | Empty side effects, work instruction stored |
+| 3 | Process `WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING)` | Empty side effects, work instruction stored |
+| 4 | Process `WorkQueueMessage("queue-1", ACTIVE)` | Returns `[ScheduleCreated]` with workInstructions list containing wi-1, wi-2 |
+| 5 | Process `WorkQueueMessage("queue-1", INACTIVE)` | Returns `[ScheduleAborted]`, work instructions still stored |
+| 6 | Process `WorkInstructionEvent("wi-4", "queue-1", "CHE-004", PENDING)` | Empty side effects, new instruction stored |
+| 7 | Process `WorkQueueMessage("queue-1", ACTIVE)` | Returns `[ScheduleCreated]` with workInstructions containing wi-1, wi-2, wi-4 |
+
+**Test Execution:**
+```bash
+# Run tests
+mvn test -Dtest=WorkQueueProcessorTest
+```
+
+**Expected Output:**
+```
+INFO: Processing event: WorkInstructionEvent[workInstructionId=wi-1, workQueueId=queue-1, fetchChe=CHE-001, status=PENDING]
+INFO: No side effects produced
+
+INFO: Processing event: WorkInstructionEvent[workInstructionId=wi-2, workQueueId=queue-1, fetchChe=CHE-002, status=PENDING]
+INFO: No side effects produced
+
+INFO: Processing event: WorkQueueMessage[workQueueId=queue-1, status=ACTIVE]
+INFO: Side effect: ScheduleCreated[workQueueId=queue-1, workInstructions=[WorkInstruction[...], WorkInstruction[...]]]
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/events/WorkInstructionEvent.java`
+- `src/main/java/com/wonderingwizard/events/WorkInstructionStatus.java`
+- `src/main/java/com/wonderingwizard/sideeffects/WorkInstruction.java`
+- `src/main/java/com/wonderingwizard/sideeffects/ScheduleCreated.java` (modified)
+- `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java` (modified)
+- `src/test/java/com/wonderingwizard/processors/WorkQueueProcessorTest.java` (modified)

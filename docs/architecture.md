@@ -16,6 +16,7 @@ Marker interface for all events. Uses Java 21 sealed types to restrict implement
 - `TimeEvent` - Represents a point in time
 - `SetTimeAlarm` - Request to set a time-based alarm
 - `WorkQueueMessage` - Work queue message with status for schedule management
+- `WorkInstructionEvent` - Work instruction with workQueueId association
 
 ### SideEffect (Sealed Interface)
 ```
@@ -172,12 +173,16 @@ com.wonderingwizard
 ├── events/
 │   ├── TimeEvent.java          # Time tick event
 │   ├── SetTimeAlarm.java       # Alarm setting event
-│   └── WorkQueueMessage.java   # Work queue status message
+│   ├── WorkQueueMessage.java   # Work queue status message
+│   ├── WorkQueueStatus.java    # Work queue status enum
+│   ├── WorkInstructionEvent.java # Work instruction event
+│   └── WorkInstructionStatus.java # Work instruction status enum
 ├── sideeffects/
 │   ├── AlarmSet.java           # Alarm set confirmation
 │   ├── AlarmTriggered.java     # Alarm trigger notification
-│   ├── ScheduleCreated.java    # Schedule creation confirmation
-│   └── ScheduleAborted.java    # Schedule abortion notification
+│   ├── ScheduleCreated.java    # Schedule creation confirmation (includes work instructions)
+│   ├── ScheduleAborted.java    # Schedule abortion notification
+│   └── WorkInstruction.java    # Work instruction data for ScheduleCreated
 ├── processors/
 │   ├── TimeAlarmProcessor.java # Time alarm handling
 │   └── WorkQueueProcessor.java # Work queue schedule handling
