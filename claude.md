@@ -84,3 +84,11 @@ This is a clean event-driven system following these principles:
 - **Every new feature requires tests** - No feature is complete without corresponding test coverage
 - **Every bug fix requires a test** - Add a test that reproduces the bug before fixing it to prevent regression
 - **Test coverage must be above 90%** - Maintain high code coverage across the codebase
+
+## Documentation Requirements
+
+- **Every new feature requires documentation** - No feature is complete without updating the docs:
+  - Add a new section to `docs/requirements.md` following the existing format (F-1, F-2, etc.)
+  - Update `docs/architecture.md` with any new events, side effects, processors, or package structure changes
+- **Document before marking complete** - Documentation is part of the definition of done for any feature
+- **Keep docs in sync with code** - When modifying existing features, update the corresponding documentation
