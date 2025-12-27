@@ -3,6 +3,7 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
+import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.SetTimeAlarm;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
@@ -35,6 +36,7 @@ public class TimeAlarmProcessor implements EventProcessor {
             case TimeEvent timeEvent -> handleTimeEvent(timeEvent);
             case WorkQueueMessage ignored -> List.of();
             case WorkInstructionEvent ignored -> List.of();
+            case ActionCompletedEvent ignored -> List.of();
         };
     }
 
