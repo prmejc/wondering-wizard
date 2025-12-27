@@ -5,6 +5,7 @@ import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
+import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.SetTimeAlarm;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Processor that handles work queue messages and manages schedule creation.
@@ -50,6 +52,7 @@ public class WorkQueueProcessor implements EventProcessor {
             case WorkInstructionEvent instruction -> handleWorkInstructionEvent(instruction);
             case TimeEvent ignored -> List.of();
             case SetTimeAlarm ignored -> List.of();
+            case ActionCompletedEvent ignored -> List.of();
         };
     }
 
@@ -67,7 +70,8 @@ public class WorkQueueProcessor implements EventProcessor {
                 workInstructionId,
                 workQueueId,
                 event.fetchChe(),
-                event.status()
+                event.status(),
+                event.estimatedMoveTime()
         );
 
         workInstructions
@@ -103,14 +107,45 @@ public class WorkQueueProcessor implements EventProcessor {
 
     private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions) {
         List<Takt> takts = new ArrayList<>();
+
+        // First pass: create all actions (without dependencies)
+        List<List<Action>> allActions = new ArrayList<>();
         for (int i = 0; i < instructions.size(); i++) {
-            String taktName = Takt.createTaktName(i);
-            List<Action> actions = List.of(
-                    new Action("QC lift container from truck"),
-                    new Action("QC place container on vessel")
-            );
-            takts.add(new Takt(taktName, actions));
+            Action action1 = Action.create("QC lift container from truck");
+            Action action2 = Action.create("QC place container on vessel");
+            allActions.add(List.of(action1, action2));
         }
+
+        // Second pass: set up dependencies
+        // Each action depends on the previous action in the sequence
+        for (int taktIndex = 0; taktIndex < allActions.size(); taktIndex++) {
+            List<Action> actions = allActions.get(taktIndex);
+            List<Action> actionsWithDeps = new ArrayList<>();
+
+            for (int actionIndex = 0; actionIndex < actions.size(); actionIndex++) {
+                Action action = actions.get(actionIndex);
+                Set<java.util.UUID> dependencies;
+
+                if (actionIndex == 0 && taktIndex == 0) {
+                    // First action of first takt: no dependencies
+                    dependencies = Set.of();
+                } else if (actionIndex == 0) {
+                    // First action of subsequent takts: depends on last action of previous takt
+                    Action lastActionOfPrevTakt = allActions.get(taktIndex - 1).get(1);
+                    dependencies = Set.of(lastActionOfPrevTakt.id());
+                } else {
+                    // Other actions: depend on previous action in same takt
+                    Action prevAction = actions.get(actionIndex - 1);
+                    dependencies = Set.of(prevAction.id());
+                }
+
+                actionsWithDeps.add(action.withDependencies(dependencies));
+            }
+
+            String taktName = Takt.createTaktName(taktIndex);
+            takts.add(new Takt(taktName, actionsWithDeps));
+        }
+
         return takts;
     }
 

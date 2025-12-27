@@ -16,7 +16,8 @@ Marker interface for all events. Uses Java 21 sealed types to restrict implement
 - `TimeEvent` - Represents a point in time
 - `SetTimeAlarm` - Request to set a time-based alarm
 - `WorkQueueMessage` - Work queue message with status for schedule management
-- `WorkInstructionEvent` - Work instruction with workQueueId association
+- `WorkInstructionEvent` - Work instruction with workQueueId association and estimatedMoveTime
+- `ActionCompletedEvent` - Notification that an action has been completed (with UUID validation)
 
 ### SideEffect (Sealed Interface)
 ```
@@ -27,8 +28,10 @@ Marker interface for all side effects produced by event processing. Side effects
 **Implementations:**
 - `AlarmSet` - Indicates an alarm was successfully set
 - `AlarmTriggered` - Indicates an alarm was triggered
-- `ScheduleCreated` - Indicates a schedule was created for a work queue
+- `ScheduleCreated` - Indicates a schedule was created for a work queue (includes takts)
 - `ScheduleAborted` - Indicates a schedule was aborted for a work queue
+- `ActionActivated` - Indicates an action has been activated and is ready for execution
+- `ActionCompleted` - Indicates an action has been completed
 
 ### EventProcessor (Interface)
 ```
@@ -165,6 +168,10 @@ public class MyProcessor implements EventProcessor {
 
 ```
 com.wonderingwizard
+├── domain/
+│   └── takt/
+│       ├── Takt.java           # Takt containing actions (named TAKT100, TAKT101, etc.)
+│       └── Action.java         # Action with UUID, description, and dependsOn set
 ├── engine/
 │   ├── Event.java              # Sealed interface for events
 │   ├── SideEffect.java         # Sealed interface for side effects
@@ -175,17 +182,21 @@ com.wonderingwizard
 │   ├── SetTimeAlarm.java       # Alarm setting event
 │   ├── WorkQueueMessage.java   # Work queue status message
 │   ├── WorkQueueStatus.java    # Work queue status enum
-│   ├── WorkInstructionEvent.java # Work instruction event
-│   └── WorkInstructionStatus.java # Work instruction status enum
+│   ├── WorkInstructionEvent.java # Work instruction event (with estimatedMoveTime)
+│   ├── WorkInstructionStatus.java # Work instruction status enum
+│   └── ActionCompletedEvent.java # Action completion event (with UUID)
 ├── sideeffects/
 │   ├── AlarmSet.java           # Alarm set confirmation
 │   ├── AlarmTriggered.java     # Alarm trigger notification
-│   ├── ScheduleCreated.java    # Schedule creation confirmation (includes work instructions)
+│   ├── ScheduleCreated.java    # Schedule creation (includes takts)
 │   ├── ScheduleAborted.java    # Schedule abortion notification
-│   └── WorkInstruction.java    # Work instruction data for ScheduleCreated
+│   ├── WorkInstruction.java    # Work instruction data (with estimatedMoveTime)
+│   ├── ActionActivated.java    # Action activation notification
+│   └── ActionCompleted.java    # Action completion notification
 ├── processors/
 │   ├── TimeAlarmProcessor.java # Time alarm handling
-│   └── WorkQueueProcessor.java # Work queue schedule handling
+│   ├── WorkQueueProcessor.java # Work queue schedule and takt generation
+│   └── ScheduleRunnerProcessor.java # Schedule execution and action state management
 └── Main.java                   # Demo entry point
 ```
 

@@ -316,3 +316,170 @@ INFO: Side effect: ScheduleCreated[workQueueId=queue-1, workInstructions=[WorkIn
 - `src/main/java/com/wonderingwizard/sideeffects/ScheduleCreated.java` (modified)
 - `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java` (modified)
 - `src/test/java/com/wonderingwizard/processors/WorkQueueProcessorTest.java` (modified)
+
+---
+
+### F-5: Takt Generation
+
+**Status:** Implemented
+
+**Description:**
+Extend the WorkQueueProcessor to generate Takts from work instructions when a schedule is created. Each work instruction generates one Takt containing a sequence of actions. Takts are named sequentially starting from TAKT100.
+
+1. Each work instruction generates exactly one Takt
+2. Takts are named sequentially: TAKT100, TAKT101, TAKT102, etc.
+3. Each Takt contains two actions: "QC lift container from truck" and "QC place container on vessel"
+4. Actions have unique UUIDs and dependency relationships
+
+**Requested Behavior:**
+
+```java
+import static com.wonderingwizard.events.WorkQueueStatus.ACTIVE;
+import static com.wonderingwizard.events.WorkInstructionStatus.PENDING;
+
+engine.register(new WorkQueueProcessor());
+
+// Register 2 work instructions
+engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
+
+// Activate - generates 2 takts
+var effects = engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE));
+ScheduleCreated created = (ScheduleCreated) effects.get(0);
+```
+
+**Expected Results:**
+- `created.takts()` contains 2 Takts
+- First takt named "TAKT100" with 2 actions
+- Second takt named "TAKT101" with 2 actions
+- Each action has a UUID and dependencies on predecessor actions
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Register 2 work instructions for queue-1 | Empty side effects |
+| 2 | Activate queue-1 | `ScheduleCreated` with 2 takts |
+| 3 | Check takt names | "TAKT100", "TAKT101" |
+| 4 | Check actions per takt | 2 actions each |
+| 5 | Check action descriptions | "QC lift container from truck", "QC place container on vessel" |
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/domain/takt/Takt.java`
+- `src/main/java/com/wonderingwizard/domain/takt/Action.java`
+- `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java` (modified)
+- `src/main/java/com/wonderingwizard/sideeffects/ScheduleCreated.java` (modified)
+
+---
+
+### F-6: Schedule Runner
+
+**Status:** Implemented
+
+**Description:**
+Implement a ScheduleRunnerProcessor that executes schedules by activating and completing actions based on time and dependencies. Actions are activated when their dependencies are satisfied and completed via ActionCompletedEvent.
+
+1. Actions have a `dependsOn` set of action UUIDs that must be completed before activation
+2. Actions with no dependencies are activated when `TimeEvent.timestamp >= estimatedMoveTime`
+3. When an action completes, any actions whose dependencies are now all satisfied are activated
+4. Multiple actions can be active simultaneously if their dependencies allow
+5. ActionCompletedEvent must match an active action's UUID to be processed
+
+**Key Concepts:**
+
+- **Dependency-based activation**: An action only activates when ALL actions it depends on are completed
+- **Parallel execution**: Multiple independent actions can be active at the same time
+- **UUID validation**: ActionCompletedEvent must match an active action's UUID
+
+**Requested Behavior:**
+
+```java
+engine.register(new ScheduleRunnerProcessor());
+
+// Initialize schedule with takts and estimatedMoveTime
+Instant estimatedMoveTime = Instant.parse("2024-01-01T10:00:00Z");
+List<Takt> takts = ...; // Takts with linked actions
+processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+
+// TimeEvent triggers first action (no dependencies)
+var effects1 = engine.processEvent(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
+// effects1 = [ActionActivated("QC lift container from truck")]
+
+// Complete action triggers next
+UUID firstActionId = ...;
+var effects2 = engine.processEvent(new ActionCompletedEvent(firstActionId, "queue-1"));
+// effects2 = [ActionCompleted, ActionActivated("QC place container on vessel")]
+```
+
+**Events:**
+
+| Event | Description |
+|-------|-------------|
+| `TimeEvent` | Triggers action activation when `timestamp >= estimatedMoveTime` |
+| `ActionCompletedEvent(actionId, workQueueId)` | Marks action as completed, triggers dependent actions |
+| `WorkQueueMessage(workQueueId, INACTIVE)` | Deactivates schedule, stops processing |
+
+**Side Effects:**
+
+| Side Effect | Description |
+|-------------|-------------|
+| `ActionActivated(actionId, workQueueId, taktName, description, activatedAt)` | Action has started |
+| `ActionCompleted(actionId, workQueueId, taktName, description, completedAt)` | Action has finished |
+
+**Dependency Model:**
+
+```
+Sequential workflow (default):
+  TAKT100.action1 (no deps)
+      ↓
+  TAKT100.action2 (depends on action1)
+      ↓
+  TAKT101.action1 (depends on TAKT100.action2)
+      ↓
+  TAKT101.action2 (depends on TAKT101.action1)
+
+Parallel workflow (custom):
+  action1 (no deps) ──┬──> action3 (depends on 1 & 2)
+  action2 (no deps) ──┘
+```
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Initialize schedule with estimatedMoveTime | Schedule registered |
+| 2 | Process TimeEvent before estimatedMoveTime | Empty side effects |
+| 3 | Process TimeEvent at/after estimatedMoveTime | `[ActionActivated]` for first action |
+| 4 | Process ActionCompletedEvent with correct UUID | `[ActionCompleted, ActionActivated]` for next action |
+| 5 | Process ActionCompletedEvent with wrong UUID | Empty side effects (ignored) |
+| 6 | Complete all actions | Final `[ActionCompleted]` with no activation |
+| 7 | Deactivate schedule | Subsequent events ignored |
+
+**Test Execution:**
+```bash
+# Run tests
+mvn test -Dtest=ScheduleRunnerProcessorTest
+```
+
+**Multiple Dependencies Test:**
+```java
+// Given: action3 depends on BOTH action1 AND action2
+Action action1 = Action.create("Action 1");  // no deps
+Action action2 = Action.create("Action 2");  // no deps
+Action action3 = new Action(UUID.randomUUID(), "Action 3", Set.of(action1.id(), action2.id()));
+
+// TimeEvent activates action1 and action2 (both have no deps)
+// Complete action1 -> action3 NOT activated yet
+// Complete action2 -> action3 activated (all deps satisfied)
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/domain/takt/Action.java` (modified - added dependsOn)
+- `src/main/java/com/wonderingwizard/events/ActionCompletedEvent.java`
+- `src/main/java/com/wonderingwizard/sideeffects/ActionActivated.java`
+- `src/main/java/com/wonderingwizard/sideeffects/ActionCompleted.java`
+- `src/main/java/com/wonderingwizard/processors/ScheduleRunnerProcessor.java`
+- `src/main/java/com/wonderingwizard/engine/Event.java` (modified - permits ActionCompletedEvent)
+- `src/main/java/com/wonderingwizard/engine/SideEffect.java` (modified - permits ActionActivated, ActionCompleted)
+- `src/test/java/com/wonderingwizard/processors/ScheduleRunnerProcessorTest.java`
+
