@@ -583,7 +583,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 // Update the same work instruction with new properties
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-002", IN_PROGRESS));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-002", IN_PROGRESS, null));
 
                 // Activate and verify only one takt
                 List<SideEffect> effects = engine.processEvent(
