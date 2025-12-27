@@ -13,6 +13,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 
 import static com.wonderingwizard.events.WorkInstructionStatus.*;
@@ -304,7 +305,7 @@ class WorkQueueProcessorTest {
             @DisplayName("Should return empty side effects when work instruction is registered")
             void workInstructionEvent_returnsEmptySideEffects() {
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                        new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 assertTrue(sideEffects.isEmpty(),
                         "WorkInstructionEvent should not produce side effects");
@@ -313,9 +314,9 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Should store multiple work instructions for same work queue")
             void multipleWorkInstructions_sameQueue_allStored() {
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", IN_PROGRESS));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", IN_PROGRESS, null));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
@@ -335,8 +336,8 @@ class WorkQueueProcessorTest {
             @DisplayName("Should generate takts from work instructions in ScheduleCreated")
             void activeMessage_generatesTakts() {
                 // Register work instructions
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", IN_PROGRESS));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", IN_PROGRESS, null));
 
                 // Activate work queue
                 List<SideEffect> sideEffects = engine.processEvent(
@@ -366,9 +367,9 @@ class WorkQueueProcessorTest {
             @DisplayName("Should only generate takts for the activated work queue")
             void activeMessage_onlyGeneratesTaktsForMatchingWorkInstructions() {
                 // Register work instructions for different queues
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-2", "CHE-003", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-2", "CHE-003", PENDING, null));
 
                 // Activate queue-1
                 List<SideEffect> sideEffects = engine.processEvent(
@@ -389,8 +390,8 @@ class WorkQueueProcessorTest {
             @DisplayName("Should retain work instructions after schedule abort")
             void abort_retainsWorkInstructions() {
                 // Register work instructions
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
 
                 // Activate and then abort
                 engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE));
@@ -410,14 +411,14 @@ class WorkQueueProcessorTest {
             @DisplayName("Should include new work instructions added after abort on reactivation")
             void abort_newInstructionsIncludedOnReactivation() {
                 // Register initial work instructions
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 // Activate and abort
                 engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE));
                 engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE));
 
                 // Add new work instruction
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
 
                 // Reactivate
                 List<SideEffect> sideEffects = engine.processEvent(
@@ -437,10 +438,10 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Should handle all work instruction status values")
             void allStatusValues_handled() {
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", IN_PROGRESS));
-                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", COMPLETED));
-                engine.processEvent(new WorkInstructionEvent("wi-4", "queue-1", "CHE-004", CANCELLED));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", IN_PROGRESS, null));
+                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", COMPLETED, null));
+                engine.processEvent(new WorkInstructionEvent("wi-4", "queue-1", "CHE-004", CANCELLED, null));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
@@ -460,17 +461,17 @@ class WorkQueueProcessorTest {
             void completeF4Workflow() {
                 // Step 1: Register work instructions (no side effects)
                 List<SideEffect> effects1 = engine.processEvent(
-                        new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                        new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
                 assertTrue(effects1.isEmpty(),
                         "F-4 Requirement: WorkInstructionEvent should not produce side effects");
 
                 List<SideEffect> effects2 = engine.processEvent(
-                        new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+                        new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
                 assertTrue(effects2.isEmpty(),
                         "F-4 Requirement: WorkInstructionEvent should not produce side effects");
 
                 List<SideEffect> effects3 = engine.processEvent(
-                        new WorkInstructionEvent("wi-3", "queue-2", "CHE-003", PENDING));
+                        new WorkInstructionEvent("wi-3", "queue-2", "CHE-003", PENDING, null));
                 assertTrue(effects3.isEmpty(),
                         "F-4 Requirement: WorkInstructionEvent should not produce side effects");
 
@@ -492,8 +493,8 @@ class WorkQueueProcessorTest {
             @DisplayName("Should generate takts on reactivation after abort")
             void reactivationGeneratesTakts() {
                 // Register initial instructions
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
 
                 // Activate
                 List<SideEffect> created1 = engine.processEvent(
@@ -504,7 +505,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE));
 
                 // Add new instruction
-                engine.processEvent(new WorkInstructionEvent("wi-4", "queue-1", "CHE-004", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-4", "queue-1", "CHE-004", PENDING, null));
 
                 // Reactivate - should include all 3 instructions as takts
                 List<SideEffect> created2 = engine.processEvent(
@@ -524,13 +525,13 @@ class WorkQueueProcessorTest {
             @DisplayName("Should restore work instructions state on step back")
             void stepBack_restoresWorkInstructionsState() {
                 // Register work instruction
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 // Activate queue
                 engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE));
 
                 // Add another work instruction
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
 
                 // Step back - should remove wi-2
                 boolean success = engine.stepBack();
@@ -555,10 +556,10 @@ class WorkQueueProcessorTest {
             @DisplayName("Should move work instruction when workQueueId changes")
             void workInstructionMovedToNewQueue() {
                 // Register work instruction to queue-1
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 // Move work instruction to queue-2
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-2", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-2", "CHE-001", PENDING, null));
 
                 // Activate both queues and verify
                 List<SideEffect> effects1 = engine.processEvent(
@@ -579,7 +580,7 @@ class WorkQueueProcessorTest {
             @DisplayName("Should update work instruction properties when same ID is processed again")
             void workInstructionUpdatedInSameQueue() {
                 // Register work instruction
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 // Update the same work instruction with new properties
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-002", IN_PROGRESS));
@@ -597,16 +598,16 @@ class WorkQueueProcessorTest {
             @DisplayName("Should correctly track instruction after multiple queue moves")
             void workInstructionMultipleMoves() {
                 // Register to queue-1
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 // Move to queue-2
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-2", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-2", "CHE-001", PENDING, null));
 
                 // Move to queue-3
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-3", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-3", "CHE-001", PENDING, null));
 
                 // Move back to queue-1
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 // Activate all queues
                 List<SideEffect> effects1 = engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE));
@@ -629,12 +630,12 @@ class WorkQueueProcessorTest {
             @DisplayName("Should not affect other work instructions when one is moved")
             void moveDoesNotAffectOtherInstructions() {
                 // Register multiple instructions
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-2", "CHE-003", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-2", "CHE-003", PENDING, null));
 
                 // Move wi-1 to queue-2
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-2", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-2", "CHE-001", PENDING, null));
 
                 // Activate both queues
                 List<SideEffect> effects1 = engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE));
@@ -663,9 +664,9 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Should name takts sequentially starting from TAKT100")
             void taktsNamedSequentially() {
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", PENDING, null));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
@@ -682,7 +683,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Should create TAKT100 for single work instruction")
             void singleWorkInstruction_createsTakt100() {
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
@@ -700,8 +701,8 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Each takt should have exactly 2 actions")
             void eachTaktHasTwoActions() {
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
@@ -717,7 +718,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("First action should be 'QC lift container from truck'")
             void firstActionIsLift() {
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
@@ -731,7 +732,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Second action should be 'QC place container on vessel'")
             void secondActionIsPlace() {
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
@@ -745,9 +746,9 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("All takts should have the same two actions")
             void allTaktsHaveSameActions() {
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", PENDING, null));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE));
@@ -771,8 +772,8 @@ class WorkQueueProcessorTest {
             @DisplayName("Two work instructions should generate two takts with correct structure")
             void twoWorkInstructions_generateTwoTakts() {
                 // Given: 2 work instructions
-                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING));
-                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING));
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
 
                 // When: Work queue is activated
                 List<SideEffect> sideEffects = engine.processEvent(

@@ -2,6 +2,8 @@ package com.wonderingwizard.events;
 
 import com.wonderingwizard.engine.Event;
 
+import java.time.Instant;
+
 /**
  * Event representing a work instruction that is associated with a work queue.
  * <p>
@@ -12,12 +14,14 @@ import com.wonderingwizard.engine.Event;
  * @param workQueueId identifier of the work queue this instruction belongs to
  * @param fetchChe the CHE (Container Handling Equipment) identifier for fetching
  * @param status the status of the work instruction
+ * @param estimatedMoveTime the estimated time when this work instruction should start
  */
 public record WorkInstructionEvent(
         String workInstructionId,
         String workQueueId,
         String fetchChe,
-        WorkInstructionStatus status
+        WorkInstructionStatus status,
+        Instant estimatedMoveTime
 ) implements Event {
 
     @Override
@@ -25,6 +29,7 @@ public record WorkInstructionEvent(
         return "WorkInstructionEvent[workInstructionId=" + workInstructionId +
                 ", workQueueId=" + workQueueId +
                 ", fetchChe=" + fetchChe +
-                ", status=" + status + "]";
+                ", status=" + status +
+                ", estimatedMoveTime=" + estimatedMoveTime + "]";
     }
 }

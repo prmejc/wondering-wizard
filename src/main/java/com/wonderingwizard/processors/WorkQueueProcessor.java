@@ -5,6 +5,7 @@ import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
+import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.SetTimeAlarm;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * Processor that handles work queue messages and manages schedule creation.
@@ -50,6 +52,7 @@ public class WorkQueueProcessor implements EventProcessor {
             case WorkInstructionEvent instruction -> handleWorkInstructionEvent(instruction);
             case TimeEvent ignored -> List.of();
             case SetTimeAlarm ignored -> List.of();
+            case ActionCompletedEvent ignored -> List.of();
         };
     }
 
@@ -67,7 +70,8 @@ public class WorkQueueProcessor implements EventProcessor {
                 workInstructionId,
                 workQueueId,
                 event.fetchChe(),
-                event.status()
+                event.status(),
+                event.estimatedMoveTime()
         );
 
         workInstructions
@@ -103,14 +107,40 @@ public class WorkQueueProcessor implements EventProcessor {
 
     private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions) {
         List<Takt> takts = new ArrayList<>();
+
+        // First pass: create all takts with their actions (without linking)
+        List<List<Action>> allActions = new ArrayList<>();
         for (int i = 0; i < instructions.size(); i++) {
-            String taktName = Takt.createTaktName(i);
-            List<Action> actions = List.of(
-                    new Action("QC lift container from truck"),
-                    new Action("QC place container on vessel")
-            );
-            takts.add(new Takt(taktName, actions));
+            Action action1 = Action.create("QC lift container from truck");
+            Action action2 = Action.create("QC place container on vessel");
+            allActions.add(List.of(action1, action2));
         }
+
+        // Second pass: link actions within takts and across takts
+        for (int taktIndex = 0; taktIndex < allActions.size(); taktIndex++) {
+            List<Action> actions = allActions.get(taktIndex);
+            List<Action> linkedActions = new ArrayList<>();
+
+            for (int actionIndex = 0; actionIndex < actions.size(); actionIndex++) {
+                Action action = actions.get(actionIndex);
+                UUID nextActionId = null;
+
+                if (actionIndex < actions.size() - 1) {
+                    // Link to next action in same takt
+                    nextActionId = actions.get(actionIndex + 1).id();
+                } else if (taktIndex < allActions.size() - 1) {
+                    // Link to first action of next takt
+                    nextActionId = allActions.get(taktIndex + 1).get(0).id();
+                }
+                // else: last action of last takt, nextActionId stays null
+
+                linkedActions.add(action.withNextActionId(nextActionId));
+            }
+
+            String taktName = Takt.createTaktName(taktIndex);
+            takts.add(new Takt(taktName, linkedActions));
+        }
+
         return takts;
     }
 

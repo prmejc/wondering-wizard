@@ -8,5 +8,7 @@ public sealed interface SideEffect permits
         com.wonderingwizard.sideeffects.AlarmSet,
         com.wonderingwizard.sideeffects.AlarmTriggered,
         com.wonderingwizard.sideeffects.ScheduleCreated,
-        com.wonderingwizard.sideeffects.ScheduleAborted {
+        com.wonderingwizard.sideeffects.ScheduleAborted,
+        com.wonderingwizard.sideeffects.ActionActivated,
+        com.wonderingwizard.sideeffects.ActionCompleted {
 }
