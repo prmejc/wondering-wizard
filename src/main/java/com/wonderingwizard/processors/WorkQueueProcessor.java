@@ -19,7 +19,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
+import java.util.Set;
 
 /**
  * Processor that handles work queue messages and manages schedule creation.
@@ -108,7 +108,7 @@ public class WorkQueueProcessor implements EventProcessor {
     private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions) {
         List<Takt> takts = new ArrayList<>();
 
-        // First pass: create all takts with their actions (without linking)
+        // First pass: create all actions (without dependencies)
         List<List<Action>> allActions = new ArrayList<>();
         for (int i = 0; i < instructions.size(); i++) {
             Action action1 = Action.create("QC lift container from truck");
@@ -116,29 +116,34 @@ public class WorkQueueProcessor implements EventProcessor {
             allActions.add(List.of(action1, action2));
         }
 
-        // Second pass: link actions within takts and across takts
+        // Second pass: set up dependencies
+        // Each action depends on the previous action in the sequence
         for (int taktIndex = 0; taktIndex < allActions.size(); taktIndex++) {
             List<Action> actions = allActions.get(taktIndex);
-            List<Action> linkedActions = new ArrayList<>();
+            List<Action> actionsWithDeps = new ArrayList<>();
 
             for (int actionIndex = 0; actionIndex < actions.size(); actionIndex++) {
                 Action action = actions.get(actionIndex);
-                UUID nextActionId = null;
+                Set<java.util.UUID> dependencies;
 
-                if (actionIndex < actions.size() - 1) {
-                    // Link to next action in same takt
-                    nextActionId = actions.get(actionIndex + 1).id();
-                } else if (taktIndex < allActions.size() - 1) {
-                    // Link to first action of next takt
-                    nextActionId = allActions.get(taktIndex + 1).get(0).id();
+                if (actionIndex == 0 && taktIndex == 0) {
+                    // First action of first takt: no dependencies
+                    dependencies = Set.of();
+                } else if (actionIndex == 0) {
+                    // First action of subsequent takts: depends on last action of previous takt
+                    Action lastActionOfPrevTakt = allActions.get(taktIndex - 1).get(1);
+                    dependencies = Set.of(lastActionOfPrevTakt.id());
+                } else {
+                    // Other actions: depend on previous action in same takt
+                    Action prevAction = actions.get(actionIndex - 1);
+                    dependencies = Set.of(prevAction.id());
                 }
-                // else: last action of last takt, nextActionId stays null
 
-                linkedActions.add(action.withNextActionId(nextActionId));
+                actionsWithDeps.add(action.withDependencies(dependencies));
             }
 
             String taktName = Takt.createTaktName(taktIndex);
-            takts.add(new Takt(taktName, linkedActions));
+            takts.add(new Takt(taktName, actionsWithDeps));
         }
 
         return takts;

@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static com.wonderingwizard.events.WorkInstructionStatus.PENDING;
@@ -375,32 +376,114 @@ class ScheduleRunnerProcessorTest {
         }
     }
 
+    @Nested
+    @DisplayName("Multiple Dependencies")
+    class MultipleDependenciesTests {
+
+        @Test
+        @DisplayName("Should only activate action when ALL dependencies are completed")
+        void activatesOnlyWhenAllDependenciesComplete() {
+            // Given: An action that depends on two other actions
+            Action action1 = Action.create("Action 1");
+            Action action2 = Action.create("Action 2");
+            // action3 depends on both action1 and action2
+            Action action3 = new Action(UUID.randomUUID(), "Action 3", Set.of(action1.id(), action2.id()));
+
+            Takt takt = new Takt("TAKT100", List.of(action1, action2, action3));
+            List<Takt> takts = List.of(takt);
+
+            Instant estimatedMoveTime = Instant.parse("2024-01-01T10:00:00Z");
+            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+
+            // When: TimeEvent starts the schedule
+            List<SideEffect> step1 = processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
+
+            // Then: Both actions with no dependencies should activate
+            assertEquals(2, step1.size());
+
+            // When: Complete only action1
+            List<SideEffect> step2 = processor.process(new ActionCompletedEvent(action1.id(), "queue-1"));
+
+            // Then: action3 should NOT activate yet (still waiting for action2)
+            assertEquals(1, step2.size()); // Only ActionCompleted, no ActionActivated
+            assertInstanceOf(ActionCompleted.class, step2.get(0));
+
+            // When: Complete action2
+            List<SideEffect> step3 = processor.process(new ActionCompletedEvent(action2.id(), "queue-1"));
+
+            // Then: action3 should now activate (all dependencies satisfied)
+            assertEquals(2, step3.size());
+            assertInstanceOf(ActionCompleted.class, step3.get(0));
+            assertInstanceOf(ActionActivated.class, step3.get(1));
+
+            ActionActivated activated = (ActionActivated) step3.get(1);
+            assertEquals(action3.id(), activated.actionId());
+            assertEquals("Action 3", activated.actionDescription());
+        }
+
+        @Test
+        @DisplayName("Should activate multiple actions simultaneously when their dependencies are satisfied")
+        void activatesMultipleActionsSimultaneously() {
+            // Given: Two actions that both depend on a single action
+            Action action1 = Action.create("Action 1");
+            Action action2 = new Action(UUID.randomUUID(), "Action 2", Set.of(action1.id()));
+            Action action3 = new Action(UUID.randomUUID(), "Action 3", Set.of(action1.id()));
+
+            Takt takt = new Takt("TAKT100", List.of(action1, action2, action3));
+            List<Takt> takts = List.of(takt);
+
+            Instant estimatedMoveTime = Instant.parse("2024-01-01T10:00:00Z");
+            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+
+            // Start schedule - only action1 should activate
+            processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
+
+            // When: Complete action1
+            List<SideEffect> sideEffects = processor.process(new ActionCompletedEvent(action1.id(), "queue-1"));
+
+            // Then: Both action2 and action3 should activate simultaneously
+            assertEquals(3, sideEffects.size()); // 1 ActionCompleted + 2 ActionActivated
+            assertInstanceOf(ActionCompleted.class, sideEffects.get(0));
+
+            long activatedCount = sideEffects.stream()
+                    .filter(se -> se instanceof ActionActivated)
+                    .count();
+            assertEquals(2, activatedCount);
+        }
+    }
+
     /**
-     * Helper method to create linked takts with proper action linking.
+     * Helper method to create takts with proper action dependencies.
+     * Uses sequential dependencies: action2 depends on action1, next takt's action1 depends on previous takt's action2.
      */
     private List<Takt> createLinkedTakts(int count) {
-        // First pass: create all actions
+        // First pass: create all actions (without dependencies)
         Action[][] allActions = new Action[count][2];
         for (int i = 0; i < count; i++) {
             allActions[i][0] = Action.create("QC lift container from truck");
             allActions[i][1] = Action.create("QC place container on vessel");
         }
 
-        // Second pass: link actions
+        // Second pass: set up dependencies
         List<Takt> takts = new java.util.ArrayList<>();
         for (int taktIndex = 0; taktIndex < count; taktIndex++) {
             Action action1 = allActions[taktIndex][0];
             Action action2 = allActions[taktIndex][1];
 
-            // Link action1 to action2
-            UUID action2NextId = null;
-            if (taktIndex < count - 1) {
-                // Link to first action of next takt
-                action2NextId = allActions[taktIndex + 1][0].id();
+            Set<UUID> action1Deps;
+            if (taktIndex == 0) {
+                // First action of first takt: no dependencies
+                action1Deps = Set.of();
+            } else {
+                // First action of subsequent takts: depends on last action of previous takt
+                action1Deps = Set.of(allActions[taktIndex - 1][1].id());
             }
 
-            Action linkedAction1 = action1.withNextActionId(action2.id());
-            Action linkedAction2 = action2.withNextActionId(action2NextId);
+            // Second action depends on first action of same takt
+            Set<UUID> action2Deps = Set.of(action1.id());
+
+            Action linkedAction1 = action1.withDependencies(action1Deps);
+            Action linkedAction2 = action2.withDependencies(action2Deps);
 
             String taktName = Takt.createTaktName(taktIndex);
             takts.add(new Takt(taktName, List.of(linkedAction1, linkedAction2)));
