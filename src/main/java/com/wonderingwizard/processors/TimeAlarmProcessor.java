@@ -3,11 +3,8 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
-import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.SetTimeAlarm;
 import com.wonderingwizard.events.TimeEvent;
-import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.sideeffects.AlarmSet;
 import com.wonderingwizard.sideeffects.AlarmTriggered;
 
@@ -31,13 +28,13 @@ public class TimeAlarmProcessor implements EventProcessor {
 
     @Override
     public List<SideEffect> process(Event event) {
-        return switch (event) {
-            case SetTimeAlarm setAlarm -> handleSetAlarm(setAlarm);
-            case TimeEvent timeEvent -> handleTimeEvent(timeEvent);
-            case WorkQueueMessage ignored -> List.of();
-            case WorkInstructionEvent ignored -> List.of();
-            case ActionCompletedEvent ignored -> List.of();
-        };
+        if (event instanceof SetTimeAlarm setAlarm) {
+            return handleSetAlarm(setAlarm);
+        }
+        if (event instanceof TimeEvent timeEvent) {
+            return handleTimeEvent(timeEvent);
+        }
+        return List.of();
     }
 
     private List<SideEffect> handleSetAlarm(SetTimeAlarm setAlarm) {

@@ -6,7 +6,6 @@ import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
-import com.wonderingwizard.events.SetTimeAlarm;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
@@ -116,13 +115,19 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
     @Override
     public List<SideEffect> process(Event event) {
-        return switch (event) {
-            case WorkQueueMessage message -> handleWorkQueueMessage(message);
-            case WorkInstructionEvent instruction -> handleWorkInstructionEvent(instruction);
-            case TimeEvent timeEvent -> handleTimeEvent(timeEvent);
-            case ActionCompletedEvent completed -> handleActionCompleted(completed);
-            case SetTimeAlarm ignored -> List.of();
-        };
+        if (event instanceof WorkQueueMessage message) {
+            return handleWorkQueueMessage(message);
+        }
+        if (event instanceof WorkInstructionEvent instruction) {
+            return handleWorkInstructionEvent(instruction);
+        }
+        if (event instanceof TimeEvent timeEvent) {
+            return handleTimeEvent(timeEvent);
+        }
+        if (event instanceof ActionCompletedEvent completed) {
+            return handleActionCompleted(completed);
+        }
+        return List.of();
     }
 
     private List<SideEffect> handleWorkInstructionEvent(WorkInstructionEvent event) {
