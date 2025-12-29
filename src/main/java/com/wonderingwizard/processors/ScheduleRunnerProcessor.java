@@ -1,6 +1,7 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionState;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
@@ -15,7 +16,6 @@ import com.wonderingwizard.sideeffects.ActionCompleted;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -43,25 +43,60 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     private static class ScheduleState {
         Instant estimatedMoveTime;
         List<Takt> takts;
-        Set<UUID> activeActionIds;
-        Set<UUID> completedActionIds;
+        Map<UUID, ActionState> actionStates;
         Map<UUID, ActionInfo> actionLookup;
         boolean started;
 
         ScheduleState(Instant estimatedMoveTime, List<Takt> takts) {
             this.estimatedMoveTime = estimatedMoveTime;
             this.takts = takts;
-            this.activeActionIds = new HashSet<>();
-            this.completedActionIds = new HashSet<>();
+            this.actionStates = new HashMap<>();
             this.actionLookup = new HashMap<>();
             this.started = false;
 
-            // Build action lookup for quick access
+            // Build action lookup and initialize all actions to PENDING state
             for (Takt takt : takts) {
                 for (Action action : takt.actions()) {
                     actionLookup.put(action.id(), new ActionInfo(takt.name(), action));
+                    actionStates.put(action.id(), ActionState.PENDING);
                 }
             }
+        }
+
+        /**
+         * Gets the state of an action.
+         */
+        ActionState getActionState(UUID actionId) {
+            return actionStates.getOrDefault(actionId, ActionState.PENDING);
+        }
+
+        /**
+         * Sets the state of an action.
+         */
+        void setActionState(UUID actionId, ActionState state) {
+            actionStates.put(actionId, state);
+        }
+
+        /**
+         * Checks if an action is in the specified state.
+         */
+        boolean isActionInState(UUID actionId, ActionState state) {
+            return getActionState(actionId) == state;
+        }
+
+        /**
+         * Checks if all given action IDs are in COMPLETED state.
+         */
+        boolean areAllCompleted(Set<UUID> actionIds) {
+            if (actionIds == null || actionIds.isEmpty()) {
+                return true;
+            }
+            for (UUID actionId : actionIds) {
+                if (getActionState(actionId) != ActionState.COMPLETED) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         /**
@@ -84,14 +119,14 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             List<UUID> result = new ArrayList<>();
             for (ActionInfo info : actionLookup.values()) {
                 UUID actionId = info.action().id();
-                // Skip if already active or completed
-                if (activeActionIds.contains(actionId) || completedActionIds.contains(actionId)) {
+                // Skip if not pending
+                if (getActionState(actionId) != ActionState.PENDING) {
                     continue;
                 }
                 // Check if all dependencies are completed
                 Set<UUID> dependencies = info.action().dependsOn();
                 if (dependencies != null && !dependencies.isEmpty()) {
-                    if (completedActionIds.containsAll(dependencies)) {
+                    if (areAllCompleted(dependencies)) {
                         result.add(actionId);
                     }
                 }
@@ -101,8 +136,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
         ScheduleState copy() {
             ScheduleState copy = new ScheduleState(this.estimatedMoveTime, new ArrayList<>(this.takts));
-            copy.activeActionIds = new HashSet<>(this.activeActionIds);
-            copy.completedActionIds = new HashSet<>(this.completedActionIds);
+            copy.actionStates = new HashMap<>(this.actionStates);
             copy.started = this.started;
             return copy;
         }
@@ -185,7 +219,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 // Activate all actions with no dependencies
                 List<UUID> actionsToActivate = state.getActionsWithNoDependencies();
                 for (UUID actionId : actionsToActivate) {
-                    state.activeActionIds.add(actionId);
+                    state.setActionState(actionId, ActionState.ACTIVE);
                     ActionInfo actionInfo = state.actionLookup.get(actionId);
 
                     sideEffects.add(new ActionActivated(
@@ -213,8 +247,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
 
         // Verify the completed action is currently active
-        if (!state.activeActionIds.contains(completedActionId)) {
-            // Action ID is not active - ignore
+        if (!state.isActionInState(completedActionId, ActionState.ACTIVE)) {
+            // Action is not active - ignore
             return List.of();
         }
 
@@ -226,9 +260,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         List<SideEffect> sideEffects = new ArrayList<>();
         Instant now = Instant.now();
 
-        // Move action from active to completed
-        state.activeActionIds.remove(completedActionId);
-        state.completedActionIds.add(completedActionId);
+        // Transition action from ACTIVE to COMPLETED
+        state.setActionState(completedActionId, ActionState.COMPLETED);
 
         // Produce ActionCompleted side effect
         sideEffects.add(new ActionCompleted(
@@ -242,7 +275,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         // Find and activate any actions whose dependencies are now all satisfied
         List<UUID> newlyActivatableActions = state.getNewlyActivatableActions();
         for (UUID actionId : newlyActivatableActions) {
-            state.activeActionIds.add(actionId);
+            state.setActionState(actionId, ActionState.ACTIVE);
             ActionInfo actionInfo = state.actionLookup.get(actionId);
 
             sideEffects.add(new ActionActivated(
