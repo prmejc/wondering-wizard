@@ -7,9 +7,6 @@ import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
-import com.wonderingwizard.events.ActionCompletedEvent;
-import com.wonderingwizard.events.SetTimeAlarm;
-import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
@@ -50,13 +47,13 @@ public class WorkQueueProcessor implements EventProcessor {
 
     @Override
     public List<SideEffect> process(Event event) {
-        return switch (event) {
-            case WorkQueueMessage message -> handleWorkQueueMessage(message);
-            case WorkInstructionEvent instruction -> handleWorkInstructionEvent(instruction);
-            case TimeEvent ignored -> List.of();
-            case SetTimeAlarm ignored -> List.of();
-            case ActionCompletedEvent ignored -> List.of();
-        };
+        if (event instanceof WorkQueueMessage message) {
+            return handleWorkQueueMessage(message);
+        }
+        if (event instanceof WorkInstructionEvent instruction) {
+            return handleWorkInstructionEvent(instruction);
+        }
+        return List.of();
     }
 
     private List<SideEffect> handleWorkInstructionEvent(WorkInstructionEvent event) {
