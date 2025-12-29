@@ -1,6 +1,8 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ContainerWorkflow;
+import com.wonderingwizard.domain.takt.DeviceActionTemplate;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
@@ -20,6 +22,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Processor that handles work queue messages and manages schedule creation.
@@ -106,44 +109,57 @@ public class WorkQueueProcessor implements EventProcessor {
     }
 
     private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions) {
-        List<Takt> takts = new ArrayList<>();
-
-        // First pass: create all actions (without dependencies)
-        List<List<Action>> allActions = new ArrayList<>();
-        for (int i = 0; i < instructions.size(); i++) {
-            Action action1 = Action.create("QC lift container from truck");
-            Action action2 = Action.create("QC place container on vessel");
-            allActions.add(List.of(action1, action2));
+        if (instructions.isEmpty()) {
+            return List.of();
         }
 
-        // Second pass: set up dependencies
-        // Each action depends on the previous action in the sequence
-        for (int taktIndex = 0; taktIndex < allActions.size(); taktIndex++) {
-            List<Action> actions = allActions.get(taktIndex);
-            List<Action> actionsWithDeps = new ArrayList<>();
+        List<DeviceActionTemplate> templates = ContainerWorkflow.ACTION_TEMPLATES;
+        int minOffset = ContainerWorkflow.getMinTaktOffset();
+        int adjustment = -minOffset; // Makes earliest takt index 0
 
-            for (int actionIndex = 0; actionIndex < actions.size(); actionIndex++) {
-                Action action = actions.get(actionIndex);
-                Set<java.util.UUID> dependencies;
+        // Calculate total number of takts needed
+        int numContainers = instructions.size();
+        int maxTaktIndex = (numContainers - 1) + adjustment; // Last container's QC takt
+        int totalTakts = maxTaktIndex + 1;
 
-                if (actionIndex == 0 && taktIndex == 0) {
-                    // First action of first takt: no dependencies
+        // Initialize takt action lists
+        Map<Integer, List<Action>> actionsByTakt = new HashMap<>();
+        for (int i = 0; i < totalTakts; i++) {
+            actionsByTakt.put(i, new ArrayList<>());
+        }
+
+        // Create actions for each container (work instruction)
+        for (int containerIndex = 0; containerIndex < numContainers; containerIndex++) {
+            int baseTaktIndex = containerIndex + adjustment;
+            Action previousAction = null;
+
+            // Create actions in workflow order (RTG -> TT -> QC)
+            for (DeviceActionTemplate template : templates) {
+                int targetTaktIndex = baseTaktIndex + template.taktOffset();
+
+                // Create action with dependencies
+                Action action = Action.create(template.deviceType(), template.description());
+
+                Set<UUID> dependencies;
+                if (previousAction == null) {
+                    // First action of workflow: no dependencies
                     dependencies = Set.of();
-                } else if (actionIndex == 0) {
-                    // First action of subsequent takts: depends on last action of previous takt
-                    Action lastActionOfPrevTakt = allActions.get(taktIndex - 1).get(1);
-                    dependencies = Set.of(lastActionOfPrevTakt.id());
                 } else {
-                    // Other actions: depend on previous action in same takt
-                    Action prevAction = actions.get(actionIndex - 1);
-                    dependencies = Set.of(prevAction.id());
+                    // Depends on previous action in the workflow
+                    dependencies = Set.of(previousAction.id());
                 }
 
-                actionsWithDeps.add(action.withDependencies(dependencies));
+                Action actionWithDeps = action.withDependencies(dependencies);
+                actionsByTakt.get(targetTaktIndex).add(actionWithDeps);
+                previousAction = actionWithDeps;
             }
+        }
 
-            String taktName = Takt.createTaktName(taktIndex);
-            takts.add(new Takt(taktName, actionsWithDeps));
+        // Convert to Takt objects
+        List<Takt> takts = new ArrayList<>();
+        for (int i = 0; i < totalTakts; i++) {
+            String taktName = Takt.createTaktName(i);
+            takts.add(new Takt(taktName, actionsByTakt.get(i)));
         }
 
         return takts;
