@@ -135,7 +135,7 @@ public class WorkQueueProcessor implements EventProcessor {
 
             // Create actions in workflow order (RTG -> TT -> QC)
             for (DeviceActionTemplate template : templates) {
-                int targetTaktIndex = baseTaktIndex + template.taktOffset();
+                int targetTaktIndex = baseTaktIndex + ContainerWorkflow.getTaktOffset(template);
 
                 // Create action with dependencies
                 Action action = Action.create(template.deviceType(), template.description());
