@@ -9,6 +9,7 @@ import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.sideeffects.ActionActivated;
 import com.wonderingwizard.sideeffects.ActionCompleted;
+import com.wonderingwizard.sideeffects.ScheduleCreated;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -53,7 +54,7 @@ class ScheduleRunnerProcessorTest {
             Instant estimatedMoveTime = Instant.parse("2024-01-01T10:00:00Z");
             List<Takt> takts = createLinkedTakts(2);
 
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
 
             // When: TimeEvent with timestamp after estimatedMoveTime
             Instant currentTime = Instant.parse("2024-01-01T10:00:01Z");
@@ -77,7 +78,7 @@ class ScheduleRunnerProcessorTest {
             Instant estimatedMoveTime = Instant.parse("2024-01-01T10:00:00Z");
             List<Takt> takts = createLinkedTakts(1);
 
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
 
             // When: TimeEvent with timestamp before estimatedMoveTime
             Instant currentTime = Instant.parse("2024-01-01T09:59:59Z");
@@ -94,7 +95,7 @@ class ScheduleRunnerProcessorTest {
             Instant estimatedMoveTime = Instant.parse("2024-01-01T10:00:00Z");
             List<Takt> takts = createLinkedTakts(1);
 
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
 
             // When: TimeEvent exactly at estimatedMoveTime
             List<SideEffect> sideEffects = processor.process(new TimeEvent(estimatedMoveTime));
@@ -111,7 +112,7 @@ class ScheduleRunnerProcessorTest {
             Instant estimatedMoveTime = Instant.parse("2024-01-01T10:00:00Z");
             List<Takt> takts = createLinkedTakts(1);
 
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
 
             // First TimeEvent triggers activation
             Instant time1 = Instant.parse("2024-01-01T10:00:01Z");
@@ -139,7 +140,7 @@ class ScheduleRunnerProcessorTest {
             UUID firstActionId = takts.get(0).actions().get(0).id();
             UUID secondActionId = takts.get(0).actions().get(1).id();
 
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
             processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
 
             // When: ActionCompletedEvent for the active action
@@ -169,7 +170,7 @@ class ScheduleRunnerProcessorTest {
             Instant estimatedMoveTime = Instant.parse("2024-01-01T10:00:00Z");
             List<Takt> takts = createLinkedTakts(1);
 
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
             processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
 
             // When: ActionCompletedEvent with wrong UUID
@@ -189,7 +190,7 @@ class ScheduleRunnerProcessorTest {
             List<Takt> takts = createLinkedTakts(1);
             UUID firstActionId = takts.get(0).actions().get(0).id();
 
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
             processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
 
             // When: ActionCompletedEvent for different queue
@@ -215,7 +216,7 @@ class ScheduleRunnerProcessorTest {
             UUID firstTaktAction2 = takts.get(0).actions().get(1).id();
             UUID secondTaktAction1 = takts.get(1).actions().get(0).id();
 
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
             processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
 
             // Complete first action
@@ -248,7 +249,7 @@ class ScheduleRunnerProcessorTest {
             UUID firstActionId = takts.get(0).actions().get(0).id();
             UUID lastActionId = takts.get(0).actions().get(1).id();
 
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
             processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
             processor.process(new ActionCompletedEvent(firstActionId, "queue-1"));
 
@@ -276,7 +277,7 @@ class ScheduleRunnerProcessorTest {
             List<Takt> takts = createLinkedTakts(1);
             UUID firstActionId = takts.get(0).actions().get(0).id();
 
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
             processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
 
             // When: Schedule is deactivated
@@ -301,7 +302,7 @@ class ScheduleRunnerProcessorTest {
             List<Takt> takts = createLinkedTakts(1);
             UUID firstActionId = takts.get(0).actions().get(0).id();
 
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
             processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
 
             // Capture state
@@ -339,7 +340,7 @@ class ScheduleRunnerProcessorTest {
             UUID takt2Action1 = takts.get(1).actions().get(0).id();
             UUID takt2Action2 = takts.get(1).actions().get(1).id();
 
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
 
             // Step 1: TimeEvent activates first action
             List<SideEffect> step1 = processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
@@ -393,7 +394,7 @@ class ScheduleRunnerProcessorTest {
             List<Takt> takts = List.of(takt);
 
             Instant estimatedMoveTime = Instant.parse("2024-01-01T10:00:00Z");
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
 
             // When: TimeEvent starts the schedule
             List<SideEffect> step1 = processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
@@ -433,7 +434,7 @@ class ScheduleRunnerProcessorTest {
             List<Takt> takts = List.of(takt);
 
             Instant estimatedMoveTime = Instant.parse("2024-01-01T10:00:00Z");
-            processor.initializeSchedule("queue-1", takts, estimatedMoveTime);
+            processor.process(new ScheduleCreated("queue-1", takts, estimatedMoveTime));
 
             // Start schedule - only action1 should activate
             processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));

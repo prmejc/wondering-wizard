@@ -102,7 +102,15 @@ public class WorkQueueProcessor implements EventProcessor {
         activeSchedules.put(workQueueId, true);
         List<WorkInstruction> instructions = workInstructions.getOrDefault(workQueueId, List.of());
         List<Takt> takts = createTaktsFromWorkInstructions(instructions);
-        return List.of(new ScheduleCreated(workQueueId, takts));
+
+        // Find earliest estimated move time from work instructions
+        var estimatedMoveTime = instructions.stream()
+                .map(WorkInstruction::estimatedMoveTime)
+                .filter(t -> t != null)
+                .min(java.time.Instant::compareTo)
+                .orElse(null);
+
+        return List.of(new ScheduleCreated(workQueueId, takts, estimatedMoveTime));
     }
 
     private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions) {
