@@ -1,7 +1,9 @@
 package com.wonderingwizard.engine;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Queue;
 import java.util.logging.Logger;
 
 /**
@@ -9,8 +11,11 @@ import java.util.logging.Logger;
  * <p>
  * This engine wraps another engine and delegates all method calls to it, with special behavior for
  * {@link #processEvent(Event)}: after processing an event, it checks all returned side effects.
- * If any side effect also implements the {@link Event} interface, it recursively processes
- * that side effect as an event and appends all resulting side effects to the original list.
+ * If any side effect also implements the {@link Event} interface, it queues that side effect
+ * for processing and continues until all triggered events have been handled.
+ * <p>
+ * Processing uses breadth-first order: all side effects from the current level are collected
+ * before processing any triggered events from that level.
  * <p>
  * This enables automatic event propagation where side effects can trigger further processing.
  */
@@ -36,14 +41,20 @@ public class EventPropagatingEngine implements Engine {
 
     @Override
     public List<SideEffect> processEvent(Event event) {
-        List<SideEffect> sideEffects = delegate.processEvent(event);
-        List<SideEffect> allSideEffects = new ArrayList<>(sideEffects);
+        List<SideEffect> allSideEffects = new ArrayList<>();
+        Queue<Event> eventQueue = new ArrayDeque<>();
+        eventQueue.add(event);
 
-        for (SideEffect sideEffect : sideEffects) {
-            if (sideEffect instanceof Event eventSideEffect) {
-                logger.info("Side effect implements Event, processing recursively: " + sideEffect);
-                List<SideEffect> recursiveSideEffects = processEvent(eventSideEffect);
-                allSideEffects.addAll(recursiveSideEffects);
+        while (!eventQueue.isEmpty()) {
+            Event currentEvent = eventQueue.poll();
+            List<SideEffect> sideEffects = delegate.processEvent(currentEvent);
+            allSideEffects.addAll(sideEffects);
+
+            for (SideEffect sideEffect : sideEffects) {
+                if (sideEffect instanceof Event eventSideEffect) {
+                    logger.info("Side effect implements Event, queuing for processing: " + sideEffect);
+                    eventQueue.add(eventSideEffect);
+                }
             }
         }
 
