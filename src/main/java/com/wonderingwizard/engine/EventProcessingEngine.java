@@ -11,8 +11,10 @@ import java.util.logging.Logger;
  * All events and resulting side effects are logged.
  * <p>
  * Supports step-back functionality to revert to the state before the last processed event.
+ * <p>
+ * Implements the {@link Engine} interface.
  */
-public class EventProcessingEngine {
+public class EventProcessingEngine implements Engine {
 
     private static final Logger logger = Logger.getLogger(EventProcessingEngine.class.getName());
 
