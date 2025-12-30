@@ -1,6 +1,5 @@
 package com.wonderingwizard;
 
-import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.EventProcessingEngine;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.SetTimeAlarm;
@@ -84,10 +83,8 @@ public class Main {
 
         // Create and configure the engine
         EventProcessingEngine engine = new EventProcessingEngine();
-        WorkQueueProcessor workQueueProcessor = new WorkQueueProcessor();
-        ScheduleRunnerProcessor scheduleRunnerProcessor = new ScheduleRunnerProcessor();
-        engine.register(workQueueProcessor);
-        engine.register(scheduleRunnerProcessor);
+        engine.register(new WorkQueueProcessor());
+        engine.register(new ScheduleRunnerProcessor());
 
         // Get current time as reference point
         Instant now = Instant.now();
@@ -121,12 +118,11 @@ public class Main {
         List<SideEffect> sideEffects3 = engine.processEvent(new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE));
         logger.info("WorkQueueMessage ACTIVE side effects: " + sideEffects3);
 
-        // Initialize the schedule runner with the created schedule
+        // Process ScheduleCreated event to initialize schedule runner
         for (SideEffect sideEffect : sideEffects3) {
             if (sideEffect instanceof ScheduleCreated scheduleCreated) {
-                List<Takt> takts = scheduleCreated.takts();
-                logger.info("Schedule created with " + takts.size() + " takts");
-                scheduleRunnerProcessor.initializeSchedule(workQueueId, takts, estimatedMoveTime);
+                logger.info("Schedule created with " + scheduleCreated.takts().size() + " takts");
+                engine.processEvent(scheduleCreated);
             }
         }
 

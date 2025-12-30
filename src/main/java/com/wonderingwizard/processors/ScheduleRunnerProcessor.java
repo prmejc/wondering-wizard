@@ -11,6 +11,7 @@ import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.sideeffects.ActionActivated;
 import com.wonderingwizard.sideeffects.ActionCompleted;
+import com.wonderingwizard.sideeffects.ScheduleCreated;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -121,12 +122,26 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         if (event instanceof WorkInstructionEvent instruction) {
             return handleWorkInstructionEvent(instruction);
         }
+        if (event instanceof ScheduleCreated scheduleCreated) {
+            return handleScheduleCreated(scheduleCreated);
+        }
         if (event instanceof TimeEvent timeEvent) {
             return handleTimeEvent(timeEvent);
         }
         if (event instanceof ActionCompletedEvent completed) {
             return handleActionCompleted(completed);
         }
+        return List.of();
+    }
+
+    private List<SideEffect> handleScheduleCreated(ScheduleCreated scheduleCreated) {
+        String workQueueId = scheduleCreated.workQueueId();
+        List<Takt> takts = scheduleCreated.takts();
+        Instant estimatedMoveTime = scheduleCreated.estimatedMoveTime();
+
+        ScheduleState state = new ScheduleState(estimatedMoveTime, takts);
+        scheduleStates.put(workQueueId, state);
+
         return List.of();
     }
 
@@ -255,19 +270,6 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
 
         return sideEffects;
-    }
-
-    /**
-     * Updates the schedule state with takts information.
-     * This should be called when a schedule is created to populate the action data.
-     *
-     * @param workQueueId the work queue ID
-     * @param takts the list of takts for this schedule
-     * @param estimatedMoveTime the estimated move time for the first action
-     */
-    public void initializeSchedule(String workQueueId, List<Takt> takts, Instant estimatedMoveTime) {
-        ScheduleState state = new ScheduleState(estimatedMoveTime, takts);
-        scheduleStates.put(workQueueId, state);
     }
 
     @Override
