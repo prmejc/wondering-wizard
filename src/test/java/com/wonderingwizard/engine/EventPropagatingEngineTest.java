@@ -25,16 +25,16 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("DecoratorEngine")
-class DecoratorEngineTest {
+@DisplayName("EventPropagatingEngine")
+class EventPropagatingEngineTest {
 
     private EventProcessingEngine innerEngine;
-    private DecoratorEngine decoratorEngine;
+    private EventPropagatingEngine propagatingEngine;
 
     @BeforeEach
     void setUp() {
         innerEngine = new EventProcessingEngine();
-        decoratorEngine = new DecoratorEngine(innerEngine);
+        propagatingEngine = new EventPropagatingEngine(innerEngine);
     }
 
     @Nested
@@ -45,10 +45,10 @@ class DecoratorEngineTest {
         @DisplayName("register delegates to inner engine")
         void registerDelegatesToInnerEngine() {
             WorkQueueProcessor processor = new WorkQueueProcessor();
-            decoratorEngine.register(processor);
+            propagatingEngine.register(processor);
 
             // Verify by processing an event that the processor would handle
-            List<SideEffect> effects = decoratorEngine.processEvent(
+            List<SideEffect> effects = propagatingEngine.processEvent(
                     new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
 
             assertTrue(effects.stream().anyMatch(se -> se instanceof ScheduleCreated));
@@ -57,44 +57,44 @@ class DecoratorEngineTest {
         @Test
         @DisplayName("stepBack delegates to inner engine")
         void stepBackDelegatesToInnerEngine() {
-            decoratorEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new WorkQueueProcessor());
 
-            assertFalse(decoratorEngine.stepBack());
+            assertFalse(propagatingEngine.stepBack());
 
-            decoratorEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
-            assertEquals(1, decoratorEngine.getHistorySize());
+            propagatingEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
+            assertEquals(1, propagatingEngine.getHistorySize());
 
-            assertTrue(decoratorEngine.stepBack());
-            assertEquals(0, decoratorEngine.getHistorySize());
+            assertTrue(propagatingEngine.stepBack());
+            assertEquals(0, propagatingEngine.getHistorySize());
         }
 
         @Test
         @DisplayName("getHistorySize delegates to inner engine")
         void getHistorySizeDelegatesToInnerEngine() {
-            decoratorEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new WorkQueueProcessor());
 
-            assertEquals(0, decoratorEngine.getHistorySize());
+            assertEquals(0, propagatingEngine.getHistorySize());
 
-            decoratorEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
-            assertEquals(1, decoratorEngine.getHistorySize());
+            propagatingEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
+            assertEquals(1, propagatingEngine.getHistorySize());
 
-            decoratorEngine.processEvent(new WorkQueueMessage("queue2", WorkQueueStatus.ACTIVE));
-            assertEquals(2, decoratorEngine.getHistorySize());
+            propagatingEngine.processEvent(new WorkQueueMessage("queue2", WorkQueueStatus.ACTIVE));
+            assertEquals(2, propagatingEngine.getHistorySize());
         }
 
         @Test
         @DisplayName("clearHistory delegates to inner engine")
         void clearHistoryDelegatesToInnerEngine() {
-            decoratorEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new WorkQueueProcessor());
 
-            decoratorEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
-            decoratorEngine.processEvent(new WorkQueueMessage("queue2", WorkQueueStatus.ACTIVE));
+            propagatingEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
+            propagatingEngine.processEvent(new WorkQueueMessage("queue2", WorkQueueStatus.ACTIVE));
 
-            assertEquals(2, decoratorEngine.getHistorySize());
+            assertEquals(2, propagatingEngine.getHistorySize());
 
-            decoratorEngine.clearHistory();
+            propagatingEngine.clearHistory();
 
-            assertEquals(0, decoratorEngine.getHistorySize());
+            assertEquals(0, propagatingEngine.getHistorySize());
         }
     }
 
@@ -105,9 +105,9 @@ class DecoratorEngineTest {
         @Test
         @DisplayName("processEvent returns side effects from inner engine when no Event side effects")
         void processEventReturnsInnerEngineSideEffects() {
-            decoratorEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new WorkQueueProcessor());
 
-            List<SideEffect> effects = decoratorEngine.processEvent(
+            List<SideEffect> effects = propagatingEngine.processEvent(
                     new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
 
             // Should contain at least ScheduleCreated
@@ -119,20 +119,20 @@ class DecoratorEngineTest {
         void processEventRecursivelyProcessesEventSideEffects() {
             // WorkQueueProcessor produces ScheduleCreated (which implements Event)
             // ScheduleRunnerProcessor consumes ScheduleCreated events
-            decoratorEngine.register(new WorkQueueProcessor());
-            decoratorEngine.register(new ScheduleRunnerProcessor());
+            propagatingEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new ScheduleRunnerProcessor());
 
             String workQueueId = "queue1";
             Instant now = Instant.now();
             Instant estimatedMoveTime = now.minusSeconds(1); // In the past so actions activate immediately
 
             // Register a work instruction first
-            decoratorEngine.processEvent(new WorkInstructionEvent(
+            propagatingEngine.processEvent(new WorkInstructionEvent(
                     "wi1", workQueueId, "CHE1", WorkInstructionStatus.ASSIGNED, estimatedMoveTime));
 
             // Activate the work queue - this should produce ScheduleCreated,
             // which should then be recursively processed
-            List<SideEffect> effects = decoratorEngine.processEvent(
+            List<SideEffect> effects = propagatingEngine.processEvent(
                     new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE));
 
             // Should contain ScheduleCreated from WorkQueueProcessor
@@ -155,21 +155,21 @@ class DecoratorEngineTest {
         @DisplayName("processEvent includes all side effects from recursive calls at end of list")
         void processEventAppendsRecursiveSideEffectsAtEnd() {
             // Create a mock processor that produces a dual SideEffect/Event
-            decoratorEngine.register(new WorkQueueProcessor());
-            decoratorEngine.register(new ScheduleRunnerProcessor());
+            propagatingEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new ScheduleRunnerProcessor());
 
             String workQueueId = "queue1";
             Instant pastTime = Instant.parse("2020-01-01T00:00:00Z");
 
             // Register work instruction with past estimated move time
-            decoratorEngine.processEvent(new WorkInstructionEvent(
+            propagatingEngine.processEvent(new WorkInstructionEvent(
                     "wi1", workQueueId, "CHE1", WorkInstructionStatus.ASSIGNED, pastTime));
 
             // Process a time event first to set the time context
-            decoratorEngine.processEvent(new TimeEvent(Instant.now()));
+            propagatingEngine.processEvent(new TimeEvent(Instant.now()));
 
             // Now activate - this will create a schedule that's already past its start time
-            List<SideEffect> effects = decoratorEngine.processEvent(
+            List<SideEffect> effects = propagatingEngine.processEvent(
                     new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE));
 
             // Verify the order: ScheduleCreated should come before any ActionActivated
@@ -199,21 +199,21 @@ class DecoratorEngineTest {
         void processEventHandlesMultipleLevelsOfRecursion() {
             // This test verifies that if a recursive call produces another Event side effect,
             // it will also be processed recursively
-            decoratorEngine.register(new WorkQueueProcessor());
-            decoratorEngine.register(new ScheduleRunnerProcessor());
+            propagatingEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new ScheduleRunnerProcessor());
 
             String workQueueId = "queue1";
             Instant pastTime = Instant.parse("2020-01-01T00:00:00Z");
 
             // Register work instruction
-            decoratorEngine.processEvent(new WorkInstructionEvent(
+            propagatingEngine.processEvent(new WorkInstructionEvent(
                     "wi1", workQueueId, "CHE1", WorkInstructionStatus.ASSIGNED, pastTime));
 
             // Set time context
-            decoratorEngine.processEvent(new TimeEvent(Instant.now()));
+            propagatingEngine.processEvent(new TimeEvent(Instant.now()));
 
             // Activate - will trigger recursive processing
-            List<SideEffect> effects = decoratorEngine.processEvent(
+            List<SideEffect> effects = propagatingEngine.processEvent(
                     new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE));
 
             // Verify we got ScheduleCreated
@@ -223,7 +223,7 @@ class DecoratorEngineTest {
         @Test
         @DisplayName("processEvent with no processors returns empty list")
         void processEventWithNoProcessorsReturnsEmptyList() {
-            List<SideEffect> effects = decoratorEngine.processEvent(
+            List<SideEffect> effects = propagatingEngine.processEvent(
                     new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
 
             assertTrue(effects.isEmpty());
@@ -240,19 +240,19 @@ class DecoratorEngineTest {
             WorkQueueProcessor workQueueProcessor = new WorkQueueProcessor();
             ScheduleRunnerProcessor scheduleRunnerProcessor = new ScheduleRunnerProcessor();
 
-            decoratorEngine.register(workQueueProcessor);
-            decoratorEngine.register(scheduleRunnerProcessor);
+            propagatingEngine.register(workQueueProcessor);
+            propagatingEngine.register(scheduleRunnerProcessor);
 
             String workQueueId = "queue1";
             Instant now = Instant.now();
 
             // First, register a work instruction
-            decoratorEngine.processEvent(new WorkInstructionEvent(
+            propagatingEngine.processEvent(new WorkInstructionEvent(
                     "wi1", workQueueId, "CHE1", WorkInstructionStatus.ASSIGNED, now.minusSeconds(10)));
 
             // Activate the queue - WorkQueueProcessor will produce ScheduleCreated
-            // DecoratorEngine should then pass ScheduleCreated to ScheduleRunnerProcessor
-            List<SideEffect> effects = decoratorEngine.processEvent(
+            // EventPropagatingEngine should then pass ScheduleCreated to ScheduleRunnerProcessor
+            List<SideEffect> effects = propagatingEngine.processEvent(
                     new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE));
 
             // Count the side effect types
@@ -266,9 +266,9 @@ class DecoratorEngineTest {
         }
 
         @Test
-        @DisplayName("Without DecoratorEngine, ScheduleCreated is not automatically processed")
-        void withoutDecoratorEngineScheduleCreatedNotProcessed() {
-            // Compare behavior with and without decorator
+        @DisplayName("Without EventPropagatingEngine, ScheduleCreated is not automatically processed")
+        void withoutEventPropagatingEngineScheduleCreatedNotProcessed() {
+            // Compare behavior with and without propagating engine
             EventProcessingEngine plainEngine = new EventProcessingEngine();
             WorkQueueProcessor workQueueProcessor = new WorkQueueProcessor();
             ScheduleRunnerProcessor scheduleRunnerProcessor = new ScheduleRunnerProcessor();

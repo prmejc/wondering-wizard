@@ -5,27 +5,27 @@ import java.util.List;
 import java.util.logging.Logger;
 
 /**
- * A decorator engine that wraps another engine and propagates side effects that are also events.
+ * An engine that propagates internally triggered events from side effects.
  * <p>
- * This engine delegates all method calls to the wrapped engine, with special behavior for
+ * This engine wraps another engine and delegates all method calls to it, with special behavior for
  * {@link #processEvent(Event)}: after processing an event, it checks all returned side effects.
  * If any side effect also implements the {@link Event} interface, it recursively processes
  * that side effect as an event and appends all resulting side effects to the original list.
  * <p>
  * This enables automatic event propagation where side effects can trigger further processing.
  */
-public class DecoratorEngine implements Engine {
+public class EventPropagatingEngine implements Engine {
 
-    private static final Logger logger = Logger.getLogger(DecoratorEngine.class.getName());
+    private static final Logger logger = Logger.getLogger(EventPropagatingEngine.class.getName());
 
     private final Engine delegate;
 
     /**
-     * Creates a new decorator engine that wraps the given engine.
+     * Creates a new event propagating engine that wraps the given engine.
      *
      * @param delegate the engine to wrap and delegate calls to
      */
-    public DecoratorEngine(Engine delegate) {
+    public EventPropagatingEngine(Engine delegate) {
         this.delegate = delegate;
     }
 

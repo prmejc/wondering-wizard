@@ -1,6 +1,6 @@
 package com.wonderingwizard;
 
-import com.wonderingwizard.engine.DecoratorEngine;
+import com.wonderingwizard.engine.EventPropagatingEngine;
 import com.wonderingwizard.engine.Engine;
 import com.wonderingwizard.engine.EventProcessingEngine;
 import com.wonderingwizard.engine.SideEffect;
@@ -78,13 +78,13 @@ public class Main {
 
     /**
      * Demonstrates the work queue functionality with schedule creation and action activation.
-     * Uses DecoratorEngine to automatically process ScheduleCreated as an event.
+     * Uses EventPropagatingEngine to automatically process ScheduleCreated as an event.
      */
     public static void runWorkQueueDemo() {
         logger.info("=== Work Queue Demo ===");
 
-        // Create and configure the engine with DecoratorEngine for automatic event propagation
-        Engine engine = new DecoratorEngine(new EventProcessingEngine());
+        // Create and configure the engine with EventPropagatingEngine for automatic event propagation
+        Engine engine = new EventPropagatingEngine(new EventProcessingEngine());
         engine.register(new WorkQueueProcessor());
         engine.register(new ScheduleRunnerProcessor());
 
@@ -115,7 +115,7 @@ public class Main {
         ));
         logger.info("WorkInstructionEvent 2 side effects: " + sideEffects2);
 
-        // Step 2: Activate the work queue - DecoratorEngine automatically processes
+        // Step 2: Activate the work queue - EventPropagatingEngine automatically processes
         // ScheduleCreated as an event since it implements both SideEffect and Event
         logger.info("--- Activating Work Queue ---");
         List<SideEffect> sideEffects3 = engine.processEvent(new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE));
