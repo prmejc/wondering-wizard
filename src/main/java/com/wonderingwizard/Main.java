@@ -1,5 +1,7 @@
 package com.wonderingwizard;
 
+import com.wonderingwizard.engine.EventPropagatingEngine;
+import com.wonderingwizard.engine.Engine;
 import com.wonderingwizard.engine.EventProcessingEngine;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.SetTimeAlarm;
@@ -11,7 +13,6 @@ import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
 import com.wonderingwizard.processors.WorkQueueProcessor;
-import com.wonderingwizard.sideeffects.ScheduleCreated;
 
 import java.time.Instant;
 import java.util.List;
@@ -77,12 +78,13 @@ public class Main {
 
     /**
      * Demonstrates the work queue functionality with schedule creation and action activation.
+     * Uses EventPropagatingEngine to automatically process ScheduleCreated as an event.
      */
     public static void runWorkQueueDemo() {
         logger.info("=== Work Queue Demo ===");
 
-        // Create and configure the engine
-        EventProcessingEngine engine = new EventProcessingEngine();
+        // Create and configure the engine with EventPropagatingEngine for automatic event propagation
+        Engine engine = new EventPropagatingEngine(new EventProcessingEngine());
         engine.register(new WorkQueueProcessor());
         engine.register(new ScheduleRunnerProcessor());
 
@@ -113,18 +115,11 @@ public class Main {
         ));
         logger.info("WorkInstructionEvent 2 side effects: " + sideEffects2);
 
-        // Step 2: Activate the work queue - should produce ScheduleCreated
+        // Step 2: Activate the work queue - EventPropagatingEngine automatically processes
+        // ScheduleCreated as an event since it implements both SideEffect and Event
         logger.info("--- Activating Work Queue ---");
         List<SideEffect> sideEffects3 = engine.processEvent(new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE));
         logger.info("WorkQueueMessage ACTIVE side effects: " + sideEffects3);
-
-        // Process ScheduleCreated event to initialize schedule runner
-        for (SideEffect sideEffect : sideEffects3) {
-            if (sideEffect instanceof ScheduleCreated scheduleCreated) {
-                logger.info("Schedule created with " + scheduleCreated.takts().size() + " takts");
-                engine.processEvent(scheduleCreated);
-            }
-        }
 
         // Step 3: Process TimeEvent at estimated move time to trigger action activation
         logger.info("--- Processing TimeEvent at estimatedMoveTime ---");
@@ -135,7 +130,7 @@ public class Main {
         logger.info("=== Summary ===");
         logger.info("WorkInstructionEvent 1 (should be empty): " + sideEffects1);
         logger.info("WorkInstructionEvent 2 (should be empty): " + sideEffects2);
-        logger.info("WorkQueueMessage ACTIVE (should contain ScheduleCreated): " + sideEffects3);
+        logger.info("WorkQueueMessage ACTIVE (should contain ScheduleCreated + recursive effects): " + sideEffects3);
         logger.info("TimeEvent (should contain ActionActivated): " + sideEffects4);
     }
 }
