@@ -111,6 +111,8 @@ class EventPanel extends HTMLElement {
   connectedCallback() {
     this.style.cssText = 'grid-area:left';
     this.classList.add('panel');
+    this.setAttribute('data-refresh', '');
+    this._emtDirty = false;
     this.innerHTML = `
       <h2>Events</h2>
 
@@ -129,7 +131,7 @@ class EventPanel extends HTMLElement {
       </div>
       <div class="form-group">
         <label>Est. Move Time (ISO)</label>
-        <input id="wi-emt" value="2024-01-01T00:05:00Z">
+        <input id="wi-emt" value="">
       </div>
       <button onclick="this.closest('event-panel').sendWI()" style="margin-top:8px;width:100%">Add Work Instruction</button>
 
@@ -146,6 +148,13 @@ class EventPanel extends HTMLElement {
         </select>
       </div>
       <button onclick="this.closest('event-panel').sendWQ()" style="margin-top:8px;width:100%">Send Work Queue</button>`;
+    this.querySelector('#wi-emt').addEventListener('input', () => { this._emtDirty = true; });
+  }
+  refresh(state) {
+    if (!this._emtDirty && state.currentTime) {
+      const emt = new Date(new Date(state.currentTime).getTime() + 30 * 60 * 1000);
+      this.querySelector('#wi-emt').value = emt.toISOString().replace('.000Z', 'Z');
+    }
   }
   async sendWI() {
     const data = {
@@ -160,6 +169,7 @@ class EventPanel extends HTMLElement {
     const idInput = this.querySelector('#wi-id');
     const match = idInput.value.match(/^(.*?)(\d+)$/);
     if (match) idInput.value = match[1] + (parseInt(match[2]) + 1);
+    this._emtDirty = false;
     refreshState();
   }
   async sendWQ() {

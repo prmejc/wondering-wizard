@@ -31,6 +31,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -54,7 +55,8 @@ public class DemoServer {
 
     private final Engine engine;
     private final List<Step> steps = new ArrayList<>();
-    private Instant currentTime = Instant.parse("2024-01-01T00:00:00Z");
+    private final Instant initialTime = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+    private Instant currentTime = initialTime;
     private HttpServer httpServer;
 
     /**
@@ -407,7 +409,7 @@ public class DemoServer {
 
             if (success) {
                 // Recalculate current time from remaining tick steps
-                currentTime = Instant.parse("2024-01-01T00:00:00Z");
+                currentTime = initialTime;
                 for (Step step : steps) {
                     if (step.event() instanceof TimeEvent te) {
                         currentTime = te.timestamp();
