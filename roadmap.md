@@ -1,129 +1,59 @@
-# Wondering Wizard - Project Roadmap
+# Wondering Wizard - Roadmap
 
-## Current State
+## Demo: Interactive Schedule Viewer
 
-The core event processing engine is feature-complete with 6 implemented features:
+The first milestone is a live web demo that walks through the full event processing lifecycle — from registering work instructions to watching actions execute across devices, with the ability to rewind time.
 
-- **F-1** Time Alarm Processor
-- **F-2** Schedule Creation (WorkQueueProcessor)
-- **F-3** Step Back / Undo (Memento pattern)
-- **F-4** Work Instruction Events
-- **F-5** Takt Generation
-- **F-6** Schedule Runner (Action Execution)
+### Demo Script
 
-All features have comprehensive test coverage (~2,235 lines of tests). The engine supports plugin-based processors, event propagation, and full undo capability.
-
----
-
-## Phase 1: Persistence & External Integration
-
-### F-7: Event Store / Event Sourcing
-Persist all processed events to an append-only event store so the full system state can be rebuilt by replaying events. This provides durability, auditability, and enables distributed deployment.
-
-- Append-only event log (in-memory initially, pluggable storage backend)
-- Replay capability to reconstruct engine state from stored events
-- Snapshot support for faster replay on large event histories
-- Integration with step-back (F-3) for persistent undo
-
-### F-8: Side Effect Handlers
-Introduce a side effect handler interface that allows external systems to react to side effects. Currently side effects are returned to the caller — handlers would enable push-based integration.
-
-- `SideEffectHandler` interface with typed dispatch
-- Support for multiple handlers per side effect type
-- Synchronous execution to maintain determinism
-- Error handling strategy (fail-fast vs. skip-and-log)
-
-### F-9: External Event Ingestion
-Accept events from external sources (message queues, HTTP endpoints) to decouple the engine from the caller.
-
-- Event deserialization from JSON
-- Adapter interface for different transport layers (HTTP, AMQP, Kafka)
-- Event validation and rejection with meaningful errors
+1. **Send events** — register work instructions and activate a work queue via the web UI
+2. **Observe the schedule** — see the generated takts and actions laid out by device (RTG, TT, QC)
+3. **Start the clock** — tick simulated time forward and watch actions activate when `estimatedMoveTime` is reached
+4. **Watch side effects** — see `ActionActivated`, `ActionCompleted`, `ScheduleCreated` appear in real time
+5. **Complete actions** — click active actions in the schedule viewer to fire `ActionCompletedEvent` and unblock dependent actions
+6. **Rewind time** — click any past event in the timeline to step the engine back, restoring all processor state to that point
 
 ---
 
-## Phase 2: Advanced Scheduling & Domain Features
+## What needs to be built
 
-### F-10: Multi-Device Workflow Templates
-Extend the container workflow beyond QC-only actions to support the full container terminal device chain (QC, TT, RTG) with configurable workflow templates.
+### M-1: HTTP Demo Server
+Embed a lightweight HTTP server (JDK `HttpServer`, zero dependencies) that wraps the existing engine and exposes a REST API.
 
-- Configurable `DeviceActionTemplate` sequences per workflow type
-- Cross-device dependency modeling (e.g., TT pickup depends on QC place)
-- Device capacity constraints (max concurrent actions per device)
+- `GET /` — serve the single-page schedule viewer
+- `GET /api/state` — return full engine state as JSON (current time, steps, schedules, side effects)
+- `POST /api/work-instruction` — send a `WorkInstructionEvent`
+- `POST /api/work-queue` — send a `WorkQueueMessage` (ACTIVE / INACTIVE)
+- `POST /api/tick` — advance simulated clock by N seconds, send `TimeEvent`
+- `POST /api/action-completed` — send an `ActionCompletedEvent`
+- `POST /api/step-back-to` — revert engine to a target step using `stepBack()`
 
-### F-11: Dynamic Schedule Modification
-Allow in-flight schedule modifications — adding, removing, or reordering takts while a schedule is running.
+Track each user action as a numbered step with its resulting side effects. On rewind, call `engine.stepBack()` the correct number of times (accounting for `EventPropagatingEngine` expansion) to keep the external history in sync with the engine's internal state.
 
-- Insert new takts into an active schedule
-- Cancel pending (not-yet-activated) takts
-- Re-prioritize takt ordering without aborting the schedule
-- Dependency graph recalculation on modification
+### M-2: Schedule Viewer UI
+Single `index.html` file using Web Components and vanilla JS (no frameworks, no dependencies).
 
-### F-12: Conflict Detection & Resolution
-Detect scheduling conflicts such as resource contention (two actions requiring the same device at the same time) and provide resolution strategies.
+**Layout:**
+- **Header** — simulated clock display with tick buttons (+1 min, +5 min, +15 min)
+- **Left panel** — event input forms (add work instruction, activate/deactivate work queue)
+- **Center panel** — schedule visualization: takts as rows, actions as color-coded cards (RTG blue, TT amber, QC green) showing pending / active / completed status
+- **Right panel** — event timeline with clickable entries for time travel
+- **Bottom strip** — live side effects log
 
-- Resource contention detection across concurrent schedules
-- Configurable resolution strategies (delay, preempt, queue)
-- Conflict reporting via dedicated side effects
+**Key interactions:**
+- Active actions show a "Complete" button that sends `ActionCompletedEvent`
+- Clicking a past step in the timeline reverts the engine and UI to that point
+- State refreshes after every user action (no polling)
 
----
-
-## Phase 3: Observability & Operations
-
-### F-13: Metrics & Monitoring
-Expose engine metrics for operational visibility — event throughput, processing latency, queue depths, active schedules.
-
-- Event counters and processing duration tracking
-- Active schedule and takt status summaries
-- Pluggable metrics exporter (JMX, Prometheus-compatible)
-
-### F-14: Event Replay & Debugging Tools
-Build tooling for replaying event sequences for debugging, testing, and incident analysis.
-
-- Record and replay event sequences from event store
-- Step-through mode (process one event at a time with inspection)
-- Diff engine state between two points in history
-- Export/import event sequences for reproducible scenarios
-
-### F-15: Web Dashboard
-Provide a web-based UI for monitoring and interacting with the engine in real time.
-
-- Real-time schedule visualization (active takts, action progress)
-- Event stream viewer with filtering
-- Manual event injection for testing
-- Built with Web Components and vanilla JS (per project guidelines)
-
----
-
-## Phase 4: Scalability & Resilience
-
-### F-16: Partitioned Processing
-Support partitioning event processing by work queue ID so multiple engine instances can process independent queues in parallel.
-
-- Partition-aware event routing
-- Independent state per partition
-- Partition rebalancing on instance changes
-
-### F-17: Idempotent Event Processing
-Ensure events can be safely reprocessed (at-least-once delivery) without duplicating side effects.
-
-- Event deduplication via unique event IDs
-- Idempotency keys on side effects
-- Safe replay after failure recovery
-
-### F-18: Checkpointing & Recovery
-Periodic state checkpoints for fast recovery without full event replay.
-
-- Configurable checkpoint intervals
-- Checkpoint storage (local file, external store)
-- Startup recovery: load latest checkpoint, replay subsequent events
+### M-3: JSON Serialization (no library)
+Hand-rolled JSON serializer using Java pattern matching on sealed types, records, enums, `Instant`, and `UUID`. Minimal flat-object JSON parser for incoming request bodies.
 
 ---
 
 ## Conventions
 
-- Each feature gets a branch, tests, and documentation update before merging
-- Maintain >90% test coverage
+- Zero external runtime dependencies — JDK only
+- Time is always driven by `TimeEvent`, never `System.currentTimeMillis()`
 - All domain values use enums or sealed types — no raw strings
-- Time is always provided via `TimeEvent`, never `System.currentTimeMillis()`
 - Side effects are the only output — processors never call external systems directly
+- Frontend: Web Components, vanilla JS, single `index.html`
