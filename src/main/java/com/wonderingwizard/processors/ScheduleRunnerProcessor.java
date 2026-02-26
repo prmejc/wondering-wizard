@@ -113,6 +113,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
     private final Map<String, ScheduleState> scheduleStates = new HashMap<>();
     private final Map<String, Instant> workInstructionEstimatedMoveTime = new HashMap<>();
+    private Instant currentTime = Instant.EPOCH;
 
     @Override
     public List<SideEffect> process(Event event) {
@@ -187,14 +188,14 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
     private List<SideEffect> handleTimeEvent(TimeEvent timeEvent) {
         List<SideEffect> sideEffects = new ArrayList<>();
-        Instant currentTime = timeEvent.timestamp();
+        this.currentTime = timeEvent.timestamp();
 
         for (Map.Entry<String, ScheduleState> entry : scheduleStates.entrySet()) {
             String workQueueId = entry.getKey();
             ScheduleState state = entry.getValue();
 
             // Check if schedule should start
-            if (!state.started && state.estimatedMoveTime != null && !currentTime.isBefore(state.estimatedMoveTime)) {
+            if (!state.started && state.estimatedMoveTime != null && !this.currentTime.isBefore(state.estimatedMoveTime)) {
                 state.started = true;
 
                 // Activate all actions with no dependencies
@@ -208,7 +209,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                             workQueueId,
                             actionInfo.taktName(),
                             actionInfo.action().description(),
-                            currentTime
+                            this.currentTime
                     ));
                 }
             }
@@ -239,7 +240,6 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
 
         List<SideEffect> sideEffects = new ArrayList<>();
-        Instant now = Instant.now();
 
         // Move action from active to completed
         state.activeActionIds.remove(completedActionId);
@@ -251,7 +251,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 workQueueId,
                 completedActionInfo.taktName(),
                 completedActionInfo.action().description(),
-                now
+                currentTime
         ));
 
         // Find and activate any actions whose dependencies are now all satisfied
@@ -265,7 +265,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                     workQueueId,
                     actionInfo.taktName(),
                     actionInfo.action().description(),
-                    now
+                    currentTime
             ));
         }
 
@@ -285,6 +285,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
         // Copy work instruction estimated move times
         state.put("workInstructionEstimatedMoveTime", new HashMap<>(workInstructionEstimatedMoveTime));
+
+        state.put("currentTime", currentTime);
 
         return state;
     }
@@ -311,6 +313,11 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         Object estimatedMoveTimeState = stateMap.get("workInstructionEstimatedMoveTime");
         if (estimatedMoveTimeState instanceof Map) {
             workInstructionEstimatedMoveTime.putAll((Map<String, Instant>) estimatedMoveTimeState);
+        }
+
+        Object currentTimeState = stateMap.get("currentTime");
+        if (currentTimeState instanceof Instant instant) {
+            this.currentTime = instant;
         }
     }
 }

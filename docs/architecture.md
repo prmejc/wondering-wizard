@@ -6,11 +6,11 @@ The Event Processing Engine is a plugin-based system for processing events and p
 
 ## Core Components
 
-### Event (Sealed Interface)
+### Event (Interface)
 ```
 com.wonderingwizard.engine.Event
 ```
-Marker interface for all events. Uses Java 21 sealed types to restrict implementations to known event types, enabling exhaustive pattern matching in processors.
+Marker interface for all events. Enables pattern matching in processors.
 
 **Implementations:**
 - `TimeEvent` - Represents a point in time
@@ -170,35 +170,70 @@ public class MyProcessor implements EventProcessor {
 com.wonderingwizard
 ├── domain/
 │   └── takt/
-│       ├── Takt.java           # Takt containing actions (named TAKT100, TAKT101, etc.)
-│       └── Action.java         # Action with UUID, description, and dependsOn set
+│       ├── Takt.java                # Takt containing actions (named TAKT100, TAKT101, etc.)
+│       ├── Action.java              # Action with UUID, deviceType, description, and dependsOn set
+│       ├── DeviceType.java          # Device type enum (RTG, TT, QC)
+│       ├── DeviceActionTemplate.java # Template for device actions in workflow
+│       └── ContainerWorkflow.java   # Defines RTG→TT→QC workflow with takt offsets
 ├── engine/
-│   ├── Event.java              # Sealed interface for events
-│   ├── SideEffect.java         # Sealed interface for side effects
-│   ├── EventProcessor.java     # Processor plugin interface
-│   └── EventProcessingEngine.java  # Main engine
+│   ├── Event.java                   # Interface for events
+│   ├── SideEffect.java              # Sealed interface for side effects
+│   ├── Engine.java                  # Engine interface (processEvent, stepBack, etc.)
+│   ├── EventProcessor.java          # Processor plugin interface
+│   ├── EventProcessingEngine.java   # Main engine with state history (Memento)
+│   └── EventPropagatingEngine.java  # Decorator: BFS processing of side-effects-as-events
 ├── events/
-│   ├── TimeEvent.java          # Time tick event
-│   ├── SetTimeAlarm.java       # Alarm setting event
-│   ├── WorkQueueMessage.java   # Work queue status message
-│   ├── WorkQueueStatus.java    # Work queue status enum
-│   ├── WorkInstructionEvent.java # Work instruction event (with estimatedMoveTime)
-│   ├── WorkInstructionStatus.java # Work instruction status enum
-│   └── ActionCompletedEvent.java # Action completion event (with UUID)
+│   ├── TimeEvent.java               # Time tick event
+│   ├── SetTimeAlarm.java            # Alarm setting event
+│   ├── WorkQueueMessage.java        # Work queue status message
+│   ├── WorkQueueStatus.java         # Work queue status enum
+│   ├── WorkInstructionEvent.java    # Work instruction event (with estimatedMoveTime)
+│   ├── WorkInstructionStatus.java   # Work instruction status enum
+│   └── ActionCompletedEvent.java    # Action completion event (with UUID)
 ├── sideeffects/
-│   ├── AlarmSet.java           # Alarm set confirmation
-│   ├── AlarmTriggered.java     # Alarm trigger notification
-│   ├── ScheduleCreated.java    # Schedule creation (includes takts)
-│   ├── ScheduleAborted.java    # Schedule abortion notification
-│   ├── WorkInstruction.java    # Work instruction data (with estimatedMoveTime)
-│   ├── ActionActivated.java    # Action activation notification
-│   └── ActionCompleted.java    # Action completion notification
+│   ├── AlarmSet.java                # Alarm set confirmation
+│   ├── AlarmTriggered.java          # Alarm trigger notification
+│   ├── ScheduleCreated.java         # Schedule creation (includes takts; also implements Event)
+│   ├── ScheduleAborted.java         # Schedule abortion notification
+│   ├── WorkInstruction.java         # Work instruction data (with estimatedMoveTime)
+│   ├── ActionActivated.java         # Action activation notification
+│   └── ActionCompleted.java         # Action completion notification
 ├── processors/
-│   ├── TimeAlarmProcessor.java # Time alarm handling
-│   ├── WorkQueueProcessor.java # Work queue schedule and takt generation
+│   ├── TimeAlarmProcessor.java      # Time alarm handling
+│   ├── WorkQueueProcessor.java      # Work queue schedule and takt generation
 │   └── ScheduleRunnerProcessor.java # Schedule execution and action state management
-└── Main.java                   # Demo entry point
+├── server/
+│   ├── DemoServer.java              # HTTP demo server with REST API (JDK HttpServer)
+│   ├── JsonSerializer.java          # Hand-rolled JSON serializer (no external libs)
+│   └── JsonParser.java              # Minimal JSON parser for request bodies
+├── Main.java                        # Entry point (starts DemoServer or runs demo)
+└── resources/
+    └── index.html                   # Schedule Viewer UI (Web Components, vanilla JS)
 ```
+
+## HTTP Demo Server (F-7)
+
+The `DemoServer` class provides an embedded HTTP server using JDK `com.sun.net.httpserver.HttpServer` with zero external dependencies. It wraps an `EventPropagatingEngine` and exposes a REST API.
+
+### Key Concepts
+
+- **Step Tracking**: Each user-initiated event is recorded as a numbered `Step` with its resulting side effects and the `engineHistoryDelta` (number of engine history entries consumed, accounting for EventPropagatingEngine expansion)
+- **Step-Back Accounting**: When stepping back, the server uses `engineHistoryDelta` to issue the correct number of `engine.stepBack()` calls
+- **Schedule View Derivation**: Current schedule state is derived from accumulated side effects (ScheduleCreated, ScheduleAborted, ActionActivated, ActionCompleted) rather than exposing internal processor state
+- **Simulated Time**: Time starts at `2024-01-01T00:00:00Z` and advances via tick events
+
+### JSON Serialization (M-3)
+
+`JsonSerializer` uses pattern matching on sealed types for exhaustive serialization with zero external libraries. `JsonParser` provides minimal flat-object parsing for request bodies.
+
+### Schedule Viewer UI (M-2)
+
+A single `index.html` file using Web Components (extending `HTMLElement`) with vanilla JavaScript:
+- `<schedule-header>` — Clock display + tick buttons
+- `<event-panel>` — Event input forms
+- `<schedule-view>` — Takt/action visualization with color-coded status
+- `<timeline-panel>` — Clickable event history for time travel
+- `<side-effects-log>` — Color-coded side effects log
 
 ## Adding New Features
 

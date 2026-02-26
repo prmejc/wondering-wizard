@@ -1,6 +1,7 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
@@ -388,7 +389,7 @@ class ScheduleRunnerProcessorTest {
             Action action1 = Action.create("Action 1");
             Action action2 = Action.create("Action 2");
             // action3 depends on both action1 and action2
-            Action action3 = new Action(UUID.randomUUID(), "Action 3", Set.of(action1.id(), action2.id()));
+            Action action3 = new Action(UUID.randomUUID(), DeviceType.QC, "Action 3", Set.of(action1.id(), action2.id()));
 
             Takt takt = new Takt("TAKT100", List.of(action1, action2, action3));
             List<Takt> takts = List.of(takt);
@@ -427,8 +428,8 @@ class ScheduleRunnerProcessorTest {
         void activatesMultipleActionsSimultaneously() {
             // Given: Two actions that both depend on a single action
             Action action1 = Action.create("Action 1");
-            Action action2 = new Action(UUID.randomUUID(), "Action 2", Set.of(action1.id()));
-            Action action3 = new Action(UUID.randomUUID(), "Action 3", Set.of(action1.id()));
+            Action action2 = new Action(UUID.randomUUID(), DeviceType.QC, "Action 2", Set.of(action1.id()));
+            Action action3 = new Action(UUID.randomUUID(), DeviceType.QC, "Action 3", Set.of(action1.id()));
 
             Takt takt = new Takt("TAKT100", List.of(action1, action2, action3));
             List<Takt> takts = List.of(takt);
