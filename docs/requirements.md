@@ -487,7 +487,7 @@ Action action3 = new Action(UUID.randomUUID(), "Action 3", Set.of(action1.id(), 
 
 ### F-7: Schedule Viewer
 
-**Status:** Not started
+**Status:** Implemented
 
 **Description:**
 Provide a web-based schedule viewer that displays the full schedule in a browser. The viewer connects to an embedded HTTP server (JDK `HttpServer`, zero external dependencies) that wraps the event processing engine and exposes its state as JSON.
@@ -536,7 +536,7 @@ Provide a web-based schedule viewer that displays the full schedule in a browser
 
 ### F-8: Complete and Restart Actions via Browser
 
-**Status:** Not started
+**Status:** Partially implemented (Complete via browser is implemented; Restart uses timeline step-back)
 
 **Description:**
 The schedule viewer allows the user to complete or restart active actions directly from the browser. Completing an action sends an `ActionCompletedEvent` to the engine, which marks the action as completed and activates any dependent actions whose dependencies are now satisfied. Restarting an action reverts the engine to the state before that action was completed using `stepBack()`.
