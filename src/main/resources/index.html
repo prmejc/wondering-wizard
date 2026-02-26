@@ -113,6 +113,7 @@ class EventPanel extends HTMLElement {
     this.classList.add('panel');
     this.setAttribute('data-refresh', '');
     this._emtDirty = false;
+    this._emtOffsetMin = 0;
     this.innerHTML = `
       <h2>Events</h2>
 
@@ -152,7 +153,7 @@ class EventPanel extends HTMLElement {
   }
   refresh(state) {
     if (!this._emtDirty && state.currentTime) {
-      const emt = new Date(new Date(state.currentTime).getTime() + 30 * 60 * 1000);
+      const emt = new Date(new Date(state.currentTime).getTime() + (30 + this._emtOffsetMin) * 60 * 1000);
       this.querySelector('#wi-emt').value = emt.toISOString().replace('.000Z', 'Z');
     }
   }
@@ -170,6 +171,7 @@ class EventPanel extends HTMLElement {
     const match = idInput.value.match(/^(.*?)(\d+)$/);
     if (match) idInput.value = match[1] + (parseInt(match[2]) + 1);
     this._emtDirty = false;
+    this._emtOffsetMin += 2;
     refreshState();
   }
   async sendWQ() {
