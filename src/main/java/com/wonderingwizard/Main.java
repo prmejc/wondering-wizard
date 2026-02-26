@@ -13,7 +13,9 @@ import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
 import com.wonderingwizard.processors.WorkQueueProcessor;
+import com.wonderingwizard.server.DemoServer;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.logging.Logger;
@@ -35,8 +37,35 @@ public class Main {
 
     private static final Logger logger = Logger.getLogger(Main.class.getName());
 
+    private static final int DEFAULT_PORT = 8080;
+
     public static void main(String[] args) {
-        runWorkQueueDemo();
+        if (args.length > 0 && "--demo".equals(args[0])) {
+            runWorkQueueDemo();
+            return;
+        }
+
+        int port = DEFAULT_PORT;
+        if (args.length > 0) {
+            try {
+                port = Integer.parseInt(args[0]);
+            } catch (NumberFormatException e) {
+                logger.warning("Invalid port number: " + args[0] + ", using default " + DEFAULT_PORT);
+            }
+        }
+
+        DemoServer server = new DemoServer();
+        try {
+            server.start(port);
+            logger.info("Schedule Viewer running at http://localhost:" + port);
+            logger.info("Press Ctrl+C to stop.");
+            Thread.currentThread().join();
+        } catch (IOException e) {
+            logger.severe("Failed to start server: " + e.getMessage());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            server.stop();
+        }
     }
 
     /**

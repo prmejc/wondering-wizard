@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wondering Wizard - Schedule Viewer</title>
+<style>
+  :root {
+    --rtg-color: #3b82f6;
+    --tt-color: #f59e0b;
+    --qc-color: #22c55e;
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface2: #334155;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --border: #475569;
+    --pending: #64748b;
+    --active: #3b82f6;
+    --completed: #22c55e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    grid-template-columns: 280px 1fr 300px;
+    grid-template-areas:
+      "header header header"
+      "left center right"
+      "bottom bottom bottom";
+    gap: 1px;
+  }
+  .panel { background: var(--surface); padding: 16px; overflow-y: auto; }
+  h2 { font-size: 14px; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px; margin-bottom: 12px; }
+  h3 { font-size: 13px; color: var(--text-muted); margin: 12px 0 6px; }
+  button {
+    background: var(--active); color: white; border: none; padding: 6px 14px;
+    border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  button:hover { opacity: 0.9; }
+  button:active { opacity: 0.8; }
+  button.secondary { background: var(--surface2); color: var(--text); }
+  button.complete-btn { background: var(--completed); font-size: 11px; padding: 3px 8px; }
+  input, select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 4px; font-size: 13px; width: 100%;
+  }
+  label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; margin-top: 8px; }
+  .form-group { margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<schedule-header></schedule-header>
+<event-panel></event-panel>
+<schedule-view></schedule-view>
+<timeline-panel></timeline-panel>
+<side-effects-log></side-effects-log>
+
+<script>
+const API = '';
+
+async function apiCall(path, body) {
+  const opts = body ? { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) } : {};
+  const res = await fetch(API + path, opts);
+  return res.json();
+}
+
+async function refreshState() {
+  const state = await apiCall('/api/state');
+  document.querySelectorAll('[data-refresh]').forEach(el => el.refresh(state));
+}
+
+// --- Header Component ---
+class ScheduleHeader extends HTMLElement {
+  connectedCallback() {
+    this.style.cssText = 'grid-area:header;background:var(--surface);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)';
+    this.innerHTML = `
+      <div style="display:flex;align-items:center;gap:16px">
+        <strong style="font-size:18px">Wondering Wizard</strong>
+        <span style="color:var(--text-muted);font-size:13px">Schedule Viewer</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span id="clock" style="font-family:monospace;font-size:20px;color:var(--qc-color)">00:00:00</span>
+        <button class="secondary" onclick="this.closest('schedule-header').tick(60)">+1 min</button>
+        <button class="secondary" onclick="this.closest('schedule-header').tick(300)">+5 min</button>
+        <button class="secondary" onclick="this.closest('schedule-header').tick(900)">+15 min</button>
+      </div>`;
+    this.setAttribute('data-refresh', '');
+  }
+  refresh(state) {
+    const t = state.currentTime;
+    if (t) {
+      const d = new Date(t);
+      this.querySelector('#clock').textContent = d.toISOString().substring(11, 19);
+    }
+  }
+  async tick(seconds) {
+    await apiCall('/api/tick', { seconds });
+    refreshState();
+  }
+}
+customElements.define('schedule-header', ScheduleHeader);
+
+// --- Event Input Panel ---
+class EventPanel extends HTMLElement {
+  connectedCallback() {
+    this.style.cssText = 'grid-area:left';
+    this.classList.add('panel');
+    this.setAttribute('data-refresh', '');
+    this._emtDirty = false;
+    this._emtOffsetMin = 0;
+    this.innerHTML = `
+      <h2>Events</h2>
+
+      <h3>Work Instruction</h3>
+      <div class="form-group">
+        <label>Instruction ID</label>
+        <input id="wi-id" value="WI-001">
+      </div>
+      <div class="form-group">
+        <label>Work Queue ID</label>
+        <input id="wi-queue" value="WQ-001">
+      </div>
+      <div class="form-group">
+        <label>Fetch CHE</label>
+        <input id="wi-che" value="RTG-01">
+      </div>
+      <div class="form-group">
+        <label>Est. Move Time (ISO)</label>
+        <input id="wi-emt" value="">
+      </div>
+      <button onclick="this.closest('event-panel').sendWI()" style="margin-top:8px;width:100%">Add Work Instruction</button>
+
+      <h3 style="margin-top:20px">Work Queue</h3>
+      <div class="form-group">
+        <label>Work Queue ID</label>
+        <input id="wq-id" value="WQ-001">
+      </div>
+      <div class="form-group">
+        <label>Status</label>
+        <select id="wq-status">
+          <option value="ACTIVE">ACTIVE</option>
+          <option value="INACTIVE">INACTIVE</option>
+        </select>
+      </div>
+      <button onclick="this.closest('event-panel').sendWQ()" style="margin-top:8px;width:100%">Send Work Queue</button>`;
+    this.querySelector('#wi-emt').addEventListener('input', () => { this._emtDirty = true; });
+  }
+  refresh(state) {
+    if (!this._emtDirty && state.currentTime) {
+      const emt = new Date(new Date(state.currentTime).getTime() + (30 + this._emtOffsetMin) * 60 * 1000);
+      this.querySelector('#wi-emt').value = emt.toISOString().replace('.000Z', 'Z');
+    }
+  }
+  async sendWI() {
+    const data = {
+      workInstructionId: this.querySelector('#wi-id').value,
+      workQueueId: this.querySelector('#wi-queue').value,
+      fetchChe: this.querySelector('#wi-che').value,
+      estimatedMoveTime: this.querySelector('#wi-emt').value,
+      status: 'PENDING'
+    };
+    await apiCall('/api/work-instruction', data);
+    // Auto-increment WI ID
+    const idInput = this.querySelector('#wi-id');
+    const match = idInput.value.match(/^(.*?)(\d+)$/);
+    if (match) idInput.value = match[1] + (parseInt(match[2]) + 1);
+    this._emtDirty = false;
+    this._emtOffsetMin += 2;
+    refreshState();
+  }
+  async sendWQ() {
+    await apiCall('/api/work-queue', {
+      workQueueId: this.querySelector('#wq-id').value,
+      status: this.querySelector('#wq-status').value
+    });
+    refreshState();
+  }
+}
+customElements.define('event-panel', EventPanel);
+
+// --- Schedule View (Center Panel) ---
+class ScheduleView extends HTMLElement {
+  connectedCallback() {
+    this.style.cssText = 'grid-area:center';
+    this.classList.add('panel');
+    this.setAttribute('data-refresh', '');
+    this.innerHTML = '<h2>Schedule</h2><div id="schedule-content"><p style="color:var(--text-muted)">No schedules yet. Add work instructions and activate a work queue.</p></div>';
+  }
+  refresh(state) {
+    const container = this.querySelector('#schedule-content');
+    const schedules = state.schedules || [];
+    if (schedules.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted)">No schedules yet. Add work instructions and activate a work queue.</p>';
+      return;
+    }
+
+    let html = '';
+    for (const schedule of schedules) {
+      html += '<div style="margin-bottom:20px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
+      html += '<strong>' + schedule.workQueueId + '</strong>';
+      if (schedule.estimatedMoveTime) {
+        html += '<span style="font-size:12px;color:var(--text-muted)">EMT: ' + schedule.estimatedMoveTime + '</span>';
+      }
+      html += '</div>';
+
+      for (const takt of schedule.takts || []) {
+        html += '<div style="margin-bottom:8px">';
+        html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">' + takt.name + '</div>';
+        html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
+
+        for (const action of takt.actions || []) {
+          const color = action.deviceType === 'RTG' ? 'var(--rtg-color)' :
+                        action.deviceType === 'TT' ? 'var(--tt-color)' : 'var(--qc-color)';
+          const statusColor = action.status === 'ACTIVE' ? 'var(--active)' :
+                              action.status === 'COMPLETED' ? 'var(--completed)' : 'var(--pending)';
+          const borderStyle = action.status === 'ACTIVE' ? '2px solid ' + color : '1px solid var(--border)';
+          const opacity = action.status === 'COMPLETED' ? '0.7' : '1';
+
+          html += '<div style="background:var(--bg);border:' + borderStyle + ';border-radius:6px;padding:8px 12px;min-width:180px;opacity:' + opacity + '">';
+          html += '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">';
+          html += '<span style="background:' + color + ';color:white;font-size:10px;padding:1px 6px;border-radius:3px;font-weight:600">' + action.deviceType + '</span>';
+          html += '<span style="font-size:11px;color:' + statusColor + ';font-weight:600">' + action.status + '</span>';
+          html += '</div>';
+          html += '<div style="font-size:13px">' + action.description + '</div>';
+
+          if (action.status === 'ACTIVE') {
+            html += '<button class="complete-btn" style="margin-top:6px" data-action-id="' + action.id + '" data-wq="' + schedule.workQueueId + '">Complete</button>';
+          }
+          html += '</div>';
+        }
+        html += '</div></div>';
+      }
+      html += '</div>';
+    }
+    container.innerHTML = html;
+
+    // Bind complete buttons
+    container.querySelectorAll('.complete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        await apiCall('/api/action-completed', {
+          actionId: btn.dataset.actionId,
+          workQueueId: btn.dataset.wq
+        });
+        refreshState();
+      });
+    });
+  }
+}
+customElements.define('schedule-view', ScheduleView);
+
+// --- Timeline Panel ---
+class TimelinePanel extends HTMLElement {
+  connectedCallback() {
+    this.style.cssText = 'grid-area:right';
+    this.classList.add('panel');
+    this.setAttribute('data-refresh', '');
+    this.innerHTML = '<h2>Timeline</h2><div id="timeline-content"></div>';
+  }
+  refresh(state) {
+    const container = this.querySelector('#timeline-content');
+    const steps = state.steps || [];
+    if (steps.length === 0) {
+      container.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No events yet.</p>';
+      return;
+    }
+
+    let html = '';
+    for (let i = steps.length - 1; i >= 0; i--) {
+      const step = steps[i];
+      const effectCount = (step.sideEffects || []).length;
+      html += '<div class="timeline-entry" data-step="' + step.stepNumber + '" ';
+      html += 'style="padding:8px 10px;margin-bottom:4px;border-radius:4px;cursor:pointer;border:1px solid var(--border);font-size:13px;transition:background .15s"';
+      html += ' onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:center">';
+      html += '<span><strong style="color:var(--text-muted)">#' + step.stepNumber + '</strong> ' + step.description + '</span>';
+      if (effectCount > 0) {
+        html += '<span style="background:var(--active);color:white;font-size:10px;padding:1px 6px;border-radius:10px">' + effectCount + '</span>';
+      }
+      html += '</div></div>';
+    }
+    container.innerHTML = html;
+
+    container.querySelectorAll('.timeline-entry').forEach(entry => {
+      entry.addEventListener('click', async () => {
+        const targetStep = parseInt(entry.dataset.step) - 1;
+        await apiCall('/api/step-back-to', { targetStep });
+        refreshState();
+      });
+    });
+  }
+}
+customElements.define('timeline-panel', TimelinePanel);
+
+// --- Side Effects Log ---
+class SideEffectsLog extends HTMLElement {
+  connectedCallback() {
+    this.style.cssText = 'grid-area:bottom;max-height:160px';
+    this.classList.add('panel');
+    this.setAttribute('data-refresh', '');
+    this.innerHTML = '<h2>Side Effects</h2><div id="effects-content" style="font-family:monospace;font-size:12px;overflow-y:auto;max-height:110px"></div>';
+  }
+  refresh(state) {
+    const container = this.querySelector('#effects-content');
+    const steps = state.steps || [];
+    let html = '';
+    for (const step of steps) {
+      for (const effect of step.sideEffects || []) {
+        const typeColor = effect.type === 'ActionActivated' ? 'var(--active)' :
+                          effect.type === 'ActionCompleted' ? 'var(--completed)' :
+                          effect.type === 'ScheduleCreated' ? 'var(--qc-color)' :
+                          effect.type === 'ScheduleAborted' ? '#ef4444' : 'var(--text-muted)';
+        html += '<div style="padding:2px 0;border-bottom:1px solid var(--bg)">';
+        html += '<span style="color:var(--text-muted)">#' + step.stepNumber + '</span> ';
+        html += '<span style="color:' + typeColor + '">' + effect.type + '</span>';
+
+        if (effect.workQueueId) html += ' <span style="color:var(--text-muted)">' + effect.workQueueId + '</span>';
+        if (effect.taktName) html += ' ' + effect.taktName;
+        if (effect.actionDescription) html += ' "' + effect.actionDescription + '"';
+        html += '</div>';
+      }
+    }
+    container.innerHTML = html || '<span style="color:var(--text-muted)">No side effects yet.</span>';
+    container.scrollTop = container.scrollHeight;
+  }
+}
+customElements.define('side-effects-log', SideEffectsLog);
+
+// Initial state load
+refreshState();
+</script>
+</body>
+</html>

@@ -483,3 +483,94 @@ Action action3 = new Action(UUID.randomUUID(), "Action 3", Set.of(action1.id(), 
 - `src/main/java/com/wonderingwizard/engine/SideEffect.java` (modified - permits ActionActivated, ActionCompleted)
 - `src/test/java/com/wonderingwizard/processors/ScheduleRunnerProcessorTest.java`
 
+---
+
+### F-7: Schedule Viewer
+
+**Status:** Implemented
+
+**Description:**
+Provide a web-based schedule viewer that displays the full schedule in a browser. The viewer connects to an embedded HTTP server (JDK `HttpServer`, zero external dependencies) that wraps the event processing engine and exposes its state as JSON.
+
+1. An embedded HTTP server serves a single-page web application and a REST API
+2. The browser displays all takts and their actions, grouped by work queue
+3. Each action shows its current status: pending, active, or completed
+4. Actions are color-coded by device type (RTG, TT, QC)
+5. The schedule view refreshes after every user interaction
+
+**REST API:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | Serve the schedule viewer (single `index.html`) |
+| `GET` | `/api/state` | Return full engine state as JSON: current time, event history, schedules with action statuses, side effects |
+| `POST` | `/api/work-instruction` | Send a `WorkInstructionEvent` |
+| `POST` | `/api/work-queue` | Send a `WorkQueueMessage` (ACTIVE / INACTIVE) |
+| `POST` | `/api/tick` | Advance simulated clock by N seconds, send `TimeEvent` |
+| `POST` | `/api/action-completed` | Send an `ActionCompletedEvent` |
+| `POST` | `/api/step-back-to` | Revert engine to a target step using `stepBack()` |
+
+**Schedule View Layout:**
+- **Header** — simulated clock display with tick buttons (+1 min, +5 min, +15 min)
+- **Left panel** — event input forms (add work instruction, activate/deactivate work queue)
+- **Center panel** — schedule visualization: takts as rows, actions as color-coded cards showing pending / active / completed status
+- **Right panel** — event timeline with clickable entries for time travel
+- **Bottom strip** — live side effects log
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Start the demo server | HTTP server listening, browser loads schedule viewer |
+| 2 | Add two work instructions via the UI | Events sent, no side effects, state updated |
+| 3 | Activate the work queue | Schedule appears with takts and actions, all pending |
+| 4 | Tick time past `estimatedMoveTime` | Root actions (no dependencies) change to active |
+| 5 | Click timeline entry to revert | Engine steps back, schedule returns to earlier state |
+
+**Frontend Requirements:**
+- Single `index.html` file
+- Web Components (extend `HTMLElement`), vanilla JS, no frameworks or external libraries
+- Actions color-coded by device type: RTG blue, TT amber, QC green
+
+---
+
+### F-8: Complete and Restart Actions via Browser
+
+**Status:** Partially implemented (Complete via browser is implemented; Restart uses timeline step-back)
+
+**Description:**
+The schedule viewer allows the user to complete or restart active actions directly from the browser. Completing an action sends an `ActionCompletedEvent` to the engine, which marks the action as completed and activates any dependent actions whose dependencies are now satisfied. Restarting an action reverts the engine to the state before that action was completed using `stepBack()`.
+
+1. Active actions display a "Complete" button in the schedule viewer
+2. Clicking "Complete" sends an `ActionCompletedEvent(actionId, workQueueId)` to the engine via the REST API
+3. The engine produces `ActionCompleted` and `ActionActivated` side effects as per F-6
+4. The schedule view updates to reflect the new action statuses
+5. Completed actions display a "Restart" option that reverts the engine to the state before that completion
+
+**Requested Behavior:**
+
+```
+User sees schedule:
+  TAKT100
+    RTG: lift container from yard     [ACTIVE]  [Complete]
+    RTG: place container on truck     [PENDING]
+
+User clicks "Complete" on the first action:
+  → POST /api/action-completed { actionId, workQueueId }
+  → Engine produces ActionCompleted + ActionActivated (next action)
+
+Schedule updates:
+  TAKT100
+    RTG: lift container from yard     [COMPLETED]
+    RTG: place container on truck     [ACTIVE]  [Complete]
+```
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Schedule is running, root actions are active | Active actions show "Complete" button |
+| 2 | Click "Complete" on an active action | Action moves to completed, dependent actions activate |
+| 3 | Complete all actions in a dependency chain | Each completion triggers the next activation |
+| 4 | Click a past event in the timeline to revert | Completed action returns to active, dependent actions return to pending |
+
