@@ -96,6 +96,87 @@ Multiple dependents (fan-out):
 
 ---
 
+## Container Workflow
+
+The workflow for moving a container from yard to vessel involves three devices
+operating in parallel with handover synchronization points.
+
+### Device Actions
+
+**RTG** (3 actions):
+```
+rtg drive → fetch → rtg handover to TT
+```
+
+**TT** (9 actions):
+```
+drive to RTG pull → drive to RTG standby → drive to RTG under → handover from RTG →
+drive to QC pull → drive to QC standby → drive under QC → handover to QC → drive to buffer
+```
+
+**QC** (2 actions):
+```
+handover from TT → place on vessel
+```
+
+### Takt Structure (4 takts per container)
+
+```
+Takt A (offset -3):  RTG: rtg drive, fetch
+                      TT:  drive to RTG pull, drive to RTG standby
+
+Takt B (offset -2):  RTG: rtg handover to TT
+                      TT:  drive to RTG under, handover from RTG
+
+Takt C (offset -1):  TT:  drive to QC pull, drive to QC standby
+
+Takt D (offset  0):  TT:  drive under QC, handover to QC, drive to buffer
+                      QC:  handover from TT, place on vessel
+```
+
+Early takts (A, B, C) have no QC actions because TT has not reached QC position yet.
+
+### Dependency Graph
+
+Actions depend on the previous action of the **same device** (intra-device sequential).
+Handover actions additionally depend on the partner device's handover action (cross-device):
+
+```
+RTG:  rtg drive ──→ fetch ──→ rtg handover to TT ─────────────┐
+                                                                ↓
+TT:   drive to RTG pull ──→ drive to RTG standby ──→ drive to RTG under ──→ handover from RTG
+      ──→ drive to QC pull ──→ drive to QC standby ──→ drive under QC ──→ handover to QC ──┬→ drive to buffer
+                                                                                            ↓
+QC:                                                                          handover from TT ──→ place on vessel
+```
+
+### Handover Constraints
+
+| RTG action | TT action | Constraint |
+|------------|-----------|------------|
+| `rtg handover to TT` | `handover from RTG` | Same takt; TT action depends on RTG action |
+| — | `handover to QC` | `handover from TT` (QC) depends on this TT action |
+
+- `rtg handover to TT` is always the first RTG action in its takt
+- `handover from TT` is always the first QC action in its takt
+
+### Multi-Container Overlap
+
+With multiple containers, each container's workflow is offset by one takt.
+Actions from different containers in the same takt are independent (no cross-container dependencies).
+
+```
+Example: 2 containers
+
+TAKT100:  Container 0 Takt A  (4 actions)
+TAKT101:  Container 0 Takt B + Container 1 Takt A  (7 actions)
+TAKT102:  Container 0 Takt C + Container 1 Takt B  (5 actions)
+TAKT103:  Container 0 Takt D + Container 1 Takt C  (7 actions)
+TAKT104:  Container 1 Takt D  (5 actions)
+```
+
+---
+
 ## Side Effects Summary
 
 | Side Effect | Trigger |

@@ -3,6 +3,7 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.ContainerWorkflow;
 import com.wonderingwizard.domain.takt.DeviceActionTemplate;
+import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
@@ -15,7 +16,9 @@ import com.wonderingwizard.sideeffects.ScheduleCreated;
 import com.wonderingwizard.sideeffects.WorkInstruction;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -124,7 +127,7 @@ public class WorkQueueProcessor implements EventProcessor {
 
         // Calculate total number of takts needed
         int numContainers = instructions.size();
-        int maxTaktIndex = (numContainers - 1) + adjustment; // Last container's QC takt
+        int maxTaktIndex = (numContainers - 1) + adjustment; // Last container's base takt
         int totalTakts = maxTaktIndex + 1;
 
         // Initialize takt action lists
@@ -136,27 +139,36 @@ public class WorkQueueProcessor implements EventProcessor {
         // Create actions for each container (work instruction)
         for (int containerIndex = 0; containerIndex < numContainers; containerIndex++) {
             int baseTaktIndex = containerIndex + adjustment;
-            Action previousAction = null;
 
-            // Create actions in workflow order (RTG -> TT -> QC)
+            // Track last action per device type for dependency building
+            Map<DeviceType, Action> lastActionByDevice = new EnumMap<>(DeviceType.class);
+
             for (DeviceActionTemplate template : templates) {
                 int targetTaktIndex = baseTaktIndex + ContainerWorkflow.getTaktOffset(template);
 
-                // Create action with dependencies
                 Action action = Action.create(template.deviceType(), template.description());
 
-                Set<UUID> dependencies;
-                if (previousAction == null) {
-                    // First action of workflow: no dependencies
-                    dependencies = Set.of();
-                } else {
-                    // Depends on previous action in the workflow
-                    dependencies = Set.of(previousAction.id());
+                // Build dependencies: previous action of same device + optional cross-device dependency
+                Set<UUID> dependencies = new HashSet<>();
+
+                // Depend on previous action of the same device type
+                Action prevSameDevice = lastActionByDevice.get(template.deviceType());
+                if (prevSameDevice != null) {
+                    dependencies.add(prevSameDevice.id());
                 }
 
-                Action actionWithDeps = action.withDependencies(dependencies);
+                // Cross-device dependency (handover synchronization)
+                if (template.crossDeviceDependency() != null) {
+                    Action prevOtherDevice = lastActionByDevice.get(template.crossDeviceDependency());
+                    if (prevOtherDevice != null) {
+                        dependencies.add(prevOtherDevice.id());
+                    }
+                }
+
+                Action actionWithDeps = action.withDependencies(
+                        dependencies.isEmpty() ? Set.of() : Set.copyOf(dependencies));
                 actionsByTakt.get(targetTaktIndex).add(actionWithDeps);
-                previousAction = actionWithDeps;
+                lastActionByDevice.put(template.deviceType(), actionWithDeps);
             }
         }
 
