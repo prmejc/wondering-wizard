@@ -211,8 +211,17 @@ class ScheduleView extends HTMLElement {
       html += '</div>';
 
       for (const takt of schedule.takts || []) {
-        html += '<div style="margin-bottom:8px">';
-        html += '<div style="font-size:12px;color:var(--text-muted);margin-bottom:4px">' + takt.name + '</div>';
+        const taktStatus = takt.status || 'WAITING';
+        const taktColor = taktStatus === 'ACTIVE' ? 'var(--active)' :
+                          taktStatus === 'COMPLETED' ? 'var(--completed)' : 'var(--pending)';
+        const taktBorder = taktStatus === 'ACTIVE' ? 'border-left:3px solid var(--active)' :
+                           taktStatus === 'COMPLETED' ? 'border-left:3px solid var(--completed)' :
+                           'border-left:3px solid var(--pending)';
+        html += '<div style="margin-bottom:10px;padding-left:10px;' + taktBorder + '">';
+        html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">';
+        html += '<span style="font-size:12px;color:var(--text-muted)">' + takt.name + '</span>';
+        html += '<span style="font-size:10px;font-weight:600;color:' + taktColor + ';padding:1px 6px;border:1px solid ' + taktColor + ';border-radius:3px">' + taktStatus + '</span>';
+        html += '</div>';
         html += '<div style="display:flex;flex-wrap:wrap;gap:6px">';
 
         for (const action of takt.actions || []) {
@@ -314,6 +323,8 @@ class SideEffectsLog extends HTMLElement {
       for (const effect of step.sideEffects || []) {
         const typeColor = effect.type === 'ActionActivated' ? 'var(--active)' :
                           effect.type === 'ActionCompleted' ? 'var(--completed)' :
+                          effect.type === 'TaktActivated' ? '#8b5cf6' :
+                          effect.type === 'TaktCompleted' ? '#a78bfa' :
                           effect.type === 'ScheduleCreated' ? 'var(--qc-color)' :
                           effect.type === 'ScheduleAborted' ? '#ef4444' : 'var(--text-muted)';
         html += '<div style="padding:2px 0;border-bottom:1px solid var(--bg)">';

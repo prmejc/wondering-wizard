@@ -1,16 +1,19 @@
 package com.wonderingwizard.domain.takt;
 
+import java.time.Instant;
 import java.util.List;
 
 /**
  * Represents a Takt in a schedule.
  * Takts are named sequentially starting from TAKT100 (TAKT100, TAKT101, etc.).
- * Each Takt contains a list of actions to be performed.
+ * Each Takt contains a list of actions to be performed and a start time
+ * that determines when the takt can become active.
  *
  * @param name the takt identifier (e.g., "TAKT100", "TAKT101")
  * @param actions the list of actions in this takt
+ * @param startTime the earliest time at which this takt can become active
  */
-public record Takt(String name, List<Action> actions) {
+public record Takt(String name, List<Action> actions, Instant startTime) {
 
     private static final int STARTING_TAKT_NUMBER = 100;
 

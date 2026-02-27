@@ -101,8 +101,6 @@ public class WorkQueueProcessor implements EventProcessor {
         // Create new schedule with takts generated from work instructions
         activeSchedules.put(workQueueId, true);
         List<WorkInstruction> instructions = workInstructions.getOrDefault(workQueueId, List.of());
-        List<Takt> takts = createTaktsFromWorkInstructions(instructions);
-
         // Find earliest estimated move time from work instructions
         var estimatedMoveTime = instructions.stream()
                 .map(WorkInstruction::estimatedMoveTime)
@@ -110,10 +108,12 @@ public class WorkQueueProcessor implements EventProcessor {
                 .min(java.time.Instant::compareTo)
                 .orElse(null);
 
+        List<Takt> takts = createTaktsFromWorkInstructions(instructions, estimatedMoveTime);
+
         return List.of(new ScheduleCreated(workQueueId, takts, estimatedMoveTime));
     }
 
-    private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions) {
+    private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions, java.time.Instant estimatedMoveTime) {
         if (instructions.isEmpty()) {
             return List.of();
         }
@@ -160,11 +160,12 @@ public class WorkQueueProcessor implements EventProcessor {
             }
         }
 
-        // Convert to Takt objects
+        // Convert to Takt objects - all takts share the schedule's estimatedMoveTime as startTime
+        java.time.Instant startTime = estimatedMoveTime != null ? estimatedMoveTime : java.time.Instant.EPOCH;
         List<Takt> takts = new ArrayList<>();
         for (int i = 0; i < totalTakts; i++) {
             String taktName = Takt.createTaktName(i);
-            takts.add(new Takt(taktName, actionsByTakt.get(i)));
+            takts.add(new Takt(taktName, actionsByTakt.get(i), startTime));
         }
 
         return takts;
