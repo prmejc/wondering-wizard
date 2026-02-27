@@ -265,7 +265,7 @@ class ScheduleView extends HTMLElement {
         // One cell per takt
         for (const takt of takts) {
           const cellActions = (takt.actions || []).filter(row.match);
-          html += '<div style="background:var(--bg);padding:3px;display:flex;flex-direction:column;gap:2px;min-height:28px">';
+          html += '<div style="background:var(--bg);padding:3px;display:flex;flex-direction:row;gap:2px;min-height:28px;align-items:start">';
 
           for (const action of cellActions) {
             const sc = action.status === 'ACTIVE' ? 'var(--active)' : action.status === 'COMPLETED' ? 'var(--completed)' : 'var(--pending)';
