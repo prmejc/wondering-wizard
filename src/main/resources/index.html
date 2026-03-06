@@ -268,14 +268,33 @@ class ScheduleView extends HTMLElement {
           html += '<div style="background:var(--bg);padding:3px;display:flex;flex-direction:row;gap:2px;min-height:28px;align-items:start">';
 
           for (const action of cellActions) {
-            const sc = action.status === 'ACTIVE' ? 'var(--active)' : action.status === 'COMPLETED' ? 'var(--completed)' : 'var(--pending)';
-            const border = action.status === 'ACTIVE' ? '2px solid ' + row.color : '1px solid var(--border)';
-            const opacity = action.status === 'COMPLETED' ? '0.7' : '1';
+            const ci = action.containerIndex != null ? action.containerIndex : 0;
+            const containerHue = (ci * 137) % 360;
+            const containerColor = 'hsl(' + containerHue + ',70%,60%)';
+
+            let bgColor, borderColor, textOpacity, statusLabel;
+            if (action.status === 'COMPLETED') {
+              bgColor = 'rgba(34,197,94,0.15)';
+              borderColor = 'var(--completed)';
+              textOpacity = '0.7';
+              statusLabel = '<span style="color:var(--completed)">&#10003;</span>';
+            } else if (action.status === 'ACTIVE') {
+              bgColor = 'rgba(59,130,246,0.18)';
+              borderColor = 'var(--active)';
+              textOpacity = '1';
+              statusLabel = '<span style="color:var(--active)">&#9654;</span>';
+            } else {
+              bgColor = 'rgba(100,116,139,0.10)';
+              borderColor = 'var(--border)';
+              textOpacity = '0.5';
+              statusLabel = '<span style="color:var(--pending)">&#9679;</span>';
+            }
+
             const dur = action.durationSeconds || 30;
             const widthPx = Math.round(dur * 3);
 
-            html += '<div style="border:' + border + ';border-radius:4px;padding:3px 5px;opacity:' + opacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0">';
-            html += '<div style="color:' + sc + ';font-size:9px;font-weight:600">' + action.status + '</div>';
+            html += '<div style="background:' + bgColor + ';border:1px solid ' + borderColor + ';border-left:4px solid ' + containerColor + ';border-radius:4px;padding:3px 5px;opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0">';
+            html += '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600">' + statusLabel + ' <span style="color:' + containerColor + '">C' + ci + '</span></div>';
             html += '<div>' + action.description + '</div>';
             if (action.status === 'ACTIVE') {
               html += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + schedule.workQueueId + '">Complete</button>';
