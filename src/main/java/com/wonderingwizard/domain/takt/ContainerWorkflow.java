@@ -32,10 +32,10 @@ import static com.wonderingwizard.domain.takt.DeviceType.*;
  *
  * <h3>Cross-device synchronization:</h3>
  * <ul>
- *   <li>"rtg handover to TT" (RTG) and "handover from RTG" (TT) are in the same takt.
- *       "handover from RTG" depends on both the previous TT action and "rtg handover to TT".</li>
- *   <li>"handover to QC" (TT) and "handover from TT" (QC) are in the same takt.
- *       "handover from TT" depends on "handover to QC".</li>
+ *   <li>"rtg handover to TT" (RTG) and "handover from RTG" (TT) activate simultaneously
+ *       in the same takt, each depending only on their own device's previous action.</li>
+ *   <li>"handover to QC" (TT) and "handover from TT" (QC) activate simultaneously
+ *       in the same takt, each depending only on their own device's previous action.</li>
  * </ul>
  *
  * <p>Early takts have no QC actions because TT has not reached QC position yet.
@@ -65,7 +65,7 @@ public final class ContainerWorkflow {
             // Takt B: RTG-TT handover (no QC)
             DeviceActionTemplate.of(RTG, "rtg handover to TT", true),
             DeviceActionTemplate.of(TT, "drive to RTG under", false),
-            DeviceActionTemplate.of(TT, "handover from RTG", false, RTG),
+            DeviceActionTemplate.of(TT, "handover from RTG", false),
 
             // Takt C: TT transit to QC (no RTG, no QC)
             DeviceActionTemplate.of(TT, "drive to QC pull", true),
@@ -74,7 +74,7 @@ public final class ContainerWorkflow {
             // Takt D: TT-QC handover + QC operations
             DeviceActionTemplate.of(TT, "drive under QC", true),
             DeviceActionTemplate.of(TT, "handover to QC", false),
-            DeviceActionTemplate.of(QC, "handover from TT", false, TT),
+            DeviceActionTemplate.of(QC, "handover from TT", false),
             DeviceActionTemplate.of(QC, "place on vessel", false),
             DeviceActionTemplate.of(TT, "drive to buffer", false)
     );
