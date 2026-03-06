@@ -92,7 +92,8 @@ public class DemoServer {
 
     /** Action view within a takt. */
     public record ActionView(UUID id, DeviceType deviceType, String description,
-                              ActionState status, Set<UUID> dependsOn, int containerIndex) {}
+                              ActionState status, Set<UUID> dependsOn, int containerIndex,
+                              int durationSeconds) {}
 
     public DemoServer() {
         EventProcessingEngine baseEngine = new EventProcessingEngine();
@@ -213,7 +214,8 @@ public class DemoServer {
                             for (Action action : takt.actions()) {
                                 actionViews.add(new ActionView(
                                         action.id(), action.deviceType(), action.description(),
-                                        ActionState.PENDING, action.dependsOn(), action.containerIndex()));
+                                        ActionState.PENDING, action.dependsOn(), action.containerIndex(),
+                                        action.durationSeconds()));
                             }
                             builder.takts.add(new TaktView(takt.name(), TaktState.WAITING, actionViews));
                         }
@@ -286,7 +288,8 @@ public class DemoServer {
                     ActionState state = actionStates.getOrDefault(action.id(), action.status());
                     updatedActions.add(new ActionView(
                             action.id(), action.deviceType(), action.description(),
-                            state, action.dependsOn(), action.containerIndex()));
+                            state, action.dependsOn(), action.containerIndex(),
+                            action.durationSeconds()));
                 }
                 updatedTakts.add(new TaktView(takt.name(), taktState, updatedActions));
             }

@@ -146,7 +146,7 @@ public class WorkQueueProcessor implements EventProcessor {
             for (DeviceActionTemplate template : templates) {
                 int targetTaktIndex = baseTaktIndex + ContainerWorkflow.getTaktOffset(template);
 
-                Action action = Action.create(template.deviceType(), template.description(), containerIndex);
+                Action action = Action.create(template.deviceType(), template.description(), containerIndex, template.durationSeconds());
 
                 // Build dependencies: previous action of same device + optional cross-device dependency
                 Set<UUID> dependencies = new HashSet<>();

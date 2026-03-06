@@ -17,37 +17,30 @@ package com.wonderingwizard.domain.takt;
  * @param isFirstInTaktForDevice true if this action must be the first for this device in a takt
  *                                (all previous actions go in earlier takts)
  * @param crossDeviceDependency optional device type whose most recent action this action depends on
+ * @param durationSeconds the duration of this action in seconds (default 30)
  */
 public record DeviceActionTemplate(
         DeviceType deviceType,
         String description,
         boolean isFirstInTaktForDevice,
-        DeviceType crossDeviceDependency
+        DeviceType crossDeviceDependency,
+        int durationSeconds
 ) {
+    public static final int DEFAULT_DURATION_SECONDS = 30;
+
     /**
      * Creates a new template for an action without cross-device dependency.
-     *
-     * @param deviceType the device type
-     * @param description the action description
-     * @param isFirstInTaktForDevice whether this action starts a new takt for the device
-     * @return a new DeviceActionTemplate
      */
     public static DeviceActionTemplate of(
             DeviceType deviceType,
             String description,
             boolean isFirstInTaktForDevice
     ) {
-        return new DeviceActionTemplate(deviceType, description, isFirstInTaktForDevice, null);
+        return new DeviceActionTemplate(deviceType, description, isFirstInTaktForDevice, null, DEFAULT_DURATION_SECONDS);
     }
 
     /**
      * Creates a new template for an action with an optional cross-device dependency.
-     *
-     * @param deviceType the device type
-     * @param description the action description
-     * @param isFirstInTaktForDevice whether this action starts a new takt for the device
-     * @param crossDeviceDependency optional device type whose last action this depends on
-     * @return a new DeviceActionTemplate
      */
     public static DeviceActionTemplate of(
             DeviceType deviceType,
@@ -55,6 +48,18 @@ public record DeviceActionTemplate(
             boolean isFirstInTaktForDevice,
             DeviceType crossDeviceDependency
     ) {
-        return new DeviceActionTemplate(deviceType, description, isFirstInTaktForDevice, crossDeviceDependency);
+        return new DeviceActionTemplate(deviceType, description, isFirstInTaktForDevice, crossDeviceDependency, DEFAULT_DURATION_SECONDS);
+    }
+
+    /**
+     * Creates a new template with a custom duration.
+     */
+    public static DeviceActionTemplate of(
+            DeviceType deviceType,
+            String description,
+            boolean isFirstInTaktForDevice,
+            int durationSeconds
+    ) {
+        return new DeviceActionTemplate(deviceType, description, isFirstInTaktForDevice, null, durationSeconds);
     }
 }

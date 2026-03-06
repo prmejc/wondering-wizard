@@ -271,8 +271,10 @@ class ScheduleView extends HTMLElement {
             const sc = action.status === 'ACTIVE' ? 'var(--active)' : action.status === 'COMPLETED' ? 'var(--completed)' : 'var(--pending)';
             const border = action.status === 'ACTIVE' ? '2px solid ' + row.color : '1px solid var(--border)';
             const opacity = action.status === 'COMPLETED' ? '0.7' : '1';
+            const dur = action.durationSeconds || 30;
+            const widthPx = Math.round(dur * 3);
 
-            html += '<div style="border:' + border + ';border-radius:4px;padding:3px 5px;opacity:' + opacity + ';font-size:11px">';
+            html += '<div style="border:' + border + ';border-radius:4px;padding:3px 5px;opacity:' + opacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0">';
             html += '<div style="color:' + sc + ';font-size:9px;font-weight:600">' + action.status + '</div>';
             html += '<div>' + action.description + '</div>';
             if (action.status === 'ACTIVE') {
