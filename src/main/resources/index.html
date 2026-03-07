@@ -270,7 +270,7 @@ class ScheduleView extends HTMLElement {
       html += '<div style="display:inline-grid;grid-template-columns:56px ' + colDefs + ';gap:1px;min-width:100%">';
 
       // Header row: corner + takt headers
-      html += '<div style="background:var(--surface2);padding:4px"></div>';
+      html += '<div style="background:var(--surface2);padding:4px;position:sticky;left:0;z-index:2"></div>';
       for (const takt of takts) {
         const ts = takt.status || 'WAITING';
         const tc = ts === 'ACTIVE' ? 'var(--active)' : ts === 'COMPLETED' ? 'var(--completed)' : 'var(--pending)';
@@ -289,7 +289,7 @@ class ScheduleView extends HTMLElement {
       // Data rows
       for (const row of rows) {
         // Row label
-        html += '<div style="background:var(--surface2);padding:4px;display:flex;align-items:center;justify-content:center">';
+        html += '<div style="background:var(--surface2);padding:4px;display:flex;align-items:center;justify-content:center;position:sticky;left:0;z-index:1">';
         html += '<span style="background:' + row.color + ';color:white;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600;white-space:nowrap">' + row.label + '</span>';
         html += '</div>';
 
