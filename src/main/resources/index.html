@@ -252,6 +252,12 @@ class ScheduleView extends HTMLElement {
         html += '<div style="background:var(--surface2);padding:4px 6px;text-align:center;border-bottom:2px solid ' + tc + '">';
         html += '<div style="font-size:11px;color:var(--text-muted)">' + takt.name + '</div>';
         html += '<div style="font-size:9px;font-weight:600;color:' + tc + '">' + ts + '</div>';
+        const fmtTime = t => t ? new Date(t).toISOString().substring(11, 19) : '--:--:--';
+        html += '<div style="font-size:9px;color:var(--text-muted);margin-top:2px;line-height:1.4">';
+        html += 'P: ' + fmtTime(takt.plannedStartTime) + '<br>';
+        html += 'E: ' + fmtTime(takt.estimatedStartTime) + '<br>';
+        html += '<span style="color:' + (takt.actualStartTime ? 'var(--completed)' : 'var(--text-muted)') + '">A: ' + fmtTime(takt.actualStartTime) + '</span>';
+        html += '</div>';
         html += '</div>';
       }
 

@@ -315,6 +315,9 @@ public final class JsonSerializer {
         sb.append('{');
         writeField(sb, "name", view.name(), true);
         writeField(sb, "status", view.status(), false);
+        writeField(sb, "plannedStartTime", view.plannedStartTime(), false);
+        writeField(sb, "estimatedStartTime", view.estimatedStartTime(), false);
+        writeField(sb, "actualStartTime", view.actualStartTime(), false);
         writeFieldKey(sb, "actions", false);
         writeValue(sb, view.actions());
         sb.append('}');

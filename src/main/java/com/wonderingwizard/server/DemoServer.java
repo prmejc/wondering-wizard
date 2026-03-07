@@ -88,7 +88,9 @@ public class DemoServer {
                                 List<TaktView> takts) {}
 
     /** Takt view within a schedule. */
-    public record TaktView(String name, TaktState status, List<ActionView> actions) {}
+    public record TaktView(String name, TaktState status, Instant plannedStartTime,
+                            Instant estimatedStartTime, Instant actualStartTime,
+                            List<ActionView> actions) {}
 
     /** Action view within a takt. */
     public record ActionView(UUID id, DeviceType deviceType, String description,
@@ -217,7 +219,9 @@ public class DemoServer {
                                         ActionState.PENDING, action.dependsOn(), action.containerIndex(),
                                         action.durationSeconds()));
                             }
-                            builder.takts.add(new TaktView(takt.name(), TaktState.WAITING, actionViews));
+                            builder.takts.add(new TaktView(takt.name(), TaktState.WAITING,
+                                    takt.plannedStartTime(), takt.estimatedStartTime(), null,
+                                    actionViews));
                         }
                         builders.put(created.workQueueId(), builder);
                     }
@@ -227,6 +231,7 @@ public class DemoServer {
                         ScheduleViewBuilder builder = builders.get(taktActivated.workQueueId());
                         if (builder != null) {
                             builder.setTaktStatus(taktActivated.taktName(), TaktState.ACTIVE);
+                            builder.setActualStartTime(taktActivated.taktName(), taktActivated.activatedAt());
                         }
                     }
                     case TaktCompleted taktCompleted -> {
@@ -264,6 +269,7 @@ public class DemoServer {
         final List<TaktView> takts = new ArrayList<>();
         final Map<UUID, ActionState> actionStates = new HashMap<>();
         final Map<String, TaktState> taktStates = new HashMap<>();
+        final Map<String, Instant> actualStartTimes = new HashMap<>();
 
         ScheduleViewBuilder(String workQueueId, boolean active, Instant estimatedMoveTime) {
             this.workQueueId = workQueueId;
@@ -279,10 +285,15 @@ public class DemoServer {
             taktStates.put(taktName, status);
         }
 
+        void setActualStartTime(String taktName, Instant time) {
+            actualStartTimes.put(taktName, time);
+        }
+
         ScheduleView build() {
             List<TaktView> updatedTakts = new ArrayList<>();
             for (TaktView takt : takts) {
                 TaktState taktState = taktStates.getOrDefault(takt.name(), takt.status());
+                Instant actualStartTime = actualStartTimes.get(takt.name());
                 List<ActionView> updatedActions = new ArrayList<>();
                 for (ActionView action : takt.actions()) {
                     ActionState state = actionStates.getOrDefault(action.id(), action.status());
@@ -291,7 +302,9 @@ public class DemoServer {
                             state, action.dependsOn(), action.containerIndex(),
                             action.durationSeconds()));
                 }
-                updatedTakts.add(new TaktView(takt.name(), taktState, updatedActions));
+                updatedTakts.add(new TaktView(takt.name(), taktState,
+                        takt.plannedStartTime(), takt.estimatedStartTime(), actualStartTime,
+                        updatedActions));
             }
             return new ScheduleView(workQueueId, active, estimatedMoveTime, updatedTakts);
         }
