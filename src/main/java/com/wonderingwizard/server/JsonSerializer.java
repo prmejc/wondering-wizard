@@ -259,6 +259,7 @@ public final class JsonSerializer {
         writeField(sb, "name", takt.name(), true);
         writeField(sb, "plannedStartTime", takt.plannedStartTime(), false);
         writeField(sb, "estimatedStartTime", takt.estimatedStartTime(), false);
+        writeField(sb, "durationSeconds", takt.durationSeconds(), false);
         writeFieldKey(sb, "actions", false);
         writeValue(sb, takt.actions());
         sb.append('}');
@@ -318,6 +319,7 @@ public final class JsonSerializer {
         writeField(sb, "plannedStartTime", view.plannedStartTime(), false);
         writeField(sb, "estimatedStartTime", view.estimatedStartTime(), false);
         writeField(sb, "actualStartTime", view.actualStartTime(), false);
+        writeField(sb, "durationSeconds", view.durationSeconds(), false);
         writeFieldKey(sb, "actions", false);
         writeValue(sb, view.actions());
         sb.append('}');

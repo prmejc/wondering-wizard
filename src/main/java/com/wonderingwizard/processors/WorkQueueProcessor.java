@@ -22,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.Random;
 import java.util.UUID;
 
 /**
@@ -47,6 +48,7 @@ public class WorkQueueProcessor implements EventProcessor {
 
     private final Map<String, Boolean> activeSchedules = new HashMap<>();
     private final Map<String, List<WorkInstruction>> workInstructions = new HashMap<>();
+    private final Random random = new Random();
 
     @Override
     public List<SideEffect> process(Event event) {
@@ -214,7 +216,8 @@ public class WorkQueueProcessor implements EventProcessor {
                 plannedStartTime = java.time.Instant.EPOCH;
             }
             String taktName = Takt.createTaktName(i, firstQcTaktIndex);
-            takts.add(new Takt(taktName, actionsByTakt.get(i), plannedStartTime, plannedStartTime));
+            int durationSeconds = 115 + random.nextInt(21); // random between 115 and 135
+            takts.add(new Takt(taktName, actionsByTakt.get(i), plannedStartTime, plannedStartTime, durationSeconds));
         }
 
         return takts;

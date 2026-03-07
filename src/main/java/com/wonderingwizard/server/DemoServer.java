@@ -90,7 +90,7 @@ public class DemoServer {
     /** Takt view within a schedule. */
     public record TaktView(String name, TaktState status, Instant plannedStartTime,
                             Instant estimatedStartTime, Instant actualStartTime,
-                            List<ActionView> actions) {}
+                            int durationSeconds, List<ActionView> actions) {}
 
     /** Action view within a takt. */
     public record ActionView(UUID id, DeviceType deviceType, String description,
@@ -221,7 +221,7 @@ public class DemoServer {
                             }
                             builder.takts.add(new TaktView(takt.name(), TaktState.WAITING,
                                     takt.plannedStartTime(), takt.estimatedStartTime(), null,
-                                    actionViews));
+                                    takt.durationSeconds(), actionViews));
                         }
                         builders.put(created.workQueueId(), builder);
                     }
@@ -304,7 +304,7 @@ public class DemoServer {
                 }
                 updatedTakts.add(new TaktView(takt.name(), taktState,
                         takt.plannedStartTime(), takt.estimatedStartTime(), actualStartTime,
-                        updatedActions));
+                        takt.durationSeconds(), updatedActions));
             }
             return new ScheduleView(workQueueId, active, estimatedMoveTime, updatedTakts);
         }

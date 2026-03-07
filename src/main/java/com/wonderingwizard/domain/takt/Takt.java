@@ -22,8 +22,9 @@ import java.util.List;
  * @param actions the list of actions in this takt
  * @param plannedStartTime the originally scheduled start time from the work instruction
  * @param estimatedStartTime the current estimated start time (initially equal to plannedStartTime)
+ * @param durationSeconds the duration of this takt in seconds (typically 115-135)
  */
-public record Takt(String name, List<Action> actions, Instant plannedStartTime, Instant estimatedStartTime) {
+public record Takt(String name, List<Action> actions, Instant plannedStartTime, Instant estimatedStartTime, int durationSeconds) {
 
     private static final int STARTING_TAKT_NUMBER = 100;
 
