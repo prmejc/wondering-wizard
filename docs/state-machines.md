@@ -130,8 +130,13 @@ drive to QC pull → drive to QC standby → drive under QC → handover to QC �
 handover from TT → place on vessel
 ```
 
-### Takt Structure (3 takts per container)
+### Takt Structure (dynamic, 3+ takts per container)
 
+The base structure defines 3 takts via template boundaries. When TT sequential
+action durations in a pulse takt exceed the pulse duration, the processor
+dynamically inserts additional takt boundaries to split them.
+
+**Base structure (3 takts):**
 ```
 Takt A (offset -2):  RTG: rtg drive, fetch
                       TT:  drive to RTG pull, drive to RTG standby
@@ -144,7 +149,23 @@ Takt C (offset  0):  TT:  handover to QC, drive to buffer
                       QC:  handover from TT, place on vessel
 ```
 
-Early takts (A, B) have no QC actions because TT has not reached QC position yet.
+**With dynamic split (4 takts, typical with cycle time ~120s):**
+```
+Takt A (offset -3):  RTG: rtg drive, fetch
+                      TT:  drive to RTG pull, drive to RTG standby
+
+Takt B (offset -2):  RTG: rtg handover to TT
+                      TT:  drive to RTG under, handover from RTG,
+                           drive to QC pull, drive to QC standby
+
+Takt C (offset -1):  TT:  drive under QC
+
+Takt D (offset  0):  TT:  handover to QC, drive to buffer
+                      QC:  handover from TT, place on vessel
+```
+
+With shorter pulse durations or longer TT actions, more splits may occur.
+Early takts have no QC actions because TT has not reached QC position yet.
 
 ### Dependency Graph
 
@@ -176,12 +197,13 @@ With multiple containers, each container's workflow is offset by one takt.
 Actions from different containers in the same takt are independent (no cross-container dependencies).
 
 ```
-Example: 2 containers
+Example: 2 containers (with 4 takts per container)
 
-PULSE98:  Container 0 Takt A  (4 actions)
-PULSE99:  Container 0 Takt B + Container 1 Takt A  (10 actions)
-TAKT100:  Container 0 Takt C + Container 1 Takt B  (10 actions)
-TAKT101:  Container 1 Takt C  (4 actions)
+PULSE97:  Container 0 Takt A  (4 actions)
+PULSE98:  Container 0 Takt B + Container 1 Takt A  (9 actions)
+PULSE99:  Container 0 Takt C + Container 1 Takt B  (6 actions)
+TAKT100:  Container 0 Takt D + Container 1 Takt C  (5 actions)
+TAKT101:  Container 1 Takt D  (4 actions)
 ```
 
 ---

@@ -127,7 +127,12 @@ public class WorkQueueProcessor implements EventProcessor {
         }
 
         List<DeviceActionTemplate> templates = ContainerWorkflow.ACTION_TEMPLATES;
-        int minOffset = ContainerWorkflow.getMinTaktOffset();
+
+        // Compute pulse duration and dynamic takt offsets based on TT action durations
+        int pulseDuration = computePulseDuration(instructions, qcMudaSeconds);
+        Map<DeviceActionTemplate, Integer> dynamicOffsets = computeDynamicTaktOffsets(instructions, pulseDuration);
+
+        int minOffset = dynamicOffsets.values().stream().mapToInt(Integer::intValue).min().orElse(0);
         int adjustment = -minOffset; // Makes earliest takt index 0
 
         // Calculate total number of takts needed
@@ -155,7 +160,7 @@ public class WorkQueueProcessor implements EventProcessor {
             Map<String, Integer> actionDurations = new HashMap<>();
 
             for (DeviceActionTemplate template : templates) {
-                int targetTaktIndex = baseTaktIndex + ContainerWorkflow.getTaktOffset(template);
+                int targetTaktIndex = baseTaktIndex + dynamicOffsets.getOrDefault(template, 0);
 
                 int actionDuration = resolveActionDuration(template, instructions.get(containerIndex), actionDurations);
                 actionDurations.put(template.description(), actionDuration);
@@ -199,7 +204,7 @@ public class WorkQueueProcessor implements EventProcessor {
         }
 
         // Convert to Takt objects
-        // The first QC takt is at index 'adjustment' (the offset that normalizes takt D to index 0)
+        // The first QC takt is at index 'adjustment'
         // Takt duration = estimatedCycleTime of the WI whose QC works in that takt + qcMuda
         // Planned start time is computed sequentially: next takt = prev takt start + prev takt duration
         int firstQcTaktIndex = adjustment;
@@ -207,25 +212,11 @@ public class WorkQueueProcessor implements EventProcessor {
         // Pre-compute duration for each takt based on the QC container's estimated cycle time
         // PULSE takts use the average takt duration rounded up to the nearest 10 seconds
         int[] durations = new int[totalTakts];
-        int qcTaktCount = 0;
-        int qcTaktDurationSum = 0;
         for (int i = 0; i < totalTakts; i++) {
             int containerIndex = i - firstQcTaktIndex;
             if (containerIndex >= 0 && containerIndex < instructions.size()) {
                 durations[i] = instructions.get(containerIndex).estimatedCycleTimeSeconds() + qcMudaSeconds;
-                qcTaktDurationSum += durations[i];
-                qcTaktCount++;
-            }
-        }
-        // PULSE duration: average of QC takt durations, rounded up to nearest 10
-        int pulseDuration = 0;
-        if (qcTaktCount > 0) {
-            int avg = (qcTaktDurationSum + qcTaktCount - 1) / qcTaktCount; // ceiling division
-            pulseDuration = ((avg + 9) / 10) * 10; // round up to nearest 10
-        }
-        for (int i = 0; i < totalTakts; i++) {
-            int containerIndex = i - firstQcTaktIndex;
-            if (containerIndex < 0 || containerIndex >= instructions.size()) {
+            } else {
                 durations[i] = pulseDuration;
             }
         }
@@ -275,6 +266,99 @@ public class WorkQueueProcessor implements EventProcessor {
                     + actionDurations.getOrDefault("drive to RTG under", 0);
             default -> template.durationSeconds();
         };
+    }
+
+    /**
+     * Computes the pulse duration: average of QC takt durations, rounded up to nearest 10 seconds.
+     */
+    private static int computePulseDuration(List<WorkInstruction> instructions, int qcMudaSeconds) {
+        if (instructions.isEmpty()) {
+            return 0;
+        }
+        int sum = 0;
+        for (WorkInstruction instruction : instructions) {
+            sum += instruction.estimatedCycleTimeSeconds() + qcMudaSeconds;
+        }
+        int avg = (sum + instructions.size() - 1) / instructions.size(); // ceiling division
+        return ((avg + 9) / 10) * 10; // round up to nearest 10
+    }
+
+    /**
+     * Computes dynamic takt offsets by starting from template-defined boundaries
+     * and inserting additional takt splits when cumulative TT sequential time
+     * in a pulse takt would exceed the pulse duration.
+     *
+     * <p>The algorithm walks through templates and tracks cumulative TT time.
+     * When adding a TT action would exceed the pulse duration and there's already
+     * TT time accumulated in the current takt, a new takt boundary is inserted.
+     * Template-defined consecutive boundaries (e.g., RTG-TT handover pair)
+     * are still grouped into a single takt boundary.
+     */
+    private Map<DeviceActionTemplate, Integer> computeDynamicTaktOffsets(
+            List<WorkInstruction> instructions, int pulseDuration) {
+        // Compute max TT action durations across all containers
+        Map<String, Integer> maxTtDurations = new HashMap<>();
+        for (WorkInstruction instruction : instructions) {
+            Map<String, Integer> durations = new HashMap<>();
+            for (DeviceActionTemplate template : ContainerWorkflow.ACTION_TEMPLATES) {
+                int duration = resolveActionDuration(template, instruction, durations);
+                durations.put(template.description(), duration);
+                if (template.deviceType() == DeviceType.TT) {
+                    maxTtDurations.merge(template.description(), duration, Math::max);
+                }
+            }
+        }
+
+        // Walk through templates and compute offsets with dynamic splits
+        Map<DeviceActionTemplate, Integer> offsets = new HashMap<>();
+        int currentTakt = 0;
+        boolean prevWasTemplateFirst = false;
+        int cumulativeTtTime = 0;
+
+        for (DeviceActionTemplate template : ContainerWorkflow.ACTION_TEMPLATES) {
+            boolean templateFirst = template.isFirstInTaktForDevice();
+
+            // Check for dynamic TT split: only split if there's already TT time accumulated
+            // and adding this action would exceed pulse duration
+            boolean dynamicSplit = false;
+            if (!templateFirst && template.deviceType() == DeviceType.TT
+                    && pulseDuration > 0 && cumulativeTtTime > 0) {
+                int ttDuration = maxTtDurations.getOrDefault(template.description(), 0);
+                if (cumulativeTtTime + ttDuration > pulseDuration) {
+                    dynamicSplit = true;
+                }
+            }
+
+            boolean isFirst = templateFirst || dynamicSplit;
+
+            if (isFirst) {
+                // Only group consecutive template-defined boundaries (not dynamic splits)
+                boolean skipIncrement = prevWasTemplateFirst && templateFirst;
+                if (!skipIncrement) {
+                    currentTakt++;
+                    cumulativeTtTime = 0;
+                }
+                prevWasTemplateFirst = templateFirst;
+            } else {
+                prevWasTemplateFirst = false;
+            }
+
+            // Track cumulative TT time for overflow detection
+            if (template.deviceType() == DeviceType.TT) {
+                cumulativeTtTime += maxTtDurations.getOrDefault(template.description(), 0);
+            }
+
+            offsets.put(template, currentTakt);
+        }
+
+        // Normalize so that the last takt (QC handover) is at offset 0
+        int baseTaktOffset = offsets.get(
+                ContainerWorkflow.ACTION_TEMPLATES.get(ContainerWorkflow.ACTION_TEMPLATES.size() - 1));
+        for (DeviceActionTemplate template : ContainerWorkflow.ACTION_TEMPLATES) {
+            offsets.put(template, offsets.get(template) - baseTaktOffset);
+        }
+
+        return offsets;
     }
 
     private List<SideEffect> handleInactiveStatus(String workQueueId) {

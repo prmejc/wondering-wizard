@@ -21,14 +21,10 @@ import static com.wonderingwizard.domain.takt.DeviceType.*;
  *   <li><b>QC:</b> handover from TT → place on vessel</li>
  * </ul>
  *
- * <h3>Takt structure (3 takts per container):</h3>
- * <ul>
- *   <li><b>Takt A:</b> RTG prep (rtg drive, fetch) + TT approach (drive to RTG pull, drive to RTG standby)</li>
- *   <li><b>Takt B:</b> RTG-TT handover + TT transit + TT approach to QC (drive to RTG under,
- *       rtg handover to TT, handover from RTG, drive to QC pull, drive to QC standby, drive under QC)</li>
- *   <li><b>Takt C:</b> TT-QC handover + QC ops (handover from TT, handover to QC,
- *       place on vessel, drive to buffer)</li>
- * </ul>
+ * <h3>Takt structure:</h3>
+ * <p>The base structure uses 3 takts per container (defined by template flags).
+ * When TT sequential actions in a pulse takt exceed the pulse duration,
+ * extra pulses are dynamically introduced by the processor to split them.</p>
  *
  * <h3>Cross-device synchronization:</h3>
  * <ul>
@@ -39,7 +35,7 @@ import static com.wonderingwizard.domain.takt.DeviceType.*;
  * </ul>
  *
  * <p>Early takts have no QC actions because TT has not reached QC position yet.
- * QC only participates in the final takt (Takt C).
+ * QC only participates in the final takt.
  */
 public final class ContainerWorkflow {
 
@@ -85,7 +81,9 @@ public final class ContainerWorkflow {
     );
 
     /**
-     * Precomputed takt offsets for each template based on isFirstInTaktForDevice flags.
+     * Precomputed base takt offsets from template isFirstInTaktForDevice flags.
+     * These define the minimum takt structure (3 takts per container).
+     * Additional splits may be applied dynamically by the processor.
      */
     private static final Map<DeviceActionTemplate, Integer> TAKT_OFFSETS = computeTaktOffsets();
 
@@ -144,19 +142,18 @@ public final class ContainerWorkflow {
     }
 
     /**
-     * Gets the computed takt offset for a template.
-     * Offset 0 is the base takt (QC/TT handover takt), negative values are earlier takts.
+     * Gets the base takt offset for a template (from template-defined boundaries only).
+     * Offset 0 is the QC/TT handover takt, negative values are earlier takts.
      *
      * @param template the template
-     * @return the takt offset
+     * @return the base takt offset
      */
     public static int getTaktOffset(DeviceActionTemplate template) {
         return TAKT_OFFSETS.getOrDefault(template, 0);
     }
 
     /**
-     * Returns the minimum takt offset used in the workflow.
-     * This determines how many takts before the base takt actions can occur.
+     * Returns the minimum base takt offset used in the workflow.
      *
      * @return the minimum (most negative) takt offset
      */
