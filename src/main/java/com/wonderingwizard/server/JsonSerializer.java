@@ -164,6 +164,7 @@ public final class JsonSerializer {
                 writeField(sb, "status", e.status(), false);
                 writeField(sb, "estimatedMoveTime", e.estimatedMoveTime(), false);
                 writeField(sb, "estimatedCycleTimeSeconds", e.estimatedCycleTimeSeconds(), false);
+                writeField(sb, "estimatedRtgCycleTimeSeconds", e.estimatedRtgCycleTimeSeconds(), false);
                 sb.append('}');
             }
             case ActionCompletedEvent e -> {
@@ -287,6 +288,7 @@ public final class JsonSerializer {
         writeField(sb, "status", wi.status(), false);
         writeField(sb, "estimatedMoveTime", wi.estimatedMoveTime(), false);
         writeField(sb, "estimatedCycleTimeSeconds", wi.estimatedCycleTimeSeconds(), false);
+        writeField(sb, "estimatedRtgCycleTimeSeconds", wi.estimatedRtgCycleTimeSeconds(), false);
         sb.append('}');
     }
 

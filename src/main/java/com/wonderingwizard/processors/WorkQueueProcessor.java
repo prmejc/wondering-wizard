@@ -76,7 +76,8 @@ public class WorkQueueProcessor implements EventProcessor {
                 event.fetchChe(),
                 event.status(),
                 event.estimatedMoveTime(),
-                event.estimatedCycleTimeSeconds()
+                event.estimatedCycleTimeSeconds(),
+                event.estimatedRtgCycleTimeSeconds()
         );
 
         workInstructions
@@ -257,10 +258,16 @@ public class WorkQueueProcessor implements EventProcessor {
 
     private static final int HANDOVER_DURATION_SECONDS = 20;
 
+    private static final int RTG_HANDOVER_DURATION_SECONDS = 20;
+    private static final int RTG_DRIVE_DURATION_SECONDS = 1;
+
     private static int resolveActionDuration(DeviceActionTemplate template, WorkInstruction instruction) {
         return switch (template.description()) {
             case "handover from TT" -> HANDOVER_DURATION_SECONDS;
             case "place on vessel" -> instruction.estimatedCycleTimeSeconds() - HANDOVER_DURATION_SECONDS;
+            case "rtg drive" -> RTG_DRIVE_DURATION_SECONDS;
+            case "fetch" -> instruction.estimatedRtgCycleTimeSeconds() - RTG_HANDOVER_DURATION_SECONDS;
+            case "rtg handover to TT" -> RTG_HANDOVER_DURATION_SECONDS;
             default -> template.durationSeconds();
         };
     }
