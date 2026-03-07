@@ -155,7 +155,8 @@ public class WorkQueueProcessor implements EventProcessor {
             for (DeviceActionTemplate template : templates) {
                 int targetTaktIndex = baseTaktIndex + ContainerWorkflow.getTaktOffset(template);
 
-                Action action = Action.create(template.deviceType(), template.description(), containerIndex, template.durationSeconds());
+                int actionDuration = resolveActionDuration(template, instructions.get(containerIndex));
+                Action action = Action.create(template.deviceType(), template.description(), containerIndex, actionDuration);
 
                 // Build dependencies: previous action of same device + optional cross-device dependency
                 Set<UUID> dependencies = new HashSet<>();
@@ -252,6 +253,16 @@ public class WorkQueueProcessor implements EventProcessor {
         }
 
         return takts;
+    }
+
+    private static final int HANDOVER_DURATION_SECONDS = 20;
+
+    private static int resolveActionDuration(DeviceActionTemplate template, WorkInstruction instruction) {
+        return switch (template.description()) {
+            case "handover from TT" -> HANDOVER_DURATION_SECONDS;
+            case "place on vessel" -> instruction.estimatedCycleTimeSeconds() - HANDOVER_DURATION_SECONDS;
+            default -> template.durationSeconds();
+        };
     }
 
     private List<SideEffect> handleInactiveStatus(String workQueueId) {
