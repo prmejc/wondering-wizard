@@ -12,7 +12,7 @@ import java.util.List;
  * <p>
  * When a work queue is activated, takts are generated from the work instructions
  * associated with that work queue. Each work instruction produces one takt,
- * named sequentially starting from TAKT100.
+ * named PULSE99, PULSE98, ... for pre-QC takts and TAKT100, TAKT101, ... for QC takts.
  * <p>
  * This record implements both SideEffect (produced by WorkQueueProcessor) and Event
  * (can be processed by ScheduleRunnerProcessor to initialize schedule execution).

@@ -168,11 +168,11 @@ Actions from different containers in the same takt are independent (no cross-con
 ```
 Example: 2 containers
 
-TAKT100:  Container 0 Takt A  (4 actions)
-TAKT101:  Container 0 Takt B + Container 1 Takt A  (7 actions)
-TAKT102:  Container 0 Takt C + Container 1 Takt B  (5 actions)
-TAKT103:  Container 0 Takt D + Container 1 Takt C  (7 actions)
-TAKT104:  Container 1 Takt D  (5 actions)
+PULSE97:  Container 0 Takt A  (4 actions)
+PULSE98:  Container 0 Takt B + Container 1 Takt A  (7 actions)
+PULSE99:  Container 0 Takt C + Container 1 Takt B  (5 actions)
+TAKT100:  Container 0 Takt D + Container 1 Takt C  (7 actions)
+TAKT101:  Container 1 Takt D  (5 actions)
 ```
 
 ---

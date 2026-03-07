@@ -677,8 +677,8 @@ class WorkQueueProcessorTest {
         class TaktNamingConvention {
 
             @Test
-            @DisplayName("Should name takts sequentially starting from TAKT100")
-            void taktsNamedSequentially() {
+            @DisplayName("Should name pre-QC takts as PULSE and QC takts as TAKT")
+            void taktsNamedWithPulseAndTakt() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
                 engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
                 engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", PENDING, null));
@@ -691,16 +691,16 @@ class WorkQueueProcessorTest {
 
                 // 3 containers with multi-device workflow: 3 + 3 (offset) = 6 takts
                 assertEquals(6, takts.size());
-                assertEquals("TAKT100", takts.get(0).name());
-                assertEquals("TAKT101", takts.get(1).name());
-                assertEquals("TAKT102", takts.get(2).name());
-                assertEquals("TAKT103", takts.get(3).name());
-                assertEquals("TAKT104", takts.get(4).name());
-                assertEquals("TAKT105", takts.get(5).name());
+                assertEquals("PULSE97", takts.get(0).name());
+                assertEquals("PULSE98", takts.get(1).name());
+                assertEquals("PULSE99", takts.get(2).name());
+                assertEquals("TAKT100", takts.get(3).name());
+                assertEquals("TAKT101", takts.get(4).name());
+                assertEquals("TAKT102", takts.get(5).name());
             }
 
             @Test
-            @DisplayName("Single work instruction should create 4 takts (TAKT100-TAKT103)")
+            @DisplayName("Single work instruction should create 4 takts (PULSE97-TAKT100)")
             void singleWorkInstruction_createsFourTakts() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
@@ -708,10 +708,10 @@ class WorkQueueProcessorTest {
                         new WorkQueueMessage("queue-1", ACTIVE));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                // 1 container: RTG at TAKT100, TT-RTG at TAKT101, TT-QC at TAKT102, QC at TAKT103
+                // 1 container: RTG at PULSE97, TT-RTG at PULSE98, TT-QC at PULSE99, QC at TAKT100
                 assertEquals(4, created.takts().size());
-                assertEquals("TAKT100", created.takts().get(0).name());
-                assertEquals("TAKT103", created.takts().get(3).name());
+                assertEquals("PULSE97", created.takts().get(0).name());
+                assertEquals("TAKT100", created.takts().get(3).name());
             }
         }
 
@@ -735,7 +735,7 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("TAKT100 should have RTG prep + TT approach (4 actions)")
+            @DisplayName("PULSE97 should have RTG prep + TT approach (4 actions)")
             void taktA_rtgPrepAndTtApproach() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
@@ -763,7 +763,7 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("TAKT101 should have RTG-TT handover (3 actions)")
+            @DisplayName("PULSE98 should have RTG-TT handover (3 actions)")
             void taktB_rtgTtHandover() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
@@ -790,7 +790,7 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("TAKT102 should have TT transit to QC (2 actions)")
+            @DisplayName("PULSE99 should have TT transit to QC (2 actions)")
             void taktC_ttTransit() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
@@ -817,7 +817,7 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("TAKT103 should have TT-QC handover + QC ops (5 actions)")
+            @DisplayName("TAKT100 should have TT-QC handover + QC ops (5 actions)")
             void taktD_ttQcHandoverAndQcOps() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
@@ -863,19 +863,19 @@ class WorkQueueProcessorTest {
                 // 2 containers: 2 + 3 (offset) = 5 takts
                 assertEquals(5, created.takts().size());
 
-                // TAKT100: Container 0 Takt A (4 actions)
+                // PULSE97: Container 0 Takt A (4 actions)
                 assertEquals(4, created.takts().get(0).actions().size());
 
-                // TAKT101: Container 0 Takt B (3) + Container 1 Takt A (4) = 7 actions
+                // PULSE98: Container 0 Takt B (3) + Container 1 Takt A (4) = 7 actions
                 assertEquals(7, created.takts().get(1).actions().size());
 
-                // TAKT102: Container 0 Takt C (2) + Container 1 Takt B (3) = 5 actions
+                // PULSE99: Container 0 Takt C (2) + Container 1 Takt B (3) = 5 actions
                 assertEquals(5, created.takts().get(2).actions().size());
 
-                // TAKT103: Container 0 Takt D (5) + Container 1 Takt C (2) = 7 actions
+                // TAKT100: Container 0 Takt D (5) + Container 1 Takt C (2) = 7 actions
                 assertEquals(7, created.takts().get(3).actions().size());
 
-                // TAKT104: Container 1 Takt D (5 actions)
+                // TAKT101: Container 1 Takt D (5 actions)
                 assertEquals(5, created.takts().get(4).actions().size());
             }
         }

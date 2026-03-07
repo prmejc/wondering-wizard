@@ -467,7 +467,7 @@ class ScheduleRunnerProcessorTest {
             Action linkedAction1 = action1.withDependencies(action1Deps);
             Action linkedAction2 = action2.withDependencies(action2Deps);
 
-            String taktName = Takt.createTaktName(taktIndex);
+            String taktName = Takt.createTaktName(taktIndex, 0);
             takts.add(new Takt(taktName, List.of(linkedAction1, linkedAction2), startTime));
         }
 
