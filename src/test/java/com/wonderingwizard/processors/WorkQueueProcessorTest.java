@@ -765,7 +765,7 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("PULSE98 should have RTG-TT handover + TT transit (5 actions)")
+            @DisplayName("PULSE98 should have RTG-TT handover + TT transit + drive under QC (6 actions)")
             void taktB_rtgTtHandoverAndTransit() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null, 120));
 
@@ -775,7 +775,7 @@ class WorkQueueProcessorTest {
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 Takt pulse98 = created.takts().get(1);
 
-                assertEquals(5, pulse98.actions().size());
+                assertEquals(6, pulse98.actions().size());
 
                 List<Action> rtgActions = pulse98.actions().stream()
                         .filter(a -> a.deviceType() == DeviceType.RTG)
@@ -786,11 +786,12 @@ class WorkQueueProcessorTest {
                 List<Action> ttActions = pulse98.actions().stream()
                         .filter(a -> a.deviceType() == DeviceType.TT)
                         .collect(Collectors.toList());
-                assertEquals(4, ttActions.size());
+                assertEquals(5, ttActions.size());
                 assertEquals("drive to RTG under", ttActions.get(0).description());
                 assertEquals("handover from RTG", ttActions.get(1).description());
                 assertEquals("drive to QC pull", ttActions.get(2).description());
                 assertEquals("drive to QC standby", ttActions.get(3).description());
+                assertEquals("drive under QC", ttActions.get(4).description());
 
                 // No QC actions yet - TT not in position
                 List<Action> qcActions = pulse98.actions().stream()
@@ -800,8 +801,8 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("PULSE99 should have drive under QC (1 action, dynamic split)")
-            void taktC_driveUnderQc() {
+            @DisplayName("PULSE99 should be an empty gap takt (0 actions)")
+            void taktC_emptyGap() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
@@ -810,13 +811,8 @@ class WorkQueueProcessorTest {
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 Takt pulse99 = created.takts().get(2);
 
-                assertEquals(1, pulse99.actions().size());
-
-                List<Action> ttActions = pulse99.actions().stream()
-                        .filter(a -> a.deviceType() == DeviceType.TT)
-                        .collect(Collectors.toList());
-                assertEquals(1, ttActions.size());
-                assertEquals("drive under QC", ttActions.get(0).description());
+                assertEquals(0, pulse99.actions().size(),
+                        "Gap takt should have no actions for a single container");
             }
 
             @Test

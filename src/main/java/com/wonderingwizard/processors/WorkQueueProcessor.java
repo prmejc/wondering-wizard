@@ -284,15 +284,15 @@ public class WorkQueueProcessor implements EventProcessor {
     }
 
     /**
-     * Computes dynamic takt offsets by starting from template-defined boundaries
-     * and inserting additional takt splits when cumulative TT sequential time
-     * in a pulse takt would exceed the pulse duration.
+     * Computes dynamic takt offsets by grouping templates according to their
+     * {@code isFirstInTaktForDevice} boundaries and adding extra pulse slot
+     * spacing when a group's cumulative TT sequential time exceeds the pulse duration.
      *
-     * <p>The algorithm walks through templates and tracks cumulative TT time.
-     * When adding a TT action would exceed the pulse duration and there's already
-     * TT time accumulated in the current takt, a new takt boundary is inserted.
-     * Template-defined consecutive boundaries (e.g., RTG-TT handover pair)
-     * are still grouped into a single takt boundary.
+     * <p>Actions always stay in their template-defined takt groups — no splitting
+     * within a group. When a group needs more time than one pulse slot, extra gap
+     * slots are inserted between that group and the next one.
+     *
+     * <p>Offsets are computed backwards from the last group (QC handover) at offset 0.
      */
     private Map<DeviceActionTemplate, Integer> computeDynamicTaktOffsets(
             List<WorkInstruction> instructions, int pulseDuration) {
@@ -309,53 +309,51 @@ public class WorkQueueProcessor implements EventProcessor {
             }
         }
 
-        // Walk through templates and compute offsets with dynamic splits
-        Map<DeviceActionTemplate, Integer> offsets = new HashMap<>();
-        int currentTakt = 0;
-        boolean prevWasTemplateFirst = false;
-        int cumulativeTtTime = 0;
+        // Identify takt groups from template boundaries
+        List<List<DeviceActionTemplate>> groups = new ArrayList<>();
+        List<DeviceActionTemplate> currentGroup = new ArrayList<>();
+        boolean prevWasFirst = false;
 
         for (DeviceActionTemplate template : ContainerWorkflow.ACTION_TEMPLATES) {
             boolean templateFirst = template.isFirstInTaktForDevice();
-
-            // Check for dynamic TT split: only split if there's already TT time accumulated
-            // and adding this action would exceed pulse duration
-            boolean dynamicSplit = false;
-            if (!templateFirst && template.deviceType() == DeviceType.TT
-                    && pulseDuration > 0 && cumulativeTtTime > 0) {
-                int ttDuration = maxTtDurations.getOrDefault(template.description(), 0);
-                if (cumulativeTtTime + ttDuration > pulseDuration) {
-                    dynamicSplit = true;
-                }
+            if (templateFirst && !prevWasFirst && !currentGroup.isEmpty()) {
+                groups.add(currentGroup);
+                currentGroup = new ArrayList<>();
             }
-
-            boolean isFirst = templateFirst || dynamicSplit;
-
-            if (isFirst) {
-                // Only group consecutive template-defined boundaries (not dynamic splits)
-                boolean skipIncrement = prevWasTemplateFirst && templateFirst;
-                if (!skipIncrement) {
-                    currentTakt++;
-                    cumulativeTtTime = 0;
-                }
-                prevWasTemplateFirst = templateFirst;
-            } else {
-                prevWasTemplateFirst = false;
-            }
-
-            // Track cumulative TT time for overflow detection
-            if (template.deviceType() == DeviceType.TT) {
-                cumulativeTtTime += maxTtDurations.getOrDefault(template.description(), 0);
-            }
-
-            offsets.put(template, currentTakt);
+            currentGroup.add(template);
+            prevWasFirst = templateFirst;
+        }
+        if (!currentGroup.isEmpty()) {
+            groups.add(currentGroup);
         }
 
-        // Normalize so that the last takt (QC handover) is at offset 0
-        int baseTaktOffset = offsets.get(
-                ContainerWorkflow.ACTION_TEMPLATES.get(ContainerWorkflow.ACTION_TEMPLATES.size() - 1));
-        for (DeviceActionTemplate template : ContainerWorkflow.ACTION_TEMPLATES) {
-            offsets.put(template, offsets.get(template) - baseTaktOffset);
+        // Calculate TT sequential time per group and slots needed
+        int[] slotsNeeded = new int[groups.size()];
+        for (int i = 0; i < groups.size(); i++) {
+            int ttTime = 0;
+            for (DeviceActionTemplate t : groups.get(i)) {
+                if (t.deviceType() == DeviceType.TT) {
+                    ttTime += maxTtDurations.getOrDefault(t.description(), 0);
+                }
+            }
+            slotsNeeded[i] = (pulseDuration > 0 && ttTime > 0)
+                    ? Math.max(1, (ttTime + pulseDuration - 1) / pulseDuration)
+                    : 1;
+        }
+
+        // Compute offsets backwards from last group at offset 0
+        int[] groupOffsets = new int[groups.size()];
+        groupOffsets[groups.size() - 1] = 0;
+        for (int i = groups.size() - 2; i >= 0; i--) {
+            groupOffsets[i] = groupOffsets[i + 1] - slotsNeeded[i];
+        }
+
+        // Assign each template the offset of its group
+        Map<DeviceActionTemplate, Integer> offsets = new HashMap<>();
+        for (int i = 0; i < groups.size(); i++) {
+            for (DeviceActionTemplate template : groups.get(i)) {
+                offsets.put(template, groupOffsets[i]);
+            }
         }
 
         return offsets;
