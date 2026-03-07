@@ -136,12 +136,14 @@ public class WorkQueueProcessor implements EventProcessor {
             actionsByTakt.put(i, new ArrayList<>());
         }
 
+        // Track last action per device type across containers so that shared devices
+        // (RTG, QC) chain sequentially: container N's first action on a device depends
+        // on container N-1's last action on that same device.
+        Map<DeviceType, Action> lastActionByDevice = new EnumMap<>(DeviceType.class);
+
         // Create actions for each container (work instruction)
         for (int containerIndex = 0; containerIndex < numContainers; containerIndex++) {
             int baseTaktIndex = containerIndex + adjustment;
-
-            // Track last action per device type for dependency building
-            Map<DeviceType, Action> lastActionByDevice = new EnumMap<>(DeviceType.class);
 
             for (DeviceActionTemplate template : templates) {
                 int targetTaktIndex = baseTaktIndex + ContainerWorkflow.getTaktOffset(template);
