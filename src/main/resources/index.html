@@ -296,7 +296,7 @@ class ScheduleView extends HTMLElement {
         // One cell per takt
         for (const takt of takts) {
           const cellActions = (takt.actions || []).filter(row.match);
-          html += '<div style="background:var(--bg);padding:3px;display:flex;flex-direction:row;gap:0;min-height:28px;align-items:stretch">';
+          html += '<div style="background:var(--bg);padding:0;display:flex;flex-direction:row;gap:0;min-height:28px;align-items:stretch">';
 
           for (const action of cellActions) {
             const ci = action.containerIndex != null ? action.containerIndex : 0;
