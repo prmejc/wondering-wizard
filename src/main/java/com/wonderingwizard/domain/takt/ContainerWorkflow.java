@@ -32,8 +32,8 @@ import static com.wonderingwizard.domain.takt.DeviceType.*;
  *
  * <h3>Cross-device synchronization:</h3>
  * <ul>
- *   <li>"rtg handover to TT" (RTG) and "handover from RTG" (TT) activate simultaneously
- *       in the same takt, each depending only on their own device's previous action.</li>
+ *   <li>"rtg handover to TT" (RTG) depends on "drive to RTG under" (TT) completing first.
+ *       "handover from RTG" (TT) depends on its own previous TT action.</li>
  *   <li>"handover to QC" (TT) and "handover from TT" (QC) activate simultaneously
  *       in the same takt, each depending only on their own device's previous action.</li>
  * </ul>
@@ -63,8 +63,8 @@ public final class ContainerWorkflow {
             DeviceActionTemplate.of(TT, "drive to RTG standby", false),
 
             // Takt B: RTG-TT handover (no QC)
-            DeviceActionTemplate.of(RTG, "rtg handover to TT", true),
-            DeviceActionTemplate.of(TT, "drive to RTG under", false),
+            DeviceActionTemplate.of(TT, "drive to RTG under", true),
+            DeviceActionTemplate.of(RTG, "rtg handover to TT", false, TT),
             DeviceActionTemplate.of(TT, "handover from RTG", false),
 
             // Takt C: TT transit to QC (no RTG, no QC)
