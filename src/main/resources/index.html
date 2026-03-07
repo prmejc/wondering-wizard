@@ -204,7 +204,7 @@ customElements.define('event-panel', EventPanel);
 // --- Schedule View (Center Panel) ---
 class ScheduleView extends HTMLElement {
   connectedCallback() {
-    this.style.cssText = 'grid-area:center;overflow:auto';
+    this.style.cssText = 'grid-area:center;overflow:auto;position:relative';
     this.classList.add('panel');
     this.setAttribute('data-refresh', '');
     this._pxPerSec = 3;
@@ -355,18 +355,30 @@ class ScheduleView extends HTMLElement {
     });
 
     // Bind click popups for narrow actions
+    const self = this;
     container.querySelectorAll('[data-popup]').forEach(el => {
       el.addEventListener('click', e => {
         e.stopPropagation();
-        const existing = el.querySelector('.action-popup');
-        if (existing) { existing.remove(); return; }
+        // Toggle: remove if already open for this element
+        const existingId = el.dataset.popupId;
+        if (existingId) {
+          const ep = document.getElementById(existingId);
+          if (ep) ep.remove();
+          delete el.dataset.popupId;
+          return;
+        }
         // Remove any other open popups
-        container.querySelectorAll('.action-popup').forEach(p => p.remove());
+        self.querySelectorAll('.action-popup').forEach(p => p.remove());
         const popup = document.createElement('div');
         popup.className = 'action-popup';
-        popup.style.cssText = 'position:absolute;left:0;top:100%;z-index:100;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:11px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.25);pointer-events:auto';
+        const uid = 'popup-' + Math.random().toString(36).slice(2, 9);
+        popup.id = uid;
+        el.dataset.popupId = uid;
+        const rect = el.getBoundingClientRect();
+        const parentRect = self.getBoundingClientRect();
+        popup.style.cssText = 'position:absolute;z-index:100;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:11px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.25);left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 2) + 'px';
         popup.textContent = el.dataset.popup;
-        el.appendChild(popup);
+        self.appendChild(popup);
       });
     });
     // Close popups on outside click
