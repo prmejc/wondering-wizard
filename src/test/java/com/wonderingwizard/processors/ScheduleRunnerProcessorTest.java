@@ -280,7 +280,7 @@ class ScheduleRunnerProcessorTest {
             processor.process(new ScheduleCreated("queue-1", takts, EMT));
             processor.process(new TimeEvent(Instant.parse("2024-01-01T10:00:01Z")));
 
-            processor.process(new WorkQueueMessage("queue-1", INACTIVE));
+            processor.process(new WorkQueueMessage("queue-1", INACTIVE, 0));
 
             List<SideEffect> sideEffects = processor.process(
                     new ActionCompletedEvent(firstActionId, "queue-1"));

@@ -135,6 +135,10 @@ class EventPanel extends HTMLElement {
         <label>Est. Move Time (ISO)</label>
         <input id="wi-emt" value="">
       </div>
+      <div class="form-group">
+        <label>Est. Cycle Time (sec)</label>
+        <input id="wi-ect" type="number" value="120">
+      </div>
       <button onclick="this.closest('event-panel').sendWI()" style="margin-top:8px;width:100%">Add Work Instruction</button>
 
       <h3 style="margin-top:20px">Work Queue</h3>
@@ -148,6 +152,10 @@ class EventPanel extends HTMLElement {
           <option value="ACTIVE">ACTIVE</option>
           <option value="INACTIVE">INACTIVE</option>
         </select>
+      </div>
+      <div class="form-group">
+        <label>QC Muda (sec)</label>
+        <input id="wq-muda" type="number" value="5">
       </div>
       <button onclick="this.closest('event-panel').sendWQ()" style="margin-top:8px;width:100%">Send Work Queue</button>`;
     this.querySelector('#wi-emt').addEventListener('input', () => { this._emtDirty = true; });
@@ -164,6 +172,7 @@ class EventPanel extends HTMLElement {
       workQueueId: this.querySelector('#wi-queue').value,
       fetchChe: this.querySelector('#wi-che').value,
       estimatedMoveTime: this.querySelector('#wi-emt').value,
+      estimatedCycleTimeSeconds: this.querySelector('#wi-ect').value,
       status: 'PENDING'
     };
     await apiCall('/api/work-instruction', data);
@@ -178,7 +187,8 @@ class EventPanel extends HTMLElement {
   async sendWQ() {
     await apiCall('/api/work-queue', {
       workQueueId: this.querySelector('#wq-id').value,
-      status: this.querySelector('#wq-status').value
+      status: this.querySelector('#wq-status').value,
+      qcMudaSeconds: this.querySelector('#wq-muda').value
     });
     refreshState();
   }

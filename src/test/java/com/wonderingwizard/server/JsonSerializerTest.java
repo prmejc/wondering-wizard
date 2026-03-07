@@ -126,7 +126,7 @@ class JsonSerializerTest {
         @Test
         @DisplayName("Should serialize WorkQueueMessage")
         void serializesWorkQueueMessage() {
-            WorkQueueMessage event = new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE);
+            WorkQueueMessage event = new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0);
             String json = JsonSerializer.serialize(event);
             assertTrue(json.contains("\"type\":\"WorkQueueMessage\""));
             assertTrue(json.contains("\"workQueueId\":\"WQ-001\""));
@@ -138,7 +138,7 @@ class JsonSerializerTest {
         void serializesWorkInstructionEvent() {
             WorkInstructionEvent event = new WorkInstructionEvent(
                     "WI-001", "WQ-001", "RTG-01", WorkInstructionStatus.PENDING,
-                    Instant.parse("2024-01-01T10:00:00Z"));
+                    Instant.parse("2024-01-01T10:00:00Z"), 120);
             String json = JsonSerializer.serialize(event);
             assertTrue(json.contains("\"type\":\"WorkInstructionEvent\""));
             assertTrue(json.contains("\"workInstructionId\":\"WI-001\""));

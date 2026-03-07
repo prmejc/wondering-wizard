@@ -152,6 +152,7 @@ public final class JsonSerializer {
                 writeField(sb, "type", "WorkQueueMessage", true);
                 writeField(sb, "workQueueId", e.workQueueId(), false);
                 writeField(sb, "status", e.status(), false);
+                writeField(sb, "qcMudaSeconds", e.qcMudaSeconds(), false);
                 sb.append('}');
             }
             case WorkInstructionEvent e -> {
@@ -162,6 +163,7 @@ public final class JsonSerializer {
                 writeField(sb, "fetchChe", e.fetchChe(), false);
                 writeField(sb, "status", e.status(), false);
                 writeField(sb, "estimatedMoveTime", e.estimatedMoveTime(), false);
+                writeField(sb, "estimatedCycleTimeSeconds", e.estimatedCycleTimeSeconds(), false);
                 sb.append('}');
             }
             case ActionCompletedEvent e -> {
@@ -284,6 +286,7 @@ public final class JsonSerializer {
         writeField(sb, "fetchChe", wi.fetchChe(), false);
         writeField(sb, "status", wi.status(), false);
         writeField(sb, "estimatedMoveTime", wi.estimatedMoveTime(), false);
+        writeField(sb, "estimatedCycleTimeSeconds", wi.estimatedCycleTimeSeconds(), false);
         sb.append('}');
     }
 

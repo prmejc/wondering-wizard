@@ -11,11 +11,12 @@ import com.wonderingwizard.engine.Event;
  *
  * @param workQueueId unique identifier for the work queue
  * @param status the status of the work queue
+ * @param qcMudaSeconds QC muda (waste) time in seconds, added to each takt's duration
  */
-public record WorkQueueMessage(String workQueueId, WorkQueueStatus status) implements Event {
+public record WorkQueueMessage(String workQueueId, WorkQueueStatus status, int qcMudaSeconds) implements Event {
 
     @Override
     public String toString() {
-        return "WorkQueueMessage[workQueueId=" + workQueueId + ", status=" + status + "]";
+        return "WorkQueueMessage[workQueueId=" + workQueueId + ", status=" + status + ", qcMudaSeconds=" + qcMudaSeconds + "]";
     }
 }

@@ -22,7 +22,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.Random;
 import java.util.UUID;
 
 /**
@@ -48,7 +47,7 @@ public class WorkQueueProcessor implements EventProcessor {
 
     private final Map<String, Boolean> activeSchedules = new HashMap<>();
     private final Map<String, List<WorkInstruction>> workInstructions = new HashMap<>();
-    private final Random random = new Random();
+    private final Map<String, Integer> qcMudaByQueue = new HashMap<>();
 
     @Override
     public List<SideEffect> process(Event event) {
@@ -76,7 +75,8 @@ public class WorkQueueProcessor implements EventProcessor {
                 workQueueId,
                 event.fetchChe(),
                 event.status(),
-                event.estimatedMoveTime()
+                event.estimatedMoveTime(),
+                event.estimatedCycleTimeSeconds()
         );
 
         workInstructions
@@ -89,6 +89,7 @@ public class WorkQueueProcessor implements EventProcessor {
     private List<SideEffect> handleWorkQueueMessage(WorkQueueMessage message) {
         String workQueueId = message.workQueueId();
         WorkQueueStatus status = message.status();
+        qcMudaByQueue.put(workQueueId, message.qcMudaSeconds());
 
         return switch (status) {
             case ACTIVE -> handleActiveStatus(workQueueId);
@@ -113,12 +114,13 @@ public class WorkQueueProcessor implements EventProcessor {
                 .min(java.time.Instant::compareTo)
                 .orElse(null);
 
-        List<Takt> takts = createTaktsFromWorkInstructions(instructions, estimatedMoveTime);
+        int qcMuda = qcMudaByQueue.getOrDefault(workQueueId, 0);
+        List<Takt> takts = createTaktsFromWorkInstructions(instructions, estimatedMoveTime, qcMuda);
 
         return List.of(new ScheduleCreated(workQueueId, takts, estimatedMoveTime));
     }
 
-    private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions, java.time.Instant estimatedMoveTime) {
+    private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions, java.time.Instant estimatedMoveTime, int qcMudaSeconds) {
         if (instructions.isEmpty()) {
             return List.of();
         }
@@ -194,30 +196,47 @@ public class WorkQueueProcessor implements EventProcessor {
 
         // Convert to Takt objects
         // The first QC takt is at index 'adjustment' (the offset that normalizes takt D to index 0)
-        // Each QC takt (TAKT100+c) gets its planned start time from the corresponding WI's estimatedMoveTime
-        // PULSE takts are offset backward from TAKT100 by 2 minutes per takt
+        // Takt duration = estimatedCycleTime of the WI whose QC works in that takt + qcMuda
+        // Planned start time is computed sequentially: next takt = prev takt start + prev takt duration
         int firstQcTaktIndex = adjustment;
-        java.time.Instant firstQcTime = instructions.get(0).estimatedMoveTime();
-        List<Takt> takts = new ArrayList<>();
+
+        // Pre-compute duration for each takt based on the QC container's estimated cycle time
+        int[] durations = new int[totalTakts];
         for (int i = 0; i < totalTakts; i++) {
             int containerIndex = i - firstQcTaktIndex;
-            java.time.Instant plannedStartTime;
+            int cycleTime;
             if (containerIndex >= 0 && containerIndex < instructions.size()) {
-                // QC takt: use the corresponding WI's estimatedMoveTime
-                plannedStartTime = instructions.get(containerIndex).estimatedMoveTime();
-            } else if (containerIndex < 0 && firstQcTime != null) {
-                // PULSE takt: offset backward from TAKT100 by 2 minutes per takt
-                long minutesBack = (long) (firstQcTaktIndex - i) * 2;
-                plannedStartTime = firstQcTime.minus(java.time.Duration.ofMinutes(minutesBack));
+                cycleTime = instructions.get(containerIndex).estimatedCycleTimeSeconds();
             } else {
-                plannedStartTime = null;
+                // PULSE takts: use the first WI's cycle time
+                cycleTime = instructions.get(0).estimatedCycleTimeSeconds();
             }
-            if (plannedStartTime == null) {
-                plannedStartTime = java.time.Instant.EPOCH;
-            }
+            durations[i] = cycleTime + qcMudaSeconds;
+        }
+
+        // Compute planned start times sequentially
+        // TAKT100 (first QC takt) starts at the first WI's estimatedMoveTime
+        java.time.Instant firstQcTime = instructions.get(0).estimatedMoveTime();
+        if (firstQcTime == null) {
+            firstQcTime = java.time.Instant.EPOCH;
+        }
+
+        // Work backwards from firstQcTaktIndex for PULSE takts, forwards for QC takts
+        java.time.Instant[] plannedTimes = new java.time.Instant[totalTakts];
+        plannedTimes[firstQcTaktIndex] = firstQcTime;
+        // Backward for PULSE takts
+        for (int i = firstQcTaktIndex - 1; i >= 0; i--) {
+            plannedTimes[i] = plannedTimes[i + 1].minusSeconds(durations[i]);
+        }
+        // Forward for subsequent QC takts
+        for (int i = firstQcTaktIndex + 1; i < totalTakts; i++) {
+            plannedTimes[i] = plannedTimes[i - 1].plusSeconds(durations[i - 1]);
+        }
+
+        List<Takt> takts = new ArrayList<>();
+        for (int i = 0; i < totalTakts; i++) {
             String taktName = Takt.createTaktName(i, firstQcTaktIndex);
-            int durationSeconds = 115 + random.nextInt(21); // random between 115 and 135
-            takts.add(new Takt(taktName, actionsByTakt.get(i), plannedStartTime, plannedStartTime, durationSeconds));
+            takts.add(new Takt(taktName, actionsByTakt.get(i), plannedTimes[i], plannedTimes[i], durations[i]));
         }
 
         return takts;
@@ -245,6 +264,7 @@ public class WorkQueueProcessor implements EventProcessor {
             instructionsCopy.put(entry.getKey(), new ArrayList<>(entry.getValue()));
         }
         state.put("workInstructions", instructionsCopy);
+        state.put("qcMudaByQueue", new HashMap<>(qcMudaByQueue));
 
         return state;
     }
@@ -271,6 +291,12 @@ public class WorkQueueProcessor implements EventProcessor {
             for (Map.Entry<String, List<WorkInstruction>> entry : instructionsMap.entrySet()) {
                 workInstructions.put(entry.getKey(), new ArrayList<>(entry.getValue()));
             }
+        }
+
+        qcMudaByQueue.clear();
+        Object qcMudaState = stateMap.get("qcMudaByQueue");
+        if (qcMudaState instanceof Map) {
+            qcMudaByQueue.putAll((Map<String, Integer>) qcMudaState);
         }
     }
 }

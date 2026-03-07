@@ -130,7 +130,8 @@ public class Main {
                 workQueueId,
                 "RTG-01",
                 WorkInstructionStatus.PENDING,
-                estimatedMoveTime
+                estimatedMoveTime,
+                120
         ));
         logger.info("WorkInstructionEvent 1 side effects: " + sideEffects1);
 
@@ -140,14 +141,15 @@ public class Main {
                 workQueueId,
                 "RTG-02",
                 WorkInstructionStatus.PENDING,
-                estimatedMoveTime.plusSeconds(5)
+                estimatedMoveTime.plusSeconds(5),
+                120
         ));
         logger.info("WorkInstructionEvent 2 side effects: " + sideEffects2);
 
         // Step 2: Activate the work queue - EventPropagatingEngine automatically processes
         // ScheduleCreated as an event since it implements both SideEffect and Event
         logger.info("--- Activating Work Queue ---");
-        List<SideEffect> sideEffects3 = engine.processEvent(new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE));
+        List<SideEffect> sideEffects3 = engine.processEvent(new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0));
         logger.info("WorkQueueMessage ACTIVE side effects: " + sideEffects3);
 
         // Step 3: Process TimeEvent at estimated move time to trigger action activation

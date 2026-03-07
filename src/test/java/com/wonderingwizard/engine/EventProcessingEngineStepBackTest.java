@@ -146,7 +146,7 @@ class EventProcessingEngineStepBackTest {
         @DisplayName("stepBack reverts schedule creation")
         void stepBackRevertsScheduleCreation() {
             List<SideEffect> createEffects = engine.processEvent(
-                    new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
+                    new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
 
             assertTrue(createEffects.stream().anyMatch(se -> se instanceof ScheduleCreated));
 
@@ -155,7 +155,7 @@ class EventProcessingEngineStepBackTest {
 
             // Creating the same schedule should produce ScheduleCreated again (not idempotent)
             List<SideEffect> recreateEffects = engine.processEvent(
-                    new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
+                    new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
 
             assertTrue(recreateEffects.stream().anyMatch(se -> se instanceof ScheduleCreated));
         }
@@ -164,17 +164,17 @@ class EventProcessingEngineStepBackTest {
         @DisplayName("stepBack reverts schedule abortion")
         void stepBackRevertsScheduleAbortion() {
             // Create schedule
-            engine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
+            engine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
 
             // Abort schedule
-            engine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.INACTIVE));
+            engine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.INACTIVE, 0));
 
             // Step back - schedule should be active again
             engine.stepBack();
 
             // Trying to create again should be idempotent (no side effect)
             List<SideEffect> recreateEffects = engine.processEvent(
-                    new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
+                    new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
 
             assertTrue(recreateEffects.stream().noneMatch(se -> se instanceof ScheduleCreated));
         }
@@ -189,7 +189,7 @@ class EventProcessingEngineStepBackTest {
         void stepBackRevertsAllProcessors() {
             // Set an alarm and create a schedule in one go (process both events)
             engine.processEvent(new SetTimeAlarm("alarm1", Instant.parse("2024-01-01T12:00:00Z")));
-            engine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
+            engine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
 
             assertEquals(2, engine.getHistorySize());
 
@@ -203,7 +203,7 @@ class EventProcessingEngineStepBackTest {
             List<SideEffect> effects = engine.processEvent(new TimeEvent(Instant.parse("2024-01-01T13:00:00Z")));
             assertTrue(effects.stream().noneMatch(se -> se instanceof AlarmTriggered));
 
-            effects = engine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE));
+            effects = engine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
             assertTrue(effects.stream().anyMatch(se -> se instanceof ScheduleCreated));
         }
     }
@@ -290,7 +290,7 @@ class EventProcessingEngineStepBackTest {
         @DisplayName("stepBack with no-op events still creates history")
         void stepBackWithNoOpEvents() {
             // Process an event that produces no side effects
-            engine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.INACTIVE));
+            engine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.INACTIVE, 0));
 
             assertEquals(1, engine.getHistorySize());
             assertTrue(engine.stepBack());

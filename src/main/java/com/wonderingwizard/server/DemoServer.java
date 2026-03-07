@@ -357,8 +357,11 @@ public class DemoServer {
             Instant estimatedMoveTime = estimatedMoveTimeStr != null
                     ? Instant.parse(estimatedMoveTimeStr) : null;
 
+            String estimatedCycleTimeStr = body.getOrDefault("estimatedCycleTimeSeconds", "0");
+            int estimatedCycleTimeSeconds = Integer.parseInt(estimatedCycleTimeStr);
+
             WorkInstructionEvent event = new WorkInstructionEvent(
-                    workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime);
+                    workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime, estimatedCycleTimeSeconds);
             List<SideEffect> effects = processStep("WorkInstruction: " + workInstructionId, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
@@ -380,7 +383,10 @@ public class DemoServer {
             String statusStr = requireField(body, "status");
             WorkQueueStatus status = WorkQueueStatus.valueOf(statusStr);
 
-            WorkQueueMessage event = new WorkQueueMessage(workQueueId, status);
+            String qcMudaStr = body.getOrDefault("qcMudaSeconds", "0");
+            int qcMudaSeconds = Integer.parseInt(qcMudaStr);
+
+            WorkQueueMessage event = new WorkQueueMessage(workQueueId, status, qcMudaSeconds);
             List<SideEffect> effects = processStep("WorkQueue " + statusStr + ": " + workQueueId, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
