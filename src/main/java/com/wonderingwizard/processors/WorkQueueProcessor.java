@@ -267,6 +267,7 @@ public class WorkQueueProcessor implements EventProcessor {
                                               Map<String, Integer> actionDurations) {
         return switch (template.description()) {
             case "handover from TT" -> HANDOVER_DURATION_SECONDS;
+            case "handover from RTG", "handover to QC" -> RTG_HANDOVER_DURATION_SECONDS;
             case "place on vessel" -> instruction.estimatedCycleTimeSeconds() - HANDOVER_DURATION_SECONDS;
             case "rtg drive" -> RTG_DRIVE_DURATION_SECONDS;
             case "fetch" -> instruction.estimatedRtgCycleTimeSeconds() - RTG_HANDOVER_DURATION_SECONDS;
