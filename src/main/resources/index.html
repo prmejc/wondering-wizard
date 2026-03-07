@@ -86,6 +86,7 @@ class ScheduleHeader extends HTMLElement {
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <span id="clock" style="font-family:monospace;font-size:20px;color:var(--qc-color)">00:00:00</span>
+        <button class="secondary" onclick="this.closest('schedule-header').tick(1)">+1 sec</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(60)">+1 min</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(300)">+5 min</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(900)">+15 min</button>
