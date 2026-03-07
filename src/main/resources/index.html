@@ -72,6 +72,7 @@ async function apiCall(path, body) {
 
 async function refreshState() {
   const state = await apiCall('/api/state');
+  window._lastState = state;
   document.querySelectorAll('[data-refresh]').forEach(el => el.refresh(state));
 }
 
@@ -206,7 +207,13 @@ class ScheduleView extends HTMLElement {
     this.style.cssText = 'grid-area:center;overflow:auto';
     this.classList.add('panel');
     this.setAttribute('data-refresh', '');
-    this.innerHTML = '<h2>Schedule</h2><div id="schedule-content"><p style="color:var(--text-muted)">No schedules yet. Add work instructions and activate a work queue.</p></div>';
+    this._pxPerSec = 3;
+    this.innerHTML = '<h2 style="display:flex;align-items:center;gap:12px">Schedule <label style="font-size:11px;font-weight:400;display:flex;align-items:center;gap:6px;color:var(--text-muted)">Scale <input id="scale-slider" type="range" min="3" max="15" value="3" style="width:80px"> <span id="scale-val">3</span>px/s</label></h2><div id="schedule-content"><p style="color:var(--text-muted)">No schedules yet. Add work instructions and activate a work queue.</p></div>';
+    this.querySelector('#scale-slider').addEventListener('input', e => {
+      this._pxPerSec = parseInt(e.target.value);
+      this.querySelector('#scale-val').textContent = this._pxPerSec;
+      this.refresh(window._lastState || {});
+    });
   }
   refresh(state) {
     const container = this.querySelector('#schedule-content');
@@ -217,6 +224,7 @@ class ScheduleView extends HTMLElement {
     }
 
     const deviceColors = { RTG: 'var(--rtg-color)', TT: 'var(--tt-color)', QC: 'var(--qc-color)' };
+    const scale = this._pxPerSec || 3;
 
     let html = '';
     for (const schedule of schedules) {
@@ -258,7 +266,7 @@ class ScheduleView extends HTMLElement {
       const numCols = takts.length;
 
       // Grid: label column + one column per takt (width proportional to duration)
-      const colDefs = takts.map(t => { const d = t.durationSeconds || 120; return 'minmax(' + Math.round(d * 3) + 'px,' + d + 'fr)'; }).join(' ');
+      const colDefs = takts.map(t => { const d = t.durationSeconds || 120; return 'minmax(' + Math.round(d * scale) + 'px,' + d + 'fr)'; }).join(' ');
       html += '<div style="display:inline-grid;grid-template-columns:56px ' + colDefs + ';gap:1px;min-width:100%">';
 
       // Header row: corner + takt headers
@@ -314,11 +322,14 @@ class ScheduleView extends HTMLElement {
             }
 
             const dur = action.durationSeconds || 30;
-            const widthPx = Math.round(dur * 3);
+            const widthPx = Math.round(dur * scale);
+            const narrow = widthPx < 30;
 
-            html += '<div style="background:' + bgColor + ';border:1px solid ' + borderColor + ';border-left:4px solid ' + containerColor + ';border-radius:4px;padding:3px 5px;opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0">';
-            html += '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600">' + statusLabel + ' <span style="color:' + containerColor + '">C' + ci + '</span></div>';
-            html += '<div>' + action.description + '</div>';
+            html += '<div title="' + action.description + ' (' + dur + 's)" style="background:' + bgColor + ';border:1px solid ' + borderColor + ';border-left:4px solid ' + containerColor + ';border-radius:4px;padding:' + (narrow ? '1px 2px' : '3px 5px') + ';opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0;overflow:hidden">';
+            if (!narrow) {
+              html += '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600">' + statusLabel + ' <span style="color:' + containerColor + '">C' + ci + '</span></div>';
+              html += '<div>' + action.description + '</div>';
+            }
             if (action.status === 'ACTIVE') {
               html += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + schedule.workQueueId + '">Complete</button>';
             }
