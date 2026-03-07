@@ -325,9 +325,9 @@ class WorkQueueProcessorTest {
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                // 3 containers with multi-device workflow: 3 + 3 (offset) = 6 takts
-                assertEquals(6, created.takts().size(),
-                        "Should have 6 takts for 3 work instructions with multi-device workflow");
+                // 3 containers with multi-device workflow: 3 + 4 (offset) = 7 takts
+                assertEquals(7, created.takts().size(),
+                        "Should have 7 takts for 3 work instructions with multi-device workflow");
             }
         }
 
@@ -351,8 +351,8 @@ class WorkQueueProcessorTest {
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 assertEquals("queue-1", created.workQueueId());
-                // 2 containers with multi-device workflow: 2 + 3 (offset) = 5 takts
-                assertEquals(5, created.takts().size());
+                // 2 containers with multi-device workflow: 2 + 4 (offset) = 6 takts
+                assertEquals(6, created.takts().size());
             }
 
             @Test
@@ -381,8 +381,8 @@ class WorkQueueProcessorTest {
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                // 2 containers with multi-device workflow: 2 + 3 (offset) = 5 takts
-                assertEquals(5, created.takts().size(),
+                // 2 containers with multi-device workflow: 2 + 4 (offset) = 6 takts
+                assertEquals(6, created.takts().size(),
                         "Only takts for queue-1 work instructions should be generated");
             }
         }
@@ -408,8 +408,8 @@ class WorkQueueProcessorTest {
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                // 2 containers with multi-device workflow: 2 + 3 (offset) = 5 takts
-                assertEquals(5, created.takts().size(),
+                // 2 containers with multi-device workflow: 2 + 4 (offset) = 6 takts
+                assertEquals(6, created.takts().size(),
                         "Takts should be regenerated from retained work instructions after abort");
             }
 
@@ -432,8 +432,8 @@ class WorkQueueProcessorTest {
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                // 2 containers with multi-device workflow: 2 + 3 (offset) = 5 takts
-                assertEquals(5, created.takts().size(),
+                // 2 containers with multi-device workflow: 2 + 4 (offset) = 6 takts
+                assertEquals(6, created.takts().size(),
                         "Both original and new work instructions should generate takts");
             }
         }
@@ -454,8 +454,8 @@ class WorkQueueProcessorTest {
                         new WorkQueueMessage("queue-1", ACTIVE, 0));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                // 4 containers with multi-device workflow: 4 + 3 (offset) = 7 takts
-                assertEquals(7, created.takts().size(),
+                // 4 containers with multi-device workflow: 4 + 4 (offset) = 8 takts
+                assertEquals(8, created.takts().size(),
                         "All 4 work instructions should generate takts");
             }
         }
@@ -493,8 +493,8 @@ class WorkQueueProcessorTest {
 
                 ScheduleCreated created = (ScheduleCreated) effects4.get(0);
                 assertEquals("queue-1", created.workQueueId());
-                // 2 containers with multi-device workflow: 2 + 3 (offset) = 5 takts
-                assertEquals(5, created.takts().size(),
+                // 2 containers with multi-device workflow: 2 + 4 (offset) = 6 takts
+                assertEquals(6, created.takts().size(),
                         "F-4 Requirement: Only queue-1 work instructions should generate takts");
             }
 
@@ -508,8 +508,8 @@ class WorkQueueProcessorTest {
                 // Activate
                 List<SideEffect> created1 = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE, 0));
-                // 2 containers with multi-device workflow: 2 + 3 (offset) = 5 takts
-                assertEquals(5, ((ScheduleCreated) created1.get(0)).takts().size());
+                // 2 containers with multi-device workflow: 2 + 4 (offset) = 6 takts
+                assertEquals(6, ((ScheduleCreated) created1.get(0)).takts().size());
 
                 // Abort
                 engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE, 0));
@@ -522,8 +522,8 @@ class WorkQueueProcessorTest {
                         new WorkQueueMessage("queue-1", ACTIVE, 0));
 
                 ScheduleCreated reactivated = (ScheduleCreated) created2.get(0);
-                // 3 containers with multi-device workflow: 3 + 3 (offset) = 6 takts
-                assertEquals(6, reactivated.takts().size(),
+                // 3 containers with multi-device workflow: 3 + 4 (offset) = 7 takts
+                assertEquals(7, reactivated.takts().size(),
                         "F-4 Requirement: All work instructions including new ones should generate takts");
             }
         }
@@ -554,9 +554,9 @@ class WorkQueueProcessorTest {
                         new WorkQueueMessage("queue-1", ACTIVE, 0));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                // 1 container with multi-device workflow: 1 + 3 (offset) = 4 takts
-                assertEquals(4, created.takts().size(),
-                        "Only 4 takts should be present after step back (1 container)");
+                // 1 container with multi-device workflow: 1 + 4 (offset) = 5 takts
+                assertEquals(5, created.takts().size(),
+                        "Only 5 takts should be present after step back (1 container)");
             }
         }
 
@@ -584,8 +584,8 @@ class WorkQueueProcessorTest {
 
                 assertTrue(created1.takts().isEmpty(),
                         "queue-1 should have no takts after move");
-                // 1 container with multi-device workflow: 1 + 3 (offset) = 4 takts
-                assertEquals(4, created2.takts().size(),
+                // 1 container with multi-device workflow: 1 + 4 (offset) = 5 takts
+                assertEquals(5, created2.takts().size(),
                         "queue-2 should have takts from moved work instruction");
             }
 
@@ -603,9 +603,9 @@ class WorkQueueProcessorTest {
                         new WorkQueueMessage("queue-1", ACTIVE, 0));
 
                 ScheduleCreated created = (ScheduleCreated) effects.get(0);
-                // 1 container with multi-device workflow: 1 + 3 (offset) = 4 takts
-                assertEquals(4, created.takts().size(),
-                        "Should have only 4 takts (1 container, not duplicated)");
+                // 1 container with multi-device workflow: 1 + 4 (offset) = 5 takts
+                assertEquals(5, created.takts().size(),
+                        "Should have only 5 takts (1 container, not duplicated)");
             }
 
             @Test
@@ -632,8 +632,8 @@ class WorkQueueProcessorTest {
                 ScheduleCreated created2 = (ScheduleCreated) effects2.get(0);
                 ScheduleCreated created3 = (ScheduleCreated) effects3.get(0);
 
-                // 1 container with multi-device workflow: 1 + 3 (offset) = 4 takts
-                assertEquals(4, created1.takts().size(),
+                // 1 container with multi-device workflow: 1 + 4 (offset) = 5 takts
+                assertEquals(5, created1.takts().size(),
                         "queue-1 should have the takts");
                 assertTrue(created2.takts().isEmpty(),
                         "queue-2 should have no takts");
@@ -659,11 +659,11 @@ class WorkQueueProcessorTest {
                 ScheduleCreated created1 = (ScheduleCreated) effects1.get(0);
                 ScheduleCreated created2 = (ScheduleCreated) effects2.get(0);
 
-                // queue-1 should have 4 takts (1 container: wi-2)
-                assertEquals(4, created1.takts().size());
+                // queue-1 should have 5 takts (1 container: wi-2)
+                assertEquals(5, created1.takts().size());
 
-                // queue-2 should have 5 takts (2 containers: wi-1 and wi-3)
-                assertEquals(5, created2.takts().size());
+                // queue-2 should have 6 takts (2 containers: wi-1 and wi-3)
+                assertEquals(6, created2.takts().size());
             }
         }
     }
@@ -689,29 +689,30 @@ class WorkQueueProcessorTest {
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 List<Takt> takts = created.takts();
 
-                // 3 containers with multi-device workflow: 3 + 3 (offset) = 6 takts
-                assertEquals(6, takts.size());
-                assertEquals("PULSE97", takts.get(0).name());
-                assertEquals("PULSE98", takts.get(1).name());
-                assertEquals("PULSE99", takts.get(2).name());
-                assertEquals("TAKT100", takts.get(3).name());
-                assertEquals("TAKT101", takts.get(4).name());
-                assertEquals("TAKT102", takts.get(5).name());
+                // 3 containers with multi-device workflow: 3 + 4 (offset) = 7 takts
+                assertEquals(7, takts.size());
+                assertEquals("PULSE96", takts.get(0).name());
+                assertEquals("PULSE97", takts.get(1).name());
+                assertEquals("PULSE98", takts.get(2).name());
+                assertEquals("PULSE99", takts.get(3).name());
+                assertEquals("TAKT100", takts.get(4).name());
+                assertEquals("TAKT101", takts.get(5).name());
+                assertEquals("TAKT102", takts.get(6).name());
             }
 
             @Test
-            @DisplayName("Single work instruction should create 4 takts (PULSE97-TAKT100)")
-            void singleWorkInstruction_createsFourTakts() {
+            @DisplayName("Single work instruction should create 5 takts (PULSE96-TAKT100)")
+            void singleWorkInstruction_createsFiveTakts() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE, 0));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                // 1 container: RTG at PULSE97, TT-RTG at PULSE98, TT-QC at PULSE99, QC at TAKT100
-                assertEquals(4, created.takts().size());
-                assertEquals("PULSE97", created.takts().get(0).name());
-                assertEquals("TAKT100", created.takts().get(3).name());
+                // 1 container: RTG+TT at PULSE96, TT-RTG at PULSE97, TT at PULSE98, TT at PULSE99, QC at TAKT100
+                assertEquals(5, created.takts().size());
+                assertEquals("PULSE96", created.takts().get(0).name());
+                assertEquals("TAKT100", created.takts().get(4).name());
             }
         }
 
@@ -720,7 +721,7 @@ class WorkQueueProcessorTest {
         class MultiDeviceActions {
 
             @Test
-            @DisplayName("Single container should have 14 actions across 4 takts")
+            @DisplayName("Single container should have 14 actions across 5 takts")
             void singleContainer_hasFourteenActions() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null, 120));
 
@@ -735,7 +736,7 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("PULSE97 should have RTG prep + TT approach (4 actions)")
+            @DisplayName("PULSE96 should have RTG prep + TT approach (4 actions)")
             void taktA_rtgPrepAndTtApproach() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null, 120));
 
@@ -763,7 +764,7 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("PULSE98 should have RTG-TT handover (3 actions)")
+            @DisplayName("PULSE97 should have RTG-TT handover (3 actions)")
             void taktB_rtgTtHandover() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null, 120));
 
@@ -790,7 +791,7 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("PULSE99 should have TT transit to QC (2 actions)")
+            @DisplayName("PULSE98 should have TT transit to QC (2 actions)")
             void taktC_ttTransit() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null, 120));
 
@@ -817,27 +818,52 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("TAKT100 should have TT-QC handover + QC ops (5 actions)")
-            void taktD_ttQcHandoverAndQcOps() {
+            @DisplayName("PULSE99 should have TT approach to QC (1 action)")
+            void taktD_ttApproachToQc() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE, 0));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                Takt takt103 = created.takts().get(3);
+                Takt pulse99 = created.takts().get(3);
 
-                assertEquals(5, takt103.actions().size());
+                assertEquals(1, pulse99.actions().size());
 
-                List<Action> ttActions = takt103.actions().stream()
+                List<Action> ttActions = pulse99.actions().stream()
                         .filter(a -> a.deviceType() == DeviceType.TT)
                         .collect(Collectors.toList());
-                assertEquals(3, ttActions.size());
+                assertEquals(1, ttActions.size());
                 assertEquals("drive under QC", ttActions.get(0).description());
-                assertEquals("handover to QC", ttActions.get(1).description());
-                assertEquals("drive to buffer", ttActions.get(2).description());
 
-                List<Action> qcActions = takt103.actions().stream()
+                // No QC actions yet - QC starts in next takt
+                List<Action> qcActions = pulse99.actions().stream()
+                        .filter(a -> a.deviceType() == DeviceType.QC)
+                        .collect(Collectors.toList());
+                assertTrue(qcActions.isEmpty(), "No QC actions in TT approach takt");
+            }
+
+            @Test
+            @DisplayName("TAKT100 should have TT-QC handover + QC ops (4 actions)")
+            void taktE_ttQcHandoverAndQcOps() {
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null, 120));
+
+                List<SideEffect> sideEffects = engine.processEvent(
+                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+
+                ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
+                Takt takt100 = created.takts().get(4);
+
+                assertEquals(4, takt100.actions().size());
+
+                List<Action> ttActions = takt100.actions().stream()
+                        .filter(a -> a.deviceType() == DeviceType.TT)
+                        .collect(Collectors.toList());
+                assertEquals(2, ttActions.size());
+                assertEquals("handover to QC", ttActions.get(0).description());
+                assertEquals("drive to buffer", ttActions.get(1).description());
+
+                List<Action> qcActions = takt100.actions().stream()
                         .filter(a -> a.deviceType() == DeviceType.QC)
                         .collect(Collectors.toList());
                 assertEquals(2, qcActions.size());
@@ -860,23 +886,26 @@ class WorkQueueProcessorTest {
                         new WorkQueueMessage("queue-1", ACTIVE, 0));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                // 2 containers: 2 + 3 (offset) = 5 takts
-                assertEquals(5, created.takts().size());
+                // 2 containers: 2 + 4 (offset) = 6 takts
+                assertEquals(6, created.takts().size());
 
-                // PULSE97: Container 0 Takt A (4 actions)
+                // PULSE96: Container 0 Takt A (4 actions)
                 assertEquals(4, created.takts().get(0).actions().size());
 
-                // PULSE98: Container 0 Takt B (3) + Container 1 Takt A (4) = 7 actions
+                // PULSE97: Container 0 Takt B (3) + Container 1 Takt A (4) = 7 actions
                 assertEquals(7, created.takts().get(1).actions().size());
 
-                // PULSE99: Container 0 Takt C (2) + Container 1 Takt B (3) = 5 actions
+                // PULSE98: Container 0 Takt C (2) + Container 1 Takt B (3) = 5 actions
                 assertEquals(5, created.takts().get(2).actions().size());
 
-                // TAKT100: Container 0 Takt D (5) + Container 1 Takt C (2) = 7 actions
-                assertEquals(7, created.takts().get(3).actions().size());
+                // PULSE99: Container 0 Takt D (1) + Container 1 Takt C (2) = 3 actions
+                assertEquals(3, created.takts().get(3).actions().size());
 
-                // TAKT101: Container 1 Takt D (5 actions)
+                // TAKT100: Container 0 Takt E (4) + Container 1 Takt D (1) = 5 actions
                 assertEquals(5, created.takts().get(4).actions().size());
+
+                // TAKT101: Container 1 Takt E (4 actions)
+                assertEquals(4, created.takts().get(5).actions().size());
             }
         }
 

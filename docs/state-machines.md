@@ -130,22 +130,24 @@ drive to QC pull → drive to QC standby → drive under QC → handover to QC �
 handover from TT → place on vessel
 ```
 
-### Takt Structure (4 takts per container)
+### Takt Structure (5 takts per container)
 
 ```
-Takt A (offset -3):  RTG: rtg drive, fetch
+Takt A (offset -4):  RTG: rtg drive, fetch
                       TT:  drive to RTG pull, drive to RTG standby
 
-Takt B (offset -2):  RTG: rtg handover to TT
+Takt B (offset -3):  RTG: rtg handover to TT
                       TT:  drive to RTG under, handover from RTG
 
-Takt C (offset -1):  TT:  drive to QC pull, drive to QC standby
+Takt C (offset -2):  TT:  drive to QC pull, drive to QC standby
 
-Takt D (offset  0):  TT:  drive under QC, handover to QC, drive to buffer
+Takt D (offset -1):  TT:  drive under QC
+
+Takt E (offset  0):  TT:  handover to QC, drive to buffer
                       QC:  handover from TT, place on vessel
 ```
 
-Early takts (A, B, C) have no QC actions because TT has not reached QC position yet.
+Early takts (A, B, C, D) have no QC actions because TT has not reached QC position yet.
 
 ### Dependency Graph
 
@@ -179,11 +181,12 @@ Actions from different containers in the same takt are independent (no cross-con
 ```
 Example: 2 containers
 
-PULSE97:  Container 0 Takt A  (4 actions)
-PULSE98:  Container 0 Takt B + Container 1 Takt A  (7 actions)
-PULSE99:  Container 0 Takt C + Container 1 Takt B  (5 actions)
-TAKT100:  Container 0 Takt D + Container 1 Takt C  (7 actions)
-TAKT101:  Container 1 Takt D  (5 actions)
+PULSE96:  Container 0 Takt A  (4 actions)
+PULSE97:  Container 0 Takt B + Container 1 Takt A  (7 actions)
+PULSE98:  Container 0 Takt C + Container 1 Takt B  (5 actions)
+PULSE99:  Container 0 Takt D + Container 1 Takt C  (3 actions)
+TAKT100:  Container 0 Takt E + Container 1 Takt D  (5 actions)
+TAKT101:  Container 1 Takt E  (4 actions)
 ```
 
 ---
