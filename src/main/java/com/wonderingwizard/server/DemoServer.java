@@ -21,6 +21,8 @@ import com.wonderingwizard.sideeffects.ActionActivated;
 import com.wonderingwizard.sideeffects.ActionCompleted;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
+import com.wonderingwizard.sideeffects.TaktActivated;
+import com.wonderingwizard.sideeffects.TaktCompleted;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -76,16 +78,22 @@ public class DemoServer {
         PENDING, ACTIVE, COMPLETED
     }
 
+    /** Takt status for schedule visualization. */
+    public enum TaktState {
+        WAITING, ACTIVE, COMPLETED
+    }
+
     /** Schedule view for the API state response. */
     public record ScheduleView(String workQueueId, boolean active, Instant estimatedMoveTime,
                                 List<TaktView> takts) {}
 
     /** Takt view within a schedule. */
-    public record TaktView(String name, List<ActionView> actions) {}
+    public record TaktView(String name, TaktState status, List<ActionView> actions) {}
 
     /** Action view within a takt. */
     public record ActionView(UUID id, DeviceType deviceType, String description,
-                              ActionState status, Set<UUID> dependsOn) {}
+                              ActionState status, Set<UUID> dependsOn, int containerIndex,
+                              int durationSeconds) {}
 
     public DemoServer() {
         EventProcessingEngine baseEngine = new EventProcessingEngine();
@@ -206,14 +214,27 @@ public class DemoServer {
                             for (Action action : takt.actions()) {
                                 actionViews.add(new ActionView(
                                         action.id(), action.deviceType(), action.description(),
-                                        ActionState.PENDING, action.dependsOn()));
+                                        ActionState.PENDING, action.dependsOn(), action.containerIndex(),
+                                        action.durationSeconds()));
                             }
-                            builder.takts.add(new TaktView(takt.name(), actionViews));
+                            builder.takts.add(new TaktView(takt.name(), TaktState.WAITING, actionViews));
                         }
                         builders.put(created.workQueueId(), builder);
                     }
                     case ScheduleAborted aborted ->
                             builders.remove(aborted.workQueueId());
+                    case TaktActivated taktActivated -> {
+                        ScheduleViewBuilder builder = builders.get(taktActivated.workQueueId());
+                        if (builder != null) {
+                            builder.setTaktStatus(taktActivated.taktName(), TaktState.ACTIVE);
+                        }
+                    }
+                    case TaktCompleted taktCompleted -> {
+                        ScheduleViewBuilder builder = builders.get(taktCompleted.workQueueId());
+                        if (builder != null) {
+                            builder.setTaktStatus(taktCompleted.taktName(), TaktState.COMPLETED);
+                        }
+                    }
                     case ActionActivated activated -> {
                         ScheduleViewBuilder builder = builders.get(activated.workQueueId());
                         if (builder != null) {
@@ -242,6 +263,7 @@ public class DemoServer {
         final Instant estimatedMoveTime;
         final List<TaktView> takts = new ArrayList<>();
         final Map<UUID, ActionState> actionStates = new HashMap<>();
+        final Map<String, TaktState> taktStates = new HashMap<>();
 
         ScheduleViewBuilder(String workQueueId, boolean active, Instant estimatedMoveTime) {
             this.workQueueId = workQueueId;
@@ -253,17 +275,23 @@ public class DemoServer {
             actionStates.put(actionId, status);
         }
 
+        void setTaktStatus(String taktName, TaktState status) {
+            taktStates.put(taktName, status);
+        }
+
         ScheduleView build() {
             List<TaktView> updatedTakts = new ArrayList<>();
             for (TaktView takt : takts) {
+                TaktState taktState = taktStates.getOrDefault(takt.name(), takt.status());
                 List<ActionView> updatedActions = new ArrayList<>();
                 for (ActionView action : takt.actions()) {
                     ActionState state = actionStates.getOrDefault(action.id(), action.status());
                     updatedActions.add(new ActionView(
                             action.id(), action.deviceType(), action.description(),
-                            state, action.dependsOn()));
+                            state, action.dependsOn(), action.containerIndex(),
+                            action.durationSeconds()));
                 }
-                updatedTakts.add(new TaktView(takt.name(), updatedActions));
+                updatedTakts.add(new TaktView(takt.name(), taktState, updatedActions));
             }
             return new ScheduleView(workQueueId, active, estimatedMoveTime, updatedTakts);
         }

@@ -9,20 +9,37 @@ import static com.wonderingwizard.domain.takt.DeviceType.*;
 
 /**
  * Defines the standard workflow for moving a container from yard to vessel.
- * The workflow involves multiple devices (RTG, TT, QC) with actions distributed
- * across different takts relative to the container's base takt.
+ * The workflow involves three devices (RTG, TT, QC) operating in parallel
+ * with handover synchronization points between them.
  *
- * <p>Actions form a linked sequence. The {@code isFirstInTaktForDevice} flag marks
- * takt boundaries - when true, this action starts a new takt and all previous
- * actions must be in earlier takts.
- *
- * <p>Takt boundaries (where isFirstInTaktForDevice=true):
+ * <h3>Device workflows:</h3>
  * <ul>
- *   <li>RTG "lift container from yard" - starts first takt</li>
- *   <li>TT "drive under RTG" - starts second takt</li>
- *   <li>TT "drive under QC" - starts third takt</li>
- *   <li>QC "container lifted from truck" - starts fourth takt (base takt)</li>
+ *   <li><b>RTG:</b> rtg drive → fetch → rtg handover to TT</li>
+ *   <li><b>TT:</b> drive to RTG pull → drive to RTG standby → drive to RTG under →
+ *       handover from RTG → drive to QC pull → drive to QC standby → drive under QC →
+ *       handover to QC → drive to buffer</li>
+ *   <li><b>QC:</b> handover from TT → place on vessel</li>
  * </ul>
+ *
+ * <h3>Takt structure (4 takts per container):</h3>
+ * <ul>
+ *   <li><b>Takt A:</b> RTG prep (rtg drive, fetch) + TT approach (drive to RTG pull, drive to RTG standby)</li>
+ *   <li><b>Takt B:</b> RTG-TT handover (rtg handover to TT, drive to RTG under, handover from RTG)</li>
+ *   <li><b>Takt C:</b> TT transit (drive to QC pull, drive to QC standby)</li>
+ *   <li><b>Takt D:</b> TT-QC handover + QC ops (drive under QC, handover to QC, handover from TT,
+ *       place on vessel, drive to buffer)</li>
+ * </ul>
+ *
+ * <h3>Cross-device synchronization:</h3>
+ * <ul>
+ *   <li>"rtg handover to TT" (RTG) depends on "drive to RTG under" (TT) completing first.
+ *       "handover from RTG" (TT) depends on its own previous TT action.</li>
+ *   <li>"handover from TT" (QC) and "handover to QC" (TT) both depend on "drive under QC" (TT)
+ *       completing first. "handover from TT" has a cross-device dependency on TT.</li>
+ * </ul>
+ *
+ * <p>Early takts have no QC actions because TT has not reached QC position yet.
+ * QC only participates in the final takt (Takt D).
  */
 public final class ContainerWorkflow {
 
@@ -32,25 +49,36 @@ public final class ContainerWorkflow {
 
     /**
      * The ordered list of action templates for the container workflow.
-     * Actions form a linked sequence - use {@link #getPrevious} and {@link #getNext}
-     * to navigate between templates.
+     * Actions are grouped by takt, with {@code isFirstInTaktForDevice=true} marking takt boundaries.
+     *
+     * <p>Within each takt, actions from different devices can run in parallel.
+     * Dependencies are per-device (each action depends on the previous action of the same device)
+     * plus explicit cross-device dependencies for handover synchronization.
      */
     public static final List<DeviceActionTemplate> ACTION_TEMPLATES = List.of(
-            // RTG actions - first takt boundary
-            DeviceActionTemplate.of(RTG, "lift container from yard", true),
-            DeviceActionTemplate.of(RTG, "place container on truck", false),
+            // Takt A: RTG prep + TT approach to RTG (no QC)
+            DeviceActionTemplate.of(RTG, "rtg drive", true),
+            DeviceActionTemplate.of(RTG, "fetch", false),
+            DeviceActionTemplate.of(TT, "drive to RTG pull", false),
+            DeviceActionTemplate.of(TT, "drive to RTG standby", false),
 
-            // TT actions at RTG - second takt boundary
-            DeviceActionTemplate.of(TT, "drive under RTG", true),
+            // Takt B: RTG-TT handover (no QC)
+            DeviceActionTemplate.of(TT, "drive to RTG under", true),
+            DeviceActionTemplate.of(RTG, "rtg handover to TT", false, TT),
             DeviceActionTemplate.of(TT, "handover from RTG", false),
 
-            // TT actions at QC - third takt boundary
-            DeviceActionTemplate.of(TT, "drive under QC", true),
-            DeviceActionTemplate.of(TT, "handover to QC", false),
+            // Takt C: TT transit to QC (no RTG, no QC)
+            DeviceActionTemplate.of(TT, "drive to QC pull", true),
+            DeviceActionTemplate.of(TT, "drive to QC standby", false),
 
-            // QC actions - fourth takt boundary (base takt)
-            DeviceActionTemplate.of(QC, "container lifted from truck", true),
-            DeviceActionTemplate.of(QC, "container placed on vessel", false)
+            // Takt D: TT-QC handover + QC operations
+            // "handover from TT" must come before "handover to QC" in template order
+            // so both resolve their cross-device/same-device dep to "drive under QC"
+            DeviceActionTemplate.of(TT, "drive under QC", true),
+            DeviceActionTemplate.of(QC, "handover from TT", false, TT),
+            DeviceActionTemplate.of(TT, "handover to QC", false),
+            DeviceActionTemplate.of(QC, "place on vessel", false),
+            DeviceActionTemplate.of(TT, "drive to buffer", false)
     );
 
     /**
@@ -69,7 +97,7 @@ public final class ContainerWorkflow {
             offsets.put(template, currentTakt);
         }
 
-        // Normalize so that the last takt boundary (QC) is at offset 0
+        // Normalize so that the last takt boundary (QC handover) is at offset 0
         int baseTaktOffset = offsets.get(ACTION_TEMPLATES.get(ACTION_TEMPLATES.size() - 1));
         for (DeviceActionTemplate template : ACTION_TEMPLATES) {
             offsets.put(template, offsets.get(template) - baseTaktOffset);
@@ -108,7 +136,7 @@ public final class ContainerWorkflow {
 
     /**
      * Gets the computed takt offset for a template.
-     * Offset 0 is the base takt (QC actions), negative values are earlier takts.
+     * Offset 0 is the base takt (QC/TT handover takt), negative values are earlier takts.
      *
      * @param template the template
      * @return the takt offset

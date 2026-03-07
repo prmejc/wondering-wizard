@@ -3,6 +3,7 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.ContainerWorkflow;
 import com.wonderingwizard.domain.takt.DeviceActionTemplate;
+import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
@@ -15,7 +16,9 @@ import com.wonderingwizard.sideeffects.ScheduleCreated;
 import com.wonderingwizard.sideeffects.WorkInstruction;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -101,8 +104,6 @@ public class WorkQueueProcessor implements EventProcessor {
         // Create new schedule with takts generated from work instructions
         activeSchedules.put(workQueueId, true);
         List<WorkInstruction> instructions = workInstructions.getOrDefault(workQueueId, List.of());
-        List<Takt> takts = createTaktsFromWorkInstructions(instructions);
-
         // Find earliest estimated move time from work instructions
         var estimatedMoveTime = instructions.stream()
                 .map(WorkInstruction::estimatedMoveTime)
@@ -110,10 +111,12 @@ public class WorkQueueProcessor implements EventProcessor {
                 .min(java.time.Instant::compareTo)
                 .orElse(null);
 
+        List<Takt> takts = createTaktsFromWorkInstructions(instructions, estimatedMoveTime);
+
         return List.of(new ScheduleCreated(workQueueId, takts, estimatedMoveTime));
     }
 
-    private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions) {
+    private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions, java.time.Instant estimatedMoveTime) {
         if (instructions.isEmpty()) {
             return List.of();
         }
@@ -124,7 +127,7 @@ public class WorkQueueProcessor implements EventProcessor {
 
         // Calculate total number of takts needed
         int numContainers = instructions.size();
-        int maxTaktIndex = (numContainers - 1) + adjustment; // Last container's QC takt
+        int maxTaktIndex = (numContainers - 1) + adjustment; // Last container's base takt
         int totalTakts = maxTaktIndex + 1;
 
         // Initialize takt action lists
@@ -133,38 +136,66 @@ public class WorkQueueProcessor implements EventProcessor {
             actionsByTakt.put(i, new ArrayList<>());
         }
 
+        // Track last action for shared devices (RTG, QC) across containers so that
+        // container N's first action on a shared device depends on container N-1's last
+        // action on that device. TT is per-container (each container gets its own truck).
+        Map<DeviceType, Action> lastSharedDeviceAction = new EnumMap<>(DeviceType.class);
+
         // Create actions for each container (work instruction)
         for (int containerIndex = 0; containerIndex < numContainers; containerIndex++) {
             int baseTaktIndex = containerIndex + adjustment;
-            Action previousAction = null;
 
-            // Create actions in workflow order (RTG -> TT -> QC)
+            // Per-container tracking for within-container same-device and cross-device deps
+            Map<DeviceType, Action> lastActionByDevice = new EnumMap<>(DeviceType.class);
+
             for (DeviceActionTemplate template : templates) {
                 int targetTaktIndex = baseTaktIndex + ContainerWorkflow.getTaktOffset(template);
 
-                // Create action with dependencies
-                Action action = Action.create(template.deviceType(), template.description());
+                Action action = Action.create(template.deviceType(), template.description(), containerIndex, template.durationSeconds());
 
-                Set<UUID> dependencies;
-                if (previousAction == null) {
-                    // First action of workflow: no dependencies
-                    dependencies = Set.of();
-                } else {
-                    // Depends on previous action in the workflow
-                    dependencies = Set.of(previousAction.id());
+                // Build dependencies: previous action of same device + optional cross-device dependency
+                Set<UUID> dependencies = new HashSet<>();
+
+                // Depend on previous action of the same device type (within this container)
+                Action prevSameDevice = lastActionByDevice.get(template.deviceType());
+                if (prevSameDevice != null) {
+                    dependencies.add(prevSameDevice.id());
+                } else if (template.deviceType() != DeviceType.TT) {
+                    // First action on a shared device: depend on previous container's last action
+                    Action prevShared = lastSharedDeviceAction.get(template.deviceType());
+                    if (prevShared != null) {
+                        dependencies.add(prevShared.id());
+                    }
                 }
 
-                Action actionWithDeps = action.withDependencies(dependencies);
+                // Cross-device dependency (handover synchronization)
+                if (template.crossDeviceDependency() != null) {
+                    Action prevOtherDevice = lastActionByDevice.get(template.crossDeviceDependency());
+                    if (prevOtherDevice != null) {
+                        dependencies.add(prevOtherDevice.id());
+                    }
+                }
+
+                Action actionWithDeps = action.withDependencies(
+                        dependencies.isEmpty() ? Set.of() : Set.copyOf(dependencies));
                 actionsByTakt.get(targetTaktIndex).add(actionWithDeps);
-                previousAction = actionWithDeps;
+                lastActionByDevice.put(template.deviceType(), actionWithDeps);
+            }
+
+            // Update shared device tracking for RTG and QC
+            for (var entry : lastActionByDevice.entrySet()) {
+                if (entry.getKey() != DeviceType.TT) {
+                    lastSharedDeviceAction.put(entry.getKey(), entry.getValue());
+                }
             }
         }
 
-        // Convert to Takt objects
+        // Convert to Takt objects - all takts share the schedule's estimatedMoveTime as startTime
+        java.time.Instant startTime = estimatedMoveTime != null ? estimatedMoveTime : java.time.Instant.EPOCH;
         List<Takt> takts = new ArrayList<>();
         for (int i = 0; i < totalTakts; i++) {
             String taktName = Takt.createTaktName(i);
-            takts.add(new Takt(taktName, actionsByTakt.get(i)));
+            takts.add(new Takt(taktName, actionsByTakt.get(i), startTime));
         }
 
         return takts;

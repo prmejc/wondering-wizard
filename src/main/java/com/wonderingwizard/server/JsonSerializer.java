@@ -16,6 +16,8 @@ import com.wonderingwizard.sideeffects.AlarmSet;
 import com.wonderingwizard.sideeffects.AlarmTriggered;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
+import com.wonderingwizard.sideeffects.TaktActivated;
+import com.wonderingwizard.sideeffects.TaktCompleted;
 import com.wonderingwizard.sideeffects.WorkInstruction;
 
 import java.time.Instant;
@@ -77,6 +79,8 @@ public final class JsonSerializer {
             writeStep(sb, step);
         } else if (obj instanceof DemoServer.ActionState actionState) {
             writeActionState(sb, actionState);
+        } else if (obj instanceof DemoServer.TaktState taktState) {
+            writeTaktState(sb, taktState);
         } else if (obj instanceof DemoServer.ScheduleView scheduleView) {
             writeScheduleView(sb, scheduleView);
         } else if (obj instanceof DemoServer.TaktView taktView) {
@@ -231,12 +235,29 @@ public final class JsonSerializer {
                 writeField(sb, "completedAt", e.completedAt(), false);
                 sb.append('}');
             }
+            case TaktActivated e -> {
+                sb.append('{');
+                writeField(sb, "type", "TaktActivated", true);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "taktName", e.taktName(), false);
+                writeField(sb, "activatedAt", e.activatedAt(), false);
+                sb.append('}');
+            }
+            case TaktCompleted e -> {
+                sb.append('{');
+                writeField(sb, "type", "TaktCompleted", true);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "taktName", e.taktName(), false);
+                writeField(sb, "completedAt", e.completedAt(), false);
+                sb.append('}');
+            }
         }
     }
 
     private static void writeTakt(StringBuilder sb, Takt takt) {
         sb.append('{');
         writeField(sb, "name", takt.name(), true);
+        writeField(sb, "startTime", takt.startTime(), false);
         writeFieldKey(sb, "actions", false);
         writeValue(sb, takt.actions());
         sb.append('}');
@@ -249,6 +270,8 @@ public final class JsonSerializer {
         writeField(sb, "description", action.description(), false);
         writeFieldKey(sb, "dependsOn", false);
         writeValue(sb, action.dependsOn() != null ? action.dependsOn().stream().toList() : List.of());
+        writeField(sb, "containerIndex", action.containerIndex(), false);
+        writeField(sb, "durationSeconds", action.durationSeconds(), false);
         sb.append('}');
     }
 
@@ -290,9 +313,14 @@ public final class JsonSerializer {
     private static void writeTaktView(StringBuilder sb, DemoServer.TaktView view) {
         sb.append('{');
         writeField(sb, "name", view.name(), true);
+        writeField(sb, "status", view.status(), false);
         writeFieldKey(sb, "actions", false);
         writeValue(sb, view.actions());
         sb.append('}');
+    }
+
+    private static void writeTaktState(StringBuilder sb, DemoServer.TaktState taktState) {
+        writeString(sb, taktState.name());
     }
 
     private static void writeActionView(StringBuilder sb, DemoServer.ActionView view) {
@@ -303,6 +331,8 @@ public final class JsonSerializer {
         writeField(sb, "status", view.status(), false);
         writeFieldKey(sb, "dependsOn", false);
         writeValue(sb, view.dependsOn() != null ? view.dependsOn().stream().toList() : List.of());
+        writeField(sb, "containerIndex", view.containerIndex(), false);
+        writeField(sb, "durationSeconds", view.durationSeconds(), false);
         sb.append('}');
     }
 

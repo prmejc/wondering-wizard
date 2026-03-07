@@ -12,6 +12,8 @@ import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.sideeffects.ActionActivated;
 import com.wonderingwizard.sideeffects.ActionCompleted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
+import com.wonderingwizard.sideeffects.TaktActivated;
+import com.wonderingwizard.sideeffects.TaktCompleted;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -23,20 +25,24 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Processor that handles schedule execution and action state transitions.
+ * Processor that handles schedule execution with takt and action state machines.
  * <p>
- * This processor tracks active schedules and manages the lifecycle of actions within takts.
- * Actions can depend on multiple other actions, and will only be activated when all their
- * dependencies have been completed.
+ * Takt state machine: Waiting → Active → Completed
  * <ul>
- *   <li>When a work queue becomes ACTIVE and current time >= estimatedMoveTime,
- *       all actions with no dependencies are activated</li>
- *   <li>When an ActionCompletedEvent is received with matching action ID,
- *       the action is marked complete and any actions whose dependencies are now
- *       all satisfied are activated</li>
+ *   <li>A takt transitions to Active when the previous takt is Completed (or it is the first)
+ *       AND the current time >= the takt's start time</li>
+ *   <li>A takt transitions to Completed when all its actions are Completed</li>
+ * </ul>
+ * <p>
+ * Action state machine: Waiting → Active → Completed
+ * <ul>
+ *   <li>An action transitions to Active when its takt is Active AND all its dependencies are Completed</li>
+ *   <li>An action transitions to Completed when an ActionCompletedEvent with matching UUID is received</li>
  * </ul>
  */
 public class ScheduleRunnerProcessor implements EventProcessor {
+
+    public enum TaktState { WAITING, ACTIVE, COMPLETED }
 
     /**
      * Tracks the schedule state for each work queue.
@@ -47,7 +53,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         Set<UUID> activeActionIds;
         Set<UUID> completedActionIds;
         Map<UUID, ActionInfo> actionLookup;
-        boolean started;
+        Map<String, TaktState> taktStates;
 
         ScheduleState(Instant estimatedMoveTime, List<Takt> takts) {
             this.estimatedMoveTime = estimatedMoveTime;
@@ -55,10 +61,11 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             this.activeActionIds = new HashSet<>();
             this.completedActionIds = new HashSet<>();
             this.actionLookup = new HashMap<>();
-            this.started = false;
+            this.taktStates = new HashMap<>();
 
-            // Build action lookup for quick access
+            // Build action lookup and initialize takt states
             for (Takt takt : takts) {
+                taktStates.put(takt.name(), TaktState.WAITING);
                 for (Action action : takt.actions()) {
                     actionLookup.put(action.id(), new ActionInfo(takt.name(), action));
                 }
@@ -66,45 +73,54 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
 
         /**
-         * Gets all actions that have no dependencies (can start immediately).
+         * Gets all actions in a given takt that are eligible for activation.
+         * An action is eligible when it is not yet active or completed,
+         * and all its dependencies are completed.
          */
-        List<UUID> getActionsWithNoDependencies() {
+        List<UUID> getActivatableActionsInTakt(String taktName) {
             List<UUID> result = new ArrayList<>();
             for (ActionInfo info : actionLookup.values()) {
-                if (info.action().hasNoDependencies()) {
-                    result.add(info.action().id());
+                if (!info.taktName().equals(taktName)) {
+                    continue;
+                }
+                UUID actionId = info.action().id();
+                if (activeActionIds.contains(actionId) || completedActionIds.contains(actionId)) {
+                    continue;
+                }
+                Set<UUID> dependencies = info.action().dependsOn();
+                if (dependencies == null || dependencies.isEmpty() || completedActionIds.containsAll(dependencies)) {
+                    result.add(actionId);
                 }
             }
             return result;
         }
 
         /**
-         * Gets all pending actions whose dependencies are now all satisfied.
+         * Gets all pending actions in the given takt whose dependencies are now all satisfied.
          */
-        List<UUID> getNewlyActivatableActions() {
-            List<UUID> result = new ArrayList<>();
+        List<UUID> getNewlyActivatableActionsInTakt(String taktName) {
+            return getActivatableActionsInTakt(taktName);
+        }
+
+        /**
+         * Checks whether all actions in a takt are completed.
+         */
+        boolean isTaktFullyCompleted(String taktName) {
             for (ActionInfo info : actionLookup.values()) {
-                UUID actionId = info.action().id();
-                // Skip if already active or completed
-                if (activeActionIds.contains(actionId) || completedActionIds.contains(actionId)) {
-                    continue;
-                }
-                // Check if all dependencies are completed
-                Set<UUID> dependencies = info.action().dependsOn();
-                if (dependencies != null && !dependencies.isEmpty()) {
-                    if (completedActionIds.containsAll(dependencies)) {
-                        result.add(actionId);
+                if (info.taktName().equals(taktName)) {
+                    if (!completedActionIds.contains(info.action().id())) {
+                        return false;
                     }
                 }
             }
-            return result;
+            return true;
         }
 
         ScheduleState copy() {
             ScheduleState copy = new ScheduleState(this.estimatedMoveTime, new ArrayList<>(this.takts));
             copy.activeActionIds = new HashSet<>(this.activeActionIds);
             copy.completedActionIds = new HashSet<>(this.completedActionIds);
-            copy.started = this.started;
+            copy.taktStates = new HashMap<>(this.taktStates);
             return copy;
         }
     }
@@ -147,7 +163,6 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     }
 
     private List<SideEffect> handleWorkInstructionEvent(WorkInstructionEvent event) {
-        // Track the estimatedMoveTime for this work instruction
         if (event.estimatedMoveTime() != null) {
             workInstructionEstimatedMoveTime.put(event.workInstructionId(), event.estimatedMoveTime());
         }
@@ -166,18 +181,9 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
     private List<SideEffect> handleScheduleActivation(String workQueueId) {
         if (scheduleStates.containsKey(workQueueId)) {
-            // Already tracking this schedule
             return List.of();
         }
-
-        // Find the earliest estimatedMoveTime from work instructions for this queue
-        // For now, we'll create an empty schedule state that will be populated
-        // when we receive the ScheduleCreated information via takts
-        // Since we're using Option 1 (independent tracking), we need to build takts ourselves
-
-        // We'll use a placeholder - the actual takts will be built when actions are needed
         scheduleStates.put(workQueueId, new ScheduleState(null, List.of()));
-
         return List.of();
     }
 
@@ -194,25 +200,71 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             String workQueueId = entry.getKey();
             ScheduleState state = entry.getValue();
 
-            // Check if schedule should start
-            if (!state.started && state.estimatedMoveTime != null && !this.currentTime.isBefore(state.estimatedMoveTime)) {
-                state.started = true;
+            sideEffects.addAll(tryActivateTakts(workQueueId, state));
+        }
 
-                // Activate all actions with no dependencies
-                List<UUID> actionsToActivate = state.getActionsWithNoDependencies();
-                for (UUID actionId : actionsToActivate) {
-                    state.activeActionIds.add(actionId);
-                    ActionInfo actionInfo = state.actionLookup.get(actionId);
+        return sideEffects;
+    }
 
-                    sideEffects.add(new ActionActivated(
-                            actionId,
-                            workQueueId,
-                            actionInfo.taktName(),
-                            actionInfo.action().description(),
-                            this.currentTime
-                    ));
+    /**
+     * Tries to activate takts whose conditions are met (previous takt completed + time >= startTime).
+     * When a takt becomes Active, eligible actions within it are also activated.
+     */
+    private List<SideEffect> tryActivateTakts(String workQueueId, ScheduleState state) {
+        List<SideEffect> sideEffects = new ArrayList<>();
+
+        for (int i = 0; i < state.takts.size(); i++) {
+            Takt takt = state.takts.get(i);
+            TaktState taktState = state.taktStates.get(takt.name());
+
+            if (taktState != TaktState.WAITING) {
+                continue;
+            }
+
+            // Check condition 1: previous takt must be Completed (or this is the first takt)
+            if (i > 0) {
+                Takt previousTakt = state.takts.get(i - 1);
+                TaktState previousState = state.taktStates.get(previousTakt.name());
+                if (previousState != TaktState.COMPLETED) {
+                    continue;
                 }
             }
+
+            // Check condition 2: current time >= takt's startTime
+            Instant startTime = takt.startTime();
+            if (startTime != null && this.currentTime.isBefore(startTime)) {
+                continue;
+            }
+
+            // Activate this takt
+            state.taktStates.put(takt.name(), TaktState.ACTIVE);
+            sideEffects.add(new TaktActivated(workQueueId, takt.name(), this.currentTime));
+
+            // Activate eligible actions in this takt
+            sideEffects.addAll(activateEligibleActions(workQueueId, state, takt.name()));
+        }
+
+        return sideEffects;
+    }
+
+    /**
+     * Activates all actions in the given takt that have their dependencies satisfied.
+     */
+    private List<SideEffect> activateEligibleActions(String workQueueId, ScheduleState state, String taktName) {
+        List<SideEffect> sideEffects = new ArrayList<>();
+
+        List<UUID> actionsToActivate = state.getActivatableActionsInTakt(taktName);
+        for (UUID actionId : actionsToActivate) {
+            state.activeActionIds.add(actionId);
+            ActionInfo actionInfo = state.actionLookup.get(actionId);
+
+            sideEffects.add(new ActionActivated(
+                    actionId,
+                    workQueueId,
+                    actionInfo.taktName(),
+                    actionInfo.action().description(),
+                    this.currentTime
+            ));
         }
 
         return sideEffects;
@@ -224,13 +276,10 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
         ScheduleState state = scheduleStates.get(workQueueId);
         if (state == null) {
-            // No schedule for this work queue
             return List.of();
         }
 
-        // Verify the completed action is currently active
         if (!state.activeActionIds.contains(completedActionId)) {
-            // Action ID is not active - ignore
             return List.of();
         }
 
@@ -254,19 +303,20 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 currentTime
         ));
 
-        // Find and activate any actions whose dependencies are now all satisfied
-        List<UUID> newlyActivatableActions = state.getNewlyActivatableActions();
-        for (UUID actionId : newlyActivatableActions) {
-            state.activeActionIds.add(actionId);
-            ActionInfo actionInfo = state.actionLookup.get(actionId);
+        // Activate any actions in the same takt whose dependencies are now satisfied
+        String taktName = completedActionInfo.taktName();
+        TaktState taktState = state.taktStates.get(taktName);
+        if (taktState == TaktState.ACTIVE) {
+            sideEffects.addAll(activateEligibleActions(workQueueId, state, taktName));
+        }
 
-            sideEffects.add(new ActionActivated(
-                    actionId,
-                    workQueueId,
-                    actionInfo.taktName(),
-                    actionInfo.action().description(),
-                    currentTime
-            ));
+        // Check if the takt is now fully completed
+        if (state.isTaktFullyCompleted(taktName)) {
+            state.taktStates.put(taktName, TaktState.COMPLETED);
+            sideEffects.add(new TaktCompleted(workQueueId, taktName, currentTime));
+
+            // Try to activate the next takt(s)
+            sideEffects.addAll(tryActivateTakts(workQueueId, state));
         }
 
         return sideEffects;
@@ -276,16 +326,12 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     public Object captureState() {
         Map<String, Object> state = new HashMap<>();
 
-        // Deep copy schedule states
         Map<String, ScheduleState> statesCopy = new HashMap<>();
         for (Map.Entry<String, ScheduleState> entry : scheduleStates.entrySet()) {
             statesCopy.put(entry.getKey(), entry.getValue().copy());
         }
         state.put("scheduleStates", statesCopy);
-
-        // Copy work instruction estimated move times
         state.put("workInstructionEstimatedMoveTime", new HashMap<>(workInstructionEstimatedMoveTime));
-
         state.put("currentTime", currentTime);
 
         return state;
