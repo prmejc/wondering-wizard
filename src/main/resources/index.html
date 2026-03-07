@@ -110,11 +110,22 @@ class ScheduleHeader extends HTMLElement {
     await apiCall('/api/tick', { seconds });
     refreshState();
   }
+  async _playTick() {
+    await apiCall('/api/tick', { seconds: 1 });
+    // Update clock from tracked time without full re-render so buttons stay clickable
+    if (window._lastState && window._lastState.currentTime) {
+      const ms = new Date(window._lastState.currentTime).getTime() + 1000;
+      const d = new Date(ms);
+      window._lastState.currentTime = d.toISOString();
+      this.querySelector('#clock').textContent = d.toISOString().substring(11, 19);
+    }
+  }
   togglePlay() {
     if (this._playTimer) {
       clearInterval(this._playTimer);
       this._playTimer = null;
       this.querySelector('#play-btn').innerHTML = '&#9654; Play';
+      refreshState(); // full refresh on stop
       return;
     }
     this.querySelector('#play-btn').innerHTML = '&#9724; Stop';
@@ -125,14 +136,13 @@ class ScheduleHeader extends HTMLElement {
       if (pending) return;
       pending = true;
       try {
-        await this.tick(1);
+        await this._playTick();
       } finally {
         pending = false;
       }
     };
     doTick();
     this._playTimer = setInterval(doTick, intervalMs());
-    // Watch for speed changes and restart interval
     const speedInput = this.querySelector('#play-speed');
     const onSpeedChange = () => {
       if (!this._playTimer) return;
@@ -140,7 +150,6 @@ class ScheduleHeader extends HTMLElement {
       this._playTimer = setInterval(doTick, intervalMs());
     };
     speedInput.addEventListener('input', onSpeedChange);
-    // Store cleanup ref
     this._speedCleanup = () => speedInput.removeEventListener('input', onSpeedChange);
   }
 }
@@ -439,7 +448,8 @@ class TimelinePanel extends HTMLElement {
     this.style.cssText = 'grid-area:right';
     this.classList.add('panel');
     this.setAttribute('data-refresh', '');
-    this.innerHTML = '<h2>Timeline</h2><div id="timeline-content"></div>';
+    this.innerHTML = '<h2 style="display:flex;align-items:center;gap:12px">Timeline <label style="font-size:12px;font-weight:400;display:flex;align-items:center;gap:4px;color:var(--text-muted)"><input id="hide-ticks" type="checkbox" checked> Hide time events</label></h2><div id="timeline-content"></div>';
+    this.querySelector('#hide-ticks').addEventListener('change', () => { if (window._lastState) this.refresh(window._lastState); });
   }
   refresh(state) {
     const container = this.querySelector('#timeline-content');
@@ -449,9 +459,12 @@ class TimelinePanel extends HTMLElement {
       return;
     }
 
+    const hideTicks = this.querySelector('#hide-ticks').checked;
+
     let html = '';
     for (let i = steps.length - 1; i >= 0; i--) {
       const step = steps[i];
+      if (hideTicks && step.description && step.description.startsWith('Tick ')) continue;
       const effectCount = (step.sideEffects || []).length;
       html += '<div class="timeline-entry" data-step="' + step.stepNumber + '" ';
       html += 'style="padding:8px 10px;margin-bottom:4px;border-radius:4px;cursor:pointer;border:1px solid var(--border);font-size:13px;transition:background .15s"';
