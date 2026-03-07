@@ -322,10 +322,10 @@ class ScheduleView extends HTMLElement {
             }
 
             const dur = action.durationSeconds || 30;
-            const widthPx = Math.round(dur * scale);
+            const widthPx = Math.round(dur * scale) - 2;
             const narrow = widthPx < 30;
 
-            html += '<div style="position:relative;background:' + bgColor + ';border:1px solid ' + borderColor + ';border-left:4px solid ' + containerColor + ';border-radius:4px;padding:' + (narrow ? '1px 2px' : '3px 5px') + ';opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0;overflow:hidden;cursor:' + (narrow ? 'pointer' : 'default') + '"' + (narrow ? ' data-popup="' + action.description.replace(/"/g, '&quot;') + ' (' + dur + 's) C' + ci + '"' : '') + '>';
+            html += '<div style="position:relative;background:' + bgColor + ';border:1px solid ' + borderColor + ';border-top:3px solid ' + containerColor + ';border-radius:4px;padding:' + (narrow ? '1px 2px' : '3px 5px') + ';opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0;overflow:hidden;cursor:' + (narrow ? 'pointer' : 'default') + '"' + (narrow ? ' data-popup="' + action.description.replace(/"/g, '&quot;') + ' (' + dur + 's) C' + ci + '"' : '') + '>';
             if (!narrow) {
               html += '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600">' + statusLabel + ' <span style="color:' + containerColor + '">C' + ci + '</span></div>';
               html += '<div>' + action.description + '</div>';
