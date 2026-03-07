@@ -72,6 +72,7 @@ async function apiCall(path, body) {
 
 async function refreshState() {
   const state = await apiCall('/api/state');
+  window._lastState = state;
   document.querySelectorAll('[data-refresh]').forEach(el => el.refresh(state));
 }
 
@@ -90,6 +91,14 @@ class ScheduleHeader extends HTMLElement {
         <button class="secondary" onclick="this.closest('schedule-header').tick(60)">+1 min</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(300)">+5 min</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(900)">+15 min</button>
+        <span style="border-left:1px solid var(--border);height:24px;margin:0 4px"></span>
+        <button id="play-btn" class="secondary" onclick="this.closest('schedule-header').togglePlay()">&#9654; Play</button>
+        <label style="font-size:12px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
+          <input id="play-speed" type="number" min="0.1" max="120" step="0.1" value="1" style="width:50px;text-align:center;font-size:12px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">x
+        </label>
+        <label style="font-size:12px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
+          <input id="play-resolution" type="number" min="1" max="900" step="1" value="1" style="width:50px;text-align:center;font-size:12px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">s/tick
+        </label>
       </div>`;
     this.setAttribute('data-refresh', '');
   }
@@ -103,6 +112,44 @@ class ScheduleHeader extends HTMLElement {
   async tick(seconds) {
     await apiCall('/api/tick', { seconds });
     refreshState();
+  }
+  async _playTick() {
+    const resolution = parseInt(this.querySelector('#play-resolution').value) || 1;
+    await apiCall('/api/tick', { seconds: resolution });
+    await refreshState();
+  }
+  togglePlay() {
+    if (this._playTimer) {
+      clearInterval(this._playTimer);
+      this._playTimer = null;
+      this.querySelector('#play-btn').innerHTML = '&#9654; Play';
+      refreshState(); // full refresh on stop
+      return;
+    }
+    this.querySelector('#play-btn').innerHTML = '&#9724; Stop';
+    const speed = () => parseFloat(this.querySelector('#play-speed').value) || 1;
+    const resolution = () => parseInt(this.querySelector('#play-resolution').value) || 1;
+    const intervalMs = () => Math.round(resolution() * 1000 / speed());
+    let pending = false;
+    const doTick = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        await this._playTick();
+      } finally {
+        pending = false;
+      }
+    };
+    doTick();
+    this._playTimer = setInterval(doTick, intervalMs());
+    const speedInput = this.querySelector('#play-speed');
+    const onSpeedChange = () => {
+      if (!this._playTimer) return;
+      clearInterval(this._playTimer);
+      this._playTimer = setInterval(doTick, intervalMs());
+    };
+    speedInput.addEventListener('input', onSpeedChange);
+    this._speedCleanup = () => speedInput.removeEventListener('input', onSpeedChange);
   }
 }
 customElements.define('schedule-header', ScheduleHeader);
@@ -139,6 +186,10 @@ class EventPanel extends HTMLElement {
         <label>Est. Cycle Time (sec)</label>
         <input id="wi-ect" type="number" value="120">
       </div>
+      <div class="form-group">
+        <label>Est. RTG Cycle Time (sec)</label>
+        <input id="wi-rtg-ect" type="number" value="60">
+      </div>
       <button onclick="this.closest('event-panel').sendWI()" style="margin-top:8px;width:100%">Add Work Instruction</button>
 
       <h3 style="margin-top:20px">Work Queue</h3>
@@ -173,6 +224,7 @@ class EventPanel extends HTMLElement {
       fetchChe: this.querySelector('#wi-che').value,
       estimatedMoveTime: this.querySelector('#wi-emt').value,
       estimatedCycleTimeSeconds: this.querySelector('#wi-ect').value,
+      estimatedRtgCycleTimeSeconds: this.querySelector('#wi-rtg-ect').value,
       status: 'PENDING'
     };
     await apiCall('/api/work-instruction', data);
@@ -198,10 +250,16 @@ customElements.define('event-panel', EventPanel);
 // --- Schedule View (Center Panel) ---
 class ScheduleView extends HTMLElement {
   connectedCallback() {
-    this.style.cssText = 'grid-area:center;overflow:auto';
+    this.style.cssText = 'grid-area:center;overflow:auto;position:relative';
     this.classList.add('panel');
     this.setAttribute('data-refresh', '');
-    this.innerHTML = '<h2>Schedule</h2><div id="schedule-content"><p style="color:var(--text-muted)">No schedules yet. Add work instructions and activate a work queue.</p></div>';
+    this._pxPerSec = 3;
+    this.innerHTML = '<h2 style="display:flex;align-items:center;gap:12px">Schedule <label style="font-size:11px;font-weight:400;display:flex;align-items:center;gap:6px;color:var(--text-muted)">Scale <input id="scale-slider" type="range" min="3" max="15" value="3" style="width:80px"> <span id="scale-val">3</span>px/s</label></h2><div id="schedule-content"><p style="color:var(--text-muted)">No schedules yet. Add work instructions and activate a work queue.</p></div>';
+    this.querySelector('#scale-slider').addEventListener('input', e => {
+      this._pxPerSec = parseInt(e.target.value);
+      this.querySelector('#scale-val').textContent = this._pxPerSec;
+      this.refresh(window._lastState || {});
+    });
   }
   refresh(state) {
     const container = this.querySelector('#schedule-content');
@@ -212,6 +270,7 @@ class ScheduleView extends HTMLElement {
     }
 
     const deviceColors = { RTG: 'var(--rtg-color)', TT: 'var(--tt-color)', QC: 'var(--qc-color)' };
+    const scale = this._pxPerSec || 3;
 
     let html = '';
     for (const schedule of schedules) {
@@ -253,11 +312,11 @@ class ScheduleView extends HTMLElement {
       const numCols = takts.length;
 
       // Grid: label column + one column per takt (width proportional to duration)
-      const colDefs = takts.map(t => { const d = t.durationSeconds || 120; return 'minmax(' + Math.round(d * 1.2) + 'px,' + d + 'fr)'; }).join(' ');
+      const colDefs = takts.map(t => { const d = t.durationSeconds || 120; return 'minmax(' + Math.round(d * scale) + 'px,' + d + 'fr)'; }).join(' ');
       html += '<div style="display:inline-grid;grid-template-columns:56px ' + colDefs + ';gap:1px;min-width:100%">';
 
       // Header row: corner + takt headers
-      html += '<div style="background:var(--surface2);padding:4px"></div>';
+      html += '<div style="background:var(--surface2);padding:4px;position:sticky;left:0;z-index:2"></div>';
       for (const takt of takts) {
         const ts = takt.status || 'WAITING';
         const tc = ts === 'ACTIVE' ? 'var(--active)' : ts === 'COMPLETED' ? 'var(--completed)' : 'var(--pending)';
@@ -276,14 +335,14 @@ class ScheduleView extends HTMLElement {
       // Data rows
       for (const row of rows) {
         // Row label
-        html += '<div style="background:var(--surface2);padding:4px;display:flex;align-items:center;justify-content:center">';
+        html += '<div style="background:var(--surface2);padding:4px;display:flex;align-items:center;justify-content:center;position:sticky;left:0;z-index:1">';
         html += '<span style="background:' + row.color + ';color:white;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600;white-space:nowrap">' + row.label + '</span>';
         html += '</div>';
 
         // One cell per takt
         for (const takt of takts) {
           const cellActions = (takt.actions || []).filter(row.match);
-          html += '<div style="background:var(--bg);padding:3px;display:flex;flex-direction:row;gap:2px;min-height:28px;align-items:start">';
+          html += '<div style="background:var(--bg);padding:0;display:flex;flex-direction:row;gap:0;min-height:28px;align-items:stretch">';
 
           for (const action of cellActions) {
             const ci = action.containerIndex != null ? action.containerIndex : 0;
@@ -309,13 +368,17 @@ class ScheduleView extends HTMLElement {
             }
 
             const dur = action.durationSeconds || 30;
-            const widthPx = Math.round(dur * 3);
+            const widthPx = Math.round(dur * scale);
+            const narrow = widthPx < 30;
 
-            html += '<div style="background:' + bgColor + ';border:1px solid ' + borderColor + ';border-left:4px solid ' + containerColor + ';border-radius:4px;padding:3px 5px;opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0">';
-            html += '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600">' + statusLabel + ' <span style="color:' + containerColor + '">C' + ci + '</span></div>';
-            html += '<div>' + action.description + '</div>';
+            let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600">' + statusLabel + ' <span style="color:' + containerColor + '">C' + ci + '</span></div><div>' + action.description + '</div>';
             if (action.status === 'ACTIVE') {
-              html += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + schedule.workQueueId + '">Complete</button>';
+              innerHtml += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + schedule.workQueueId + '">Complete</button>';
+            }
+
+            html += '<div style="position:relative;background:' + bgColor + ';border:1px solid ' + borderColor + ';border-top:3px solid ' + containerColor + ';border-radius:4px;padding:' + (narrow ? '1px 2px' : '3px 5px') + ';opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0;overflow:hidden;cursor:' + (narrow ? 'pointer' : 'default') + '"' + (narrow ? ' data-popup-html="' + innerHtml.replace(/"/g, '&quot;') + '" data-popup-bg="' + bgColor + '" data-popup-border="' + borderColor + '" data-popup-container="' + containerColor + '"' : '') + '>';
+            if (!narrow) {
+              html += innerHtml;
             }
             html += '</div>';
           }
@@ -337,6 +400,43 @@ class ScheduleView extends HTMLElement {
         refreshState();
       });
     });
+
+    // Bind click popups for narrow actions
+    const self = this;
+    container.querySelectorAll('[data-popup-html]').forEach(el => {
+      el.addEventListener('click', e => {
+        e.stopPropagation();
+        // Toggle: remove if already open for this element
+        const existingId = el.dataset.popupId;
+        if (existingId) {
+          const ep = document.getElementById(existingId);
+          if (ep) ep.remove();
+          delete el.dataset.popupId;
+          return;
+        }
+        // Remove any other open popups
+        self.querySelectorAll('.action-popup').forEach(p => p.remove());
+        const popup = document.createElement('div');
+        popup.className = 'action-popup';
+        const uid = 'popup-' + Math.random().toString(36).slice(2, 9);
+        popup.id = uid;
+        el.dataset.popupId = uid;
+        const rect = el.getBoundingClientRect();
+        const parentRect = self.getBoundingClientRect();
+        popup.style.cssText = 'position:absolute;z-index:100;background:' + el.dataset.popupBg + ';border:1px solid ' + el.dataset.popupBorder + ';border-top:3px solid ' + el.dataset.popupContainer + ';border-radius:4px;padding:3px 5px;font-size:11px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.25);left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 2) + 'px';
+        popup.innerHTML = '<div style="display:flex;justify-content:flex-end"><span style="cursor:pointer;font-size:13px;line-height:1;color:var(--text-muted)" onclick="this.closest(\'.action-popup\').remove()">&#10005;</span></div>' + el.dataset.popupHtml;
+        self.appendChild(popup);
+        // Bind complete buttons inside popup
+        popup.querySelectorAll('.complete-btn').forEach(btn => {
+          btn.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            await apiCall('/api/action-completed', { actionId: btn.dataset.actionId, workQueueId: btn.dataset.wq });
+            popup.remove();
+            refreshState();
+          });
+        });
+      });
+    });
   }
 }
 customElements.define('schedule-view', ScheduleView);
@@ -347,7 +447,8 @@ class TimelinePanel extends HTMLElement {
     this.style.cssText = 'grid-area:right';
     this.classList.add('panel');
     this.setAttribute('data-refresh', '');
-    this.innerHTML = '<h2>Timeline</h2><div id="timeline-content"></div>';
+    this.innerHTML = '<h2 style="display:flex;align-items:center;gap:12px">Timeline <label style="font-size:12px;font-weight:400;display:flex;align-items:center;gap:4px;color:var(--text-muted)"><input id="hide-ticks" type="checkbox" checked> Hide time events</label></h2><div id="timeline-content"></div>';
+    this.querySelector('#hide-ticks').addEventListener('change', () => { if (window._lastState) this.refresh(window._lastState); });
   }
   refresh(state) {
     const container = this.querySelector('#timeline-content');
@@ -357,9 +458,12 @@ class TimelinePanel extends HTMLElement {
       return;
     }
 
+    const hideTicks = this.querySelector('#hide-ticks').checked;
+
     let html = '';
     for (let i = steps.length - 1; i >= 0; i--) {
       const step = steps[i];
+      if (hideTicks && step.description && step.description.startsWith('Tick ')) continue;
       const effectCount = (step.sideEffects || []).length;
       html += '<div class="timeline-entry" data-step="' + step.stepNumber + '" ';
       html += 'style="padding:8px 10px;margin-bottom:4px;border-radius:4px;cursor:pointer;border:1px solid var(--border);font-size:13px;transition:background .15s"';

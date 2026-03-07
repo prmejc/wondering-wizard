@@ -360,8 +360,12 @@ public class DemoServer {
             String estimatedCycleTimeStr = body.getOrDefault("estimatedCycleTimeSeconds", "0");
             int estimatedCycleTimeSeconds = Integer.parseInt(estimatedCycleTimeStr);
 
+            String estimatedRtgCycleTimeStr = body.getOrDefault("estimatedRtgCycleTimeSeconds", "60");
+            int estimatedRtgCycleTimeSeconds = Integer.parseInt(estimatedRtgCycleTimeStr);
+
             WorkInstructionEvent event = new WorkInstructionEvent(
-                    workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime, estimatedCycleTimeSeconds);
+                    workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
+                    estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds);
             List<SideEffect> effects = processStep("WorkInstruction: " + workInstructionId, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(

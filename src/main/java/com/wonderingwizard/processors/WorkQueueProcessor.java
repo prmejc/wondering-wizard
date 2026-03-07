@@ -76,7 +76,8 @@ public class WorkQueueProcessor implements EventProcessor {
                 event.fetchChe(),
                 event.status(),
                 event.estimatedMoveTime(),
-                event.estimatedCycleTimeSeconds()
+                event.estimatedCycleTimeSeconds(),
+                event.estimatedRtgCycleTimeSeconds()
         );
 
         workInstructions
@@ -151,11 +152,14 @@ public class WorkQueueProcessor implements EventProcessor {
 
             // Per-container tracking for within-container same-device and cross-device deps
             Map<DeviceType, Action> lastActionByDevice = new EnumMap<>(DeviceType.class);
+            Map<String, Integer> actionDurations = new HashMap<>();
 
             for (DeviceActionTemplate template : templates) {
                 int targetTaktIndex = baseTaktIndex + ContainerWorkflow.getTaktOffset(template);
 
-                Action action = Action.create(template.deviceType(), template.description(), containerIndex, template.durationSeconds());
+                int actionDuration = resolveActionDuration(template, instructions.get(containerIndex), actionDurations);
+                actionDurations.put(template.description(), actionDuration);
+                Action action = Action.create(template.deviceType(), template.description(), containerIndex, actionDuration);
 
                 // Build dependencies: previous action of same device + optional cross-device dependency
                 Set<UUID> dependencies = new HashSet<>();
@@ -252,6 +256,25 @@ public class WorkQueueProcessor implements EventProcessor {
         }
 
         return takts;
+    }
+
+    private static final int HANDOVER_DURATION_SECONDS = 20;
+
+    private static final int RTG_HANDOVER_DURATION_SECONDS = 20;
+    private static final int RTG_DRIVE_DURATION_SECONDS = 1;
+
+    private static int resolveActionDuration(DeviceActionTemplate template, WorkInstruction instruction,
+                                              Map<String, Integer> actionDurations) {
+        return switch (template.description()) {
+            case "handover from TT" -> HANDOVER_DURATION_SECONDS;
+            case "handover from RTG", "handover to QC" -> RTG_HANDOVER_DURATION_SECONDS;
+            case "place on vessel" -> instruction.estimatedCycleTimeSeconds() - HANDOVER_DURATION_SECONDS;
+            case "rtg drive" -> RTG_DRIVE_DURATION_SECONDS;
+            case "fetch" -> instruction.estimatedRtgCycleTimeSeconds() - RTG_HANDOVER_DURATION_SECONDS;
+            case "rtg handover to TT" -> RTG_HANDOVER_DURATION_SECONDS
+                    + actionDurations.getOrDefault("drive to RTG under", 0);
+            default -> template.durationSeconds();
+        };
     }
 
     private List<SideEffect> handleInactiveStatus(String workQueueId) {

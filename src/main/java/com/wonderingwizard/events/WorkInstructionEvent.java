@@ -16,6 +16,7 @@ import java.time.Instant;
  * @param status the status of the work instruction
  * @param estimatedMoveTime the estimated time when this work instruction should start
  * @param estimatedCycleTimeSeconds the estimated cycle time for this work instruction in seconds
+ * @param estimatedRtgCycleTimeSeconds the estimated RTG cycle time in seconds (default 60)
  */
 public record WorkInstructionEvent(
         String workInstructionId,
@@ -23,8 +24,22 @@ public record WorkInstructionEvent(
         String fetchChe,
         WorkInstructionStatus status,
         Instant estimatedMoveTime,
-        int estimatedCycleTimeSeconds
+        int estimatedCycleTimeSeconds,
+        int estimatedRtgCycleTimeSeconds
 ) implements Event {
+
+    private static final int DEFAULT_RTG_CYCLE_TIME_SECONDS = 60;
+
+    public WorkInstructionEvent(
+            String workInstructionId,
+            String workQueueId,
+            String fetchChe,
+            WorkInstructionStatus status,
+            Instant estimatedMoveTime,
+            int estimatedCycleTimeSeconds) {
+        this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
+                estimatedCycleTimeSeconds, DEFAULT_RTG_CYCLE_TIME_SECONDS);
+    }
 
     @Override
     public String toString() {
@@ -33,6 +48,7 @@ public record WorkInstructionEvent(
                 ", fetchChe=" + fetchChe +
                 ", status=" + status +
                 ", estimatedMoveTime=" + estimatedMoveTime +
-                ", estimatedCycleTimeSeconds=" + estimatedCycleTimeSeconds + "]";
+                ", estimatedCycleTimeSeconds=" + estimatedCycleTimeSeconds +
+                ", estimatedRtgCycleTimeSeconds=" + estimatedRtgCycleTimeSeconds + "]";
     }
 }
