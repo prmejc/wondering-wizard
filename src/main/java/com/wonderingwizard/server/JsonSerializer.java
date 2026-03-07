@@ -257,7 +257,8 @@ public final class JsonSerializer {
     private static void writeTakt(StringBuilder sb, Takt takt) {
         sb.append('{');
         writeField(sb, "name", takt.name(), true);
-        writeField(sb, "startTime", takt.startTime(), false);
+        writeField(sb, "plannedStartTime", takt.plannedStartTime(), false);
+        writeField(sb, "estimatedStartTime", takt.estimatedStartTime(), false);
         writeFieldKey(sb, "actions", false);
         writeValue(sb, takt.actions());
         sb.append('}');

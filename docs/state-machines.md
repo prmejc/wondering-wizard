@@ -23,14 +23,25 @@ A Takt goes through three states during schedule execution.
 **Waiting → Active:**
 A takt transitions to Active when both conditions are met:
 1. The previous takt is in state Completed (or this is the first takt in the schedule)
-2. The last `TimeEvent` had a timestamp greater than or equal to this takt's `startTime`
+2. The last `TimeEvent` had a timestamp greater than or equal to this takt's `estimatedStartTime`
 
 When a takt becomes Active, the engine emits a `TaktActivated` side effect containing the takt name and work queue ID.
+The `actualStartTime` is recorded as the current system time (last `TimeEvent` timestamp).
 
 **Active → Completed:**
 A takt transitions to Completed when all actions within it have reached the Completed state.
 
 When a takt becomes Completed, the engine emits a `TaktCompleted` side effect. This may trigger the next takt to become Active if the time condition is also satisfied.
+
+### Time Attributes
+
+Each takt has three time attributes:
+
+| Attribute | Description |
+|-----------|-------------|
+| **Planned start time** | Derived from the WorkInstruction's estimated move time. This is the originally scheduled time and does not change. |
+| **Estimated start time** | The current best estimate for when this takt will start. Initially equal to the planned start time. Used for activation scheduling. |
+| **Actual start time** | The system time (last `TimeEvent` timestamp) when the takt was actually activated. Only set at runtime when the takt transitions to Active. |
 
 ### Initial State
 

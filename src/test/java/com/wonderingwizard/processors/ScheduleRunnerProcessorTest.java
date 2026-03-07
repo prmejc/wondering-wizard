@@ -386,7 +386,7 @@ class ScheduleRunnerProcessorTest {
             Action action2 = Action.create("Action 2");
             Action action3 = new Action(UUID.randomUUID(), DeviceType.QC, "Action 3", Set.of(action1.id(), action2.id()));
 
-            Takt takt = new Takt("TAKT100", List.of(action1, action2, action3), EMT);
+            Takt takt = new Takt("TAKT100", List.of(action1, action2, action3), EMT, EMT);
             List<Takt> takts = List.of(takt);
 
             processor.process(new ScheduleCreated("queue-1", takts, EMT));
@@ -419,7 +419,7 @@ class ScheduleRunnerProcessorTest {
             Action action2 = new Action(UUID.randomUUID(), DeviceType.QC, "Action 2", Set.of(action1.id()));
             Action action3 = new Action(UUID.randomUUID(), DeviceType.QC, "Action 3", Set.of(action1.id()));
 
-            Takt takt = new Takt("TAKT100", List.of(action1, action2, action3), EMT);
+            Takt takt = new Takt("TAKT100", List.of(action1, action2, action3), EMT, EMT);
             List<Takt> takts = List.of(takt);
 
             processor.process(new ScheduleCreated("queue-1", takts, EMT));
@@ -468,7 +468,7 @@ class ScheduleRunnerProcessorTest {
             Action linkedAction2 = action2.withDependencies(action2Deps);
 
             String taktName = Takt.createTaktName(taktIndex, 0);
-            takts.add(new Takt(taktName, List.of(linkedAction1, linkedAction2), startTime));
+            takts.add(new Takt(taktName, List.of(linkedAction1, linkedAction2), startTime, startTime));
         }
 
         return takts;

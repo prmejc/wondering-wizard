@@ -190,14 +190,14 @@ public class WorkQueueProcessor implements EventProcessor {
             }
         }
 
-        // Convert to Takt objects - all takts share the schedule's estimatedMoveTime as startTime
+        // Convert to Takt objects - planned and estimated start times are both set from estimatedMoveTime
         // The first QC takt is at index 'adjustment' (the offset that normalizes takt D to index 0)
         int firstQcTaktIndex = adjustment;
-        java.time.Instant startTime = estimatedMoveTime != null ? estimatedMoveTime : java.time.Instant.EPOCH;
+        java.time.Instant plannedStartTime = estimatedMoveTime != null ? estimatedMoveTime : java.time.Instant.EPOCH;
         List<Takt> takts = new ArrayList<>();
         for (int i = 0; i < totalTakts; i++) {
             String taktName = Takt.createTaktName(i, firstQcTaktIndex);
-            takts.add(new Takt(taktName, actionsByTakt.get(i), startTime));
+            takts.add(new Takt(taktName, actionsByTakt.get(i), plannedStartTime, plannedStartTime));
         }
 
         return takts;

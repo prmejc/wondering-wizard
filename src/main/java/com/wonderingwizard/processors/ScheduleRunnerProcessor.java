@@ -54,6 +54,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         Set<UUID> completedActionIds;
         Map<UUID, ActionInfo> actionLookup;
         Map<String, TaktState> taktStates;
+        Map<String, Instant> actualStartTimes;
 
         ScheduleState(Instant estimatedMoveTime, List<Takt> takts) {
             this.estimatedMoveTime = estimatedMoveTime;
@@ -62,6 +63,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             this.completedActionIds = new HashSet<>();
             this.actionLookup = new HashMap<>();
             this.taktStates = new HashMap<>();
+            this.actualStartTimes = new HashMap<>();
 
             // Build action lookup and initialize takt states
             for (Takt takt : takts) {
@@ -121,6 +123,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             copy.activeActionIds = new HashSet<>(this.activeActionIds);
             copy.completedActionIds = new HashSet<>(this.completedActionIds);
             copy.taktStates = new HashMap<>(this.taktStates);
+            copy.actualStartTimes = new HashMap<>(this.actualStartTimes);
             return copy;
         }
     }
@@ -207,7 +210,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     }
 
     /**
-     * Tries to activate takts whose conditions are met (previous takt completed + time >= startTime).
+     * Tries to activate takts whose conditions are met (previous takt completed + time >= estimatedStartTime).
      * When a takt becomes Active, eligible actions within it are also activated.
      */
     private List<SideEffect> tryActivateTakts(String workQueueId, ScheduleState state) {
@@ -230,14 +233,15 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 }
             }
 
-            // Check condition 2: current time >= takt's startTime
-            Instant startTime = takt.startTime();
-            if (startTime != null && this.currentTime.isBefore(startTime)) {
+            // Check condition 2: current time >= takt's estimated start time
+            Instant estimatedStartTime = takt.estimatedStartTime();
+            if (estimatedStartTime != null && this.currentTime.isBefore(estimatedStartTime)) {
                 continue;
             }
 
-            // Activate this takt
+            // Activate this takt - record actual start time as current system time
             state.taktStates.put(takt.name(), TaktState.ACTIVE);
+            state.actualStartTimes.put(takt.name(), this.currentTime);
             sideEffects.add(new TaktActivated(workQueueId, takt.name(), this.currentTime));
 
             // Activate eligible actions in this takt
