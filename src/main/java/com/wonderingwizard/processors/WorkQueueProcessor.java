@@ -201,17 +201,29 @@ public class WorkQueueProcessor implements EventProcessor {
         int firstQcTaktIndex = adjustment;
 
         // Pre-compute duration for each takt based on the QC container's estimated cycle time
+        // PULSE takts use the average takt duration rounded up to the nearest 10 seconds
         int[] durations = new int[totalTakts];
+        int qcTaktCount = 0;
+        int qcTaktDurationSum = 0;
         for (int i = 0; i < totalTakts; i++) {
             int containerIndex = i - firstQcTaktIndex;
-            int cycleTime;
             if (containerIndex >= 0 && containerIndex < instructions.size()) {
-                cycleTime = instructions.get(containerIndex).estimatedCycleTimeSeconds();
-            } else {
-                // PULSE takts: use the first WI's cycle time
-                cycleTime = instructions.get(0).estimatedCycleTimeSeconds();
+                durations[i] = instructions.get(containerIndex).estimatedCycleTimeSeconds() + qcMudaSeconds;
+                qcTaktDurationSum += durations[i];
+                qcTaktCount++;
             }
-            durations[i] = cycleTime + qcMudaSeconds;
+        }
+        // PULSE duration: average of QC takt durations, rounded up to nearest 10
+        int pulseDuration = 0;
+        if (qcTaktCount > 0) {
+            int avg = (qcTaktDurationSum + qcTaktCount - 1) / qcTaktCount; // ceiling division
+            pulseDuration = ((avg + 9) / 10) * 10; // round up to nearest 10
+        }
+        for (int i = 0; i < totalTakts; i++) {
+            int containerIndex = i - firstQcTaktIndex;
+            if (containerIndex < 0 || containerIndex >= instructions.size()) {
+                durations[i] = pulseDuration;
+            }
         }
 
         // Compute planned start times sequentially
