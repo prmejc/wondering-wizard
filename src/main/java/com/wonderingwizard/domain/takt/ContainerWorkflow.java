@@ -21,14 +21,10 @@ import static com.wonderingwizard.domain.takt.DeviceType.*;
  *   <li><b>QC:</b> handover from TT → place on vessel</li>
  * </ul>
  *
- * <h3>Takt structure (4 takts per container):</h3>
- * <ul>
- *   <li><b>Takt A:</b> RTG prep (rtg drive, fetch) + TT approach (drive to RTG pull, drive to RTG standby)</li>
- *   <li><b>Takt B:</b> RTG-TT handover (rtg handover to TT, drive to RTG under, handover from RTG)</li>
- *   <li><b>Takt C:</b> TT transit (drive to QC pull, drive to QC standby)</li>
- *   <li><b>Takt D:</b> TT-QC handover + QC ops (drive under QC, handover to QC, handover from TT,
- *       place on vessel, drive to buffer)</li>
- * </ul>
+ * <h3>Takt structure:</h3>
+ * <p>The base structure uses 3 takts per container (defined by template flags).
+ * When TT sequential actions in a pulse takt exceed the pulse duration,
+ * extra pulses are dynamically introduced by the processor to split them.</p>
  *
  * <h3>Cross-device synchronization:</h3>
  * <ul>
@@ -39,7 +35,7 @@ import static com.wonderingwizard.domain.takt.DeviceType.*;
  * </ul>
  *
  * <p>Early takts have no QC actions because TT has not reached QC position yet.
- * QC only participates in the final takt (Takt D).
+ * QC only participates in the final takt.
  */
 public final class ContainerWorkflow {
 
@@ -49,7 +45,8 @@ public final class ContainerWorkflow {
 
     /**
      * The ordered list of action templates for the container workflow.
-     * Actions are grouped by takt, with {@code isFirstInTaktForDevice=true} marking takt boundaries.
+     * Actions are grouped by takt, with consecutive {@code isFirstInTaktForDevice=true} flags
+     * forming a single takt boundary.
      *
      * <p>Within each takt, actions from different devices can run in parallel.
      * Dependencies are per-device (each action depends on the previous action of the same device)
@@ -57,42 +54,52 @@ public final class ContainerWorkflow {
      */
     public static final List<DeviceActionTemplate> ACTION_TEMPLATES = List.of(
             // Takt A: RTG prep + TT approach to RTG (no QC)
-            DeviceActionTemplate.of(RTG, "rtg drive", true),
+            DeviceActionTemplate.of(RTG, "rtg drive", false),
             DeviceActionTemplate.of(RTG, "fetch", false),
             DeviceActionTemplate.of(TT, "drive to RTG pull", false),
             DeviceActionTemplate.of(TT, "drive to RTG standby", false),
 
             // Takt B: RTG-TT handover (no QC)
             DeviceActionTemplate.of(TT, "drive to RTG under", true),
-            DeviceActionTemplate.of(RTG, "rtg handover to TT", false, TT),
+            DeviceActionTemplate.of(RTG, "rtg handover to TT", true, TT),
             DeviceActionTemplate.of(TT, "handover from RTG", false),
 
             // Takt C: TT transit to QC (no RTG, no QC)
-            DeviceActionTemplate.of(TT, "drive to QC pull", true),
+            DeviceActionTemplate.of(TT, "drive to QC pull", false),
             DeviceActionTemplate.of(TT, "drive to QC standby", false),
 
-            // Takt D: TT-QC handover + QC operations
+            // Takt D: TT approach to QC (no RTG, no QC)
+            DeviceActionTemplate.of(TT, "drive under QC", false),
+
+            // Takt E: TT-QC handover + QC operations
             // "handover from TT" must come before "handover to QC" in template order
             // so both resolve their cross-device/same-device dep to "drive under QC"
-            DeviceActionTemplate.of(TT, "drive under QC", true),
-            DeviceActionTemplate.of(QC, "handover from TT", false, TT),
-            DeviceActionTemplate.of(TT, "handover to QC", false),
+            DeviceActionTemplate.of(QC, "handover from TT", true, TT),
+            DeviceActionTemplate.of(TT, "handover to QC", true),
             DeviceActionTemplate.of(QC, "place on vessel", false),
             DeviceActionTemplate.of(TT, "drive to buffer", false)
     );
 
     /**
-     * Precomputed takt offsets for each template based on isFirstInTaktForDevice flags.
+     * Precomputed base takt offsets from template isFirstInTaktForDevice flags.
+     * These define the minimum takt structure (3 takts per container).
+     * Additional splits may be applied dynamically by the processor.
      */
     private static final Map<DeviceActionTemplate, Integer> TAKT_OFFSETS = computeTaktOffsets();
 
     private static Map<DeviceActionTemplate, Integer> computeTaktOffsets() {
         Map<DeviceActionTemplate, Integer> offsets = new HashMap<>();
         int currentTakt = 0;
+        boolean prevWasFirst = false;
 
         for (DeviceActionTemplate template : ACTION_TEMPLATES) {
             if (template.isFirstInTaktForDevice()) {
-                currentTakt++;
+                if (!prevWasFirst) {
+                    currentTakt++;
+                }
+                prevWasFirst = true;
+            } else {
+                prevWasFirst = false;
             }
             offsets.put(template, currentTakt);
         }
@@ -135,19 +142,18 @@ public final class ContainerWorkflow {
     }
 
     /**
-     * Gets the computed takt offset for a template.
-     * Offset 0 is the base takt (QC/TT handover takt), negative values are earlier takts.
+     * Gets the base takt offset for a template (from template-defined boundaries only).
+     * Offset 0 is the QC/TT handover takt, negative values are earlier takts.
      *
      * @param template the template
-     * @return the takt offset
+     * @return the base takt offset
      */
     public static int getTaktOffset(DeviceActionTemplate template) {
         return TAKT_OFFSETS.getOrDefault(template, 0);
     }
 
     /**
-     * Returns the minimum takt offset used in the workflow.
-     * This determines how many takts before the base takt actions can occur.
+     * Returns the minimum base takt offset used in the workflow.
      *
      * @return the minimum (most negative) takt offset
      */

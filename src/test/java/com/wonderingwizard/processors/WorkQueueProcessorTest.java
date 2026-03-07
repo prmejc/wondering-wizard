@@ -556,7 +556,7 @@ class WorkQueueProcessorTest {
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 // 1 container with multi-device workflow: 1 + 3 (offset) = 4 takts
                 assertEquals(4, created.takts().size(),
-                        "Only 4 takts should be present after step back (1 container)");
+                        "Only 3 takts should be present after step back (1 container)");
             }
         }
 
@@ -605,7 +605,7 @@ class WorkQueueProcessorTest {
                 ScheduleCreated created = (ScheduleCreated) effects.get(0);
                 // 1 container with multi-device workflow: 1 + 3 (offset) = 4 takts
                 assertEquals(4, created.takts().size(),
-                        "Should have only 4 takts (1 container, not duplicated)");
+                        "Should have only 3 takts (1 container, not duplicated)");
             }
 
             @Test
@@ -708,9 +708,11 @@ class WorkQueueProcessorTest {
                         new WorkQueueMessage("queue-1", ACTIVE, 0));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                // 1 container: RTG at PULSE97, TT-RTG at PULSE98, TT-QC at PULSE99, QC at TAKT100
+                // 1 container with extra pulse: PULSE97, PULSE98, PULSE99, TAKT100
                 assertEquals(4, created.takts().size());
                 assertEquals("PULSE97", created.takts().get(0).name());
+                assertEquals("PULSE98", created.takts().get(1).name());
+                assertEquals("PULSE99", created.takts().get(2).name());
                 assertEquals("TAKT100", created.takts().get(3).name());
             }
         }
@@ -763,61 +765,58 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("PULSE98 should have RTG-TT handover (3 actions)")
-            void taktB_rtgTtHandover() {
+            @DisplayName("PULSE98 should have RTG-TT handover + TT transit + drive under QC (6 actions)")
+            void taktB_rtgTtHandoverAndTransit() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE, 0));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                Takt takt101 = created.takts().get(1);
+                Takt pulse98 = created.takts().get(1);
 
-                assertEquals(3, takt101.actions().size());
+                assertEquals(6, pulse98.actions().size());
 
-                List<Action> rtgActions = takt101.actions().stream()
+                List<Action> rtgActions = pulse98.actions().stream()
                         .filter(a -> a.deviceType() == DeviceType.RTG)
                         .collect(Collectors.toList());
                 assertEquals(1, rtgActions.size());
                 assertEquals("rtg handover to TT", rtgActions.get(0).description());
 
-                List<Action> ttActions = takt101.actions().stream()
+                List<Action> ttActions = pulse98.actions().stream()
                         .filter(a -> a.deviceType() == DeviceType.TT)
                         .collect(Collectors.toList());
-                assertEquals(2, ttActions.size());
+                assertEquals(5, ttActions.size());
                 assertEquals("drive to RTG under", ttActions.get(0).description());
                 assertEquals("handover from RTG", ttActions.get(1).description());
+                assertEquals("drive to QC pull", ttActions.get(2).description());
+                assertEquals("drive to QC standby", ttActions.get(3).description());
+                assertEquals("drive under QC", ttActions.get(4).description());
+
+                // No QC actions yet - TT not in position
+                List<Action> qcActions = pulse98.actions().stream()
+                        .filter(a -> a.deviceType() == DeviceType.QC)
+                        .collect(Collectors.toList());
+                assertTrue(qcActions.isEmpty(), "No QC actions in handover+transit takt");
             }
 
             @Test
-            @DisplayName("PULSE99 should have TT transit to QC (2 actions)")
-            void taktC_ttTransit() {
+            @DisplayName("PULSE99 should be an empty gap takt (0 actions)")
+            void taktC_emptyGap() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage("queue-1", ACTIVE, 0));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                Takt takt102 = created.takts().get(2);
+                Takt pulse99 = created.takts().get(2);
 
-                assertEquals(2, takt102.actions().size());
-
-                List<Action> ttActions = takt102.actions().stream()
-                        .filter(a -> a.deviceType() == DeviceType.TT)
-                        .collect(Collectors.toList());
-                assertEquals(2, ttActions.size());
-                assertEquals("drive to QC pull", ttActions.get(0).description());
-                assertEquals("drive to QC standby", ttActions.get(1).description());
-
-                // No QC actions yet - TT not in position
-                List<Action> qcActions = takt102.actions().stream()
-                        .filter(a -> a.deviceType() == DeviceType.QC)
-                        .collect(Collectors.toList());
-                assertTrue(qcActions.isEmpty(), "No QC actions in transit takt");
+                assertEquals(0, pulse99.actions().size(),
+                        "Gap takt should have no actions for a single container");
             }
 
             @Test
-            @DisplayName("TAKT100 should have TT-QC handover + QC ops (5 actions)")
+            @DisplayName("TAKT100 should have TT-QC handover + QC ops (4 actions)")
             void taktD_ttQcHandoverAndQcOps() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null, 120));
 
@@ -825,19 +824,18 @@ class WorkQueueProcessorTest {
                         new WorkQueueMessage("queue-1", ACTIVE, 0));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-                Takt takt103 = created.takts().get(3);
+                Takt takt100 = created.takts().get(3);
 
-                assertEquals(5, takt103.actions().size());
+                assertEquals(4, takt100.actions().size());
 
-                List<Action> ttActions = takt103.actions().stream()
+                List<Action> ttActions = takt100.actions().stream()
                         .filter(a -> a.deviceType() == DeviceType.TT)
                         .collect(Collectors.toList());
-                assertEquals(3, ttActions.size());
-                assertEquals("drive under QC", ttActions.get(0).description());
-                assertEquals("handover to QC", ttActions.get(1).description());
-                assertEquals("drive to buffer", ttActions.get(2).description());
+                assertEquals(2, ttActions.size());
+                assertEquals("handover to QC", ttActions.get(0).description());
+                assertEquals("drive to buffer", ttActions.get(1).description());
 
-                List<Action> qcActions = takt103.actions().stream()
+                List<Action> qcActions = takt100.actions().stream()
                         .filter(a -> a.deviceType() == DeviceType.QC)
                         .collect(Collectors.toList());
                 assertEquals(2, qcActions.size());
@@ -866,17 +864,17 @@ class WorkQueueProcessorTest {
                 // PULSE97: Container 0 Takt A (4 actions)
                 assertEquals(4, created.takts().get(0).actions().size());
 
-                // PULSE98: Container 0 Takt B (3) + Container 1 Takt A (4) = 7 actions
-                assertEquals(7, created.takts().get(1).actions().size());
+                // PULSE98: Container 0 Takt B (5) + Container 1 Takt A (4) = 9 actions
+                assertEquals(9, created.takts().get(1).actions().size());
 
-                // PULSE99: Container 0 Takt C (2) + Container 1 Takt B (3) = 5 actions
-                assertEquals(5, created.takts().get(2).actions().size());
+                // PULSE99: Container 0 Takt C (1) + Container 1 Takt B (5) = 6 actions
+                assertEquals(6, created.takts().get(2).actions().size());
 
-                // TAKT100: Container 0 Takt D (5) + Container 1 Takt C (2) = 7 actions
-                assertEquals(7, created.takts().get(3).actions().size());
+                // TAKT100: Container 0 Takt D (4) + Container 1 Takt C (1) = 5 actions
+                assertEquals(5, created.takts().get(3).actions().size());
 
-                // TAKT101: Container 1 Takt D (5 actions)
-                assertEquals(5, created.takts().get(4).actions().size());
+                // TAKT101: Container 1 Takt D (4 actions)
+                assertEquals(4, created.takts().get(4).actions().size());
             }
         }
 
