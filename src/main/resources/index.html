@@ -253,7 +253,7 @@ class ScheduleView extends HTMLElement {
       const numCols = takts.length;
 
       // Grid: label column + one column per takt (width proportional to duration)
-      const colDefs = takts.map(t => { const d = t.durationSeconds || 120; return 'minmax(' + Math.round(d * 1.2) + 'px,' + d + 'fr)'; }).join(' ');
+      const colDefs = takts.map(t => { const d = t.durationSeconds || 120; return 'minmax(' + Math.round(d * 3) + 'px,' + d + 'fr)'; }).join(' ');
       html += '<div style="display:inline-grid;grid-template-columns:56px ' + colDefs + ';gap:1px;min-width:100%">';
 
       // Header row: corner + takt headers
