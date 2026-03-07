@@ -946,8 +946,8 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("Handover from RTG should depend on both prev TT action and RTG handover")
-            void handoverFromRtg_hasCrossDeviceDependency() {
+            @DisplayName("Handover from RTG should depend on previous TT action (drive to RTG under)")
+            void handoverFromRtg_dependsOnPreviousTtAction() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 List<SideEffect> sideEffects = engine.processEvent(
@@ -958,9 +958,6 @@ class WorkQueueProcessorTest {
                         .flatMap(t -> t.actions().stream())
                         .collect(Collectors.toList());
 
-                Action rtgHandover = allActions.stream()
-                        .filter(a -> a.description().equals("rtg handover to TT"))
-                        .findFirst().orElseThrow();
                 Action driveToRtgUnder = allActions.stream()
                         .filter(a -> a.description().equals("drive to RTG under"))
                         .findFirst().orElseThrow();
@@ -968,12 +965,10 @@ class WorkQueueProcessorTest {
                         .filter(a -> a.description().equals("handover from RTG"))
                         .findFirst().orElseThrow();
 
-                assertEquals(2, handoverFromRtg.dependsOn().size(),
-                        "handover from RTG should have 2 dependencies");
+                assertEquals(1, handoverFromRtg.dependsOn().size(),
+                        "handover from RTG should have 1 dependency (prev TT action)");
                 assertTrue(handoverFromRtg.dependsOn().contains(driveToRtgUnder.id()),
                         "handover from RTG should depend on drive to RTG under (prev TT)");
-                assertTrue(handoverFromRtg.dependsOn().contains(rtgHandover.id()),
-                        "handover from RTG should depend on rtg handover to TT (cross-device)");
             }
 
             @Test
@@ -1001,8 +996,39 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("Different container workflows should be independent")
-            void containerWorkflowsAreIndependent() {
+            @DisplayName("RTG handover to TT must depend on TT drive to RTG under (cross-device)")
+            void rtgHandoverToTt_dependsOnDriveToRtgUnder() {
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+
+                List<SideEffect> sideEffects = engine.processEvent(
+                        new WorkQueueMessage("queue-1", ACTIVE));
+
+                ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
+                List<Action> allActions = created.takts().stream()
+                        .flatMap(t -> t.actions().stream())
+                        .collect(Collectors.toList());
+
+                Action rtgHandoverToTT = allActions.stream()
+                        .filter(a -> a.description().equals("rtg handover to TT"))
+                        .findFirst().orElseThrow();
+                Action driveToRtgUnder = allActions.stream()
+                        .filter(a -> a.description().equals("drive to RTG under"))
+                        .findFirst().orElseThrow();
+                Action fetch = allActions.stream()
+                        .filter(a -> a.description().equals("fetch"))
+                        .findFirst().orElseThrow();
+
+                assertTrue(rtgHandoverToTT.dependsOn().contains(driveToRtgUnder.id()),
+                        "rtg handover to TT must depend on drive to RTG under (cross-device TT dependency)");
+                assertTrue(rtgHandoverToTT.dependsOn().contains(fetch.id()),
+                        "rtg handover to TT must depend on fetch (same-device RTG dependency)");
+                assertEquals(2, rtgHandoverToTT.dependsOn().size(),
+                        "rtg handover to TT should have exactly 2 dependencies");
+            }
+
+            @Test
+            @DisplayName("Shared devices (RTG, QC) chain across containers")
+            void sharedDevices_chainAcrossContainers() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
                 engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
 
@@ -1010,25 +1036,64 @@ class WorkQueueProcessorTest {
                         new WorkQueueMessage("queue-1", ACTIVE));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
-
-                // TAKT101 has Container 0's Takt B (3) + Container 1's Takt A (4) = 7 actions
-                Takt takt101 = created.takts().get(1);
-
-                // Container 1's first RTG action (rtg drive) should have no dependencies
-                List<Action> rtgActions = takt101.actions().stream()
-                        .filter(a -> a.deviceType() == DeviceType.RTG && a.description().equals("rtg drive"))
+                List<Action> allActions = created.takts().stream()
+                        .flatMap(t -> t.actions().stream())
                         .collect(Collectors.toList());
-                assertEquals(1, rtgActions.size());
-                assertTrue(rtgActions.get(0).hasNoDependencies(),
-                        "Container 1's first RTG action should have no dependencies");
 
-                // Container 1's first TT action (drive to RTG pull) should also have no deps
-                List<Action> ttFirstActions = takt101.actions().stream()
-                        .filter(a -> a.deviceType() == DeviceType.TT && a.description().equals("drive to RTG pull"))
+                // Container 0's last RTG action
+                Action c0RtgHandoverToTT = allActions.stream()
+                        .filter(a -> a.containerIndex() == 0 && a.description().equals("rtg handover to TT"))
+                        .findFirst().orElseThrow();
+                // Container 1's first RTG action
+                Action c1RtgDrive = allActions.stream()
+                        .filter(a -> a.containerIndex() == 1 && a.description().equals("rtg drive"))
+                        .findFirst().orElseThrow();
+
+                assertTrue(c1RtgDrive.dependsOn().contains(c0RtgHandoverToTT.id()),
+                        "Container 1's RTG rtg drive must depend on container 0's RTG rtg handover to TT");
+                assertEquals(1, c1RtgDrive.dependsOn().size(),
+                        "Container 1's first RTG action should only depend on container 0's last RTG action");
+
+                // Container 0's last QC action
+                Action c0PlaceOnVessel = allActions.stream()
+                        .filter(a -> a.containerIndex() == 0 && a.description().equals("place on vessel"))
+                        .findFirst().orElseThrow();
+                // Container 1's first QC action
+                Action c1HandoverFromTT = allActions.stream()
+                        .filter(a -> a.containerIndex() == 1 && a.description().equals("handover from TT"))
+                        .findFirst().orElseThrow();
+
+                assertTrue(c1HandoverFromTT.dependsOn().contains(c0PlaceOnVessel.id()),
+                        "Container 1's QC handover from TT must depend on container 0's QC place on vessel");
+            }
+
+            @Test
+            @DisplayName("Per-container device (TT) does not chain across containers")
+            void perContainerDevice_TT_doesNotChainAcrossContainers() {
+                engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
+                engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, null));
+
+                List<SideEffect> sideEffects = engine.processEvent(
+                        new WorkQueueMessage("queue-1", ACTIVE));
+
+                ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
+                List<Action> allActions = created.takts().stream()
+                        .flatMap(t -> t.actions().stream())
                         .collect(Collectors.toList());
-                assertEquals(1, ttFirstActions.size());
-                assertTrue(ttFirstActions.get(0).hasNoDependencies(),
-                        "Container 1's first TT action should have no dependencies");
+
+                // Container 0's last TT action
+                Action c0DriveToBuffer = allActions.stream()
+                        .filter(a -> a.containerIndex() == 0 && a.description().equals("drive to buffer"))
+                        .findFirst().orElseThrow();
+                // Container 1's first TT action
+                Action c1DriveToRtgPull = allActions.stream()
+                        .filter(a -> a.containerIndex() == 1 && a.description().equals("drive to RTG pull"))
+                        .findFirst().orElseThrow();
+
+                assertFalse(c1DriveToRtgPull.dependsOn().contains(c0DriveToBuffer.id()),
+                        "Container 1's TT drive to RTG pull must NOT depend on container 0's TT drive to buffer");
+                assertTrue(c1DriveToRtgPull.hasNoDependencies(),
+                        "Container 1's first TT action should have no dependencies (separate truck)");
             }
         }
     }
