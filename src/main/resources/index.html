@@ -116,13 +116,7 @@ class ScheduleHeader extends HTMLElement {
   async _playTick() {
     const resolution = parseInt(this.querySelector('#play-resolution').value) || 1;
     await apiCall('/api/tick', { seconds: resolution });
-    // Update clock from tracked time without full re-render so buttons stay clickable
-    if (window._lastState && window._lastState.currentTime) {
-      const ms = new Date(window._lastState.currentTime).getTime() + resolution * 1000;
-      const d = new Date(ms);
-      window._lastState.currentTime = d.toISOString();
-      this.querySelector('#clock').textContent = d.toISOString().substring(11, 19);
-    }
+    await refreshState();
   }
   togglePlay() {
     if (this._playTimer) {
