@@ -190,12 +190,29 @@ public class WorkQueueProcessor implements EventProcessor {
             }
         }
 
-        // Convert to Takt objects - planned and estimated start times are both set from estimatedMoveTime
+        // Convert to Takt objects
         // The first QC takt is at index 'adjustment' (the offset that normalizes takt D to index 0)
+        // Each QC takt (TAKT100+c) gets its planned start time from the corresponding WI's estimatedMoveTime
+        // PULSE takts are offset backward from TAKT100 by 2 minutes per takt
         int firstQcTaktIndex = adjustment;
-        java.time.Instant plannedStartTime = estimatedMoveTime != null ? estimatedMoveTime : java.time.Instant.EPOCH;
+        java.time.Instant firstQcTime = instructions.get(0).estimatedMoveTime();
         List<Takt> takts = new ArrayList<>();
         for (int i = 0; i < totalTakts; i++) {
+            int containerIndex = i - firstQcTaktIndex;
+            java.time.Instant plannedStartTime;
+            if (containerIndex >= 0 && containerIndex < instructions.size()) {
+                // QC takt: use the corresponding WI's estimatedMoveTime
+                plannedStartTime = instructions.get(containerIndex).estimatedMoveTime();
+            } else if (containerIndex < 0 && firstQcTime != null) {
+                // PULSE takt: offset backward from TAKT100 by 2 minutes per takt
+                long minutesBack = (long) (firstQcTaktIndex - i) * 2;
+                plannedStartTime = firstQcTime.minus(java.time.Duration.ofMinutes(minutesBack));
+            } else {
+                plannedStartTime = null;
+            }
+            if (plannedStartTime == null) {
+                plannedStartTime = java.time.Instant.EPOCH;
+            }
             String taktName = Takt.createTaktName(i, firstQcTaktIndex);
             takts.add(new Takt(taktName, actionsByTakt.get(i), plannedStartTime, plannedStartTime));
         }
