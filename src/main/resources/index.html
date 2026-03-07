@@ -91,6 +91,11 @@ class ScheduleHeader extends HTMLElement {
         <button class="secondary" onclick="this.closest('schedule-header').tick(60)">+1 min</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(300)">+5 min</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(900)">+15 min</button>
+        <span style="border-left:1px solid var(--border);height:24px;margin:0 4px"></span>
+        <button id="play-btn" class="secondary" onclick="this.closest('schedule-header').togglePlay()">&#9654; Play</button>
+        <label style="font-size:12px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
+          <input id="play-speed" type="number" min="0.1" max="120" step="0.1" value="1" style="width:50px;text-align:center;font-size:12px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">x
+        </label>
       </div>`;
     this.setAttribute('data-refresh', '');
   }
@@ -104,6 +109,39 @@ class ScheduleHeader extends HTMLElement {
   async tick(seconds) {
     await apiCall('/api/tick', { seconds });
     refreshState();
+  }
+  togglePlay() {
+    if (this._playTimer) {
+      clearInterval(this._playTimer);
+      this._playTimer = null;
+      this.querySelector('#play-btn').innerHTML = '&#9654; Play';
+      return;
+    }
+    this.querySelector('#play-btn').innerHTML = '&#9724; Stop';
+    const speed = () => parseFloat(this.querySelector('#play-speed').value) || 1;
+    const intervalMs = () => Math.round(1000 / speed());
+    let pending = false;
+    const doTick = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        await this.tick(1);
+      } finally {
+        pending = false;
+      }
+    };
+    doTick();
+    this._playTimer = setInterval(doTick, intervalMs());
+    // Watch for speed changes and restart interval
+    const speedInput = this.querySelector('#play-speed');
+    const onSpeedChange = () => {
+      if (!this._playTimer) return;
+      clearInterval(this._playTimer);
+      this._playTimer = setInterval(doTick, intervalMs());
+    };
+    speedInput.addEventListener('input', onSpeedChange);
+    // Store cleanup ref
+    this._speedCleanup = () => speedInput.removeEventListener('input', onSpeedChange);
   }
 }
 customElements.define('schedule-header', ScheduleHeader);
