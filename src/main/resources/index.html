@@ -134,7 +134,8 @@ class ScheduleHeader extends HTMLElement {
     }
     this.querySelector('#play-btn').innerHTML = '&#9724; Stop';
     const speed = () => parseFloat(this.querySelector('#play-speed').value) || 1;
-    const intervalMs = () => Math.round(1000 / speed());
+    const resolution = () => parseInt(this.querySelector('#play-resolution').value) || 1;
+    const intervalMs = () => Math.round(resolution() * 1000 / speed());
     let pending = false;
     const doTick = async () => {
       if (pending) return;
