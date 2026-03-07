@@ -96,6 +96,9 @@ class ScheduleHeader extends HTMLElement {
         <label style="font-size:12px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
           <input id="play-speed" type="number" min="0.1" max="120" step="0.1" value="1" style="width:50px;text-align:center;font-size:12px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">x
         </label>
+        <label style="font-size:12px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
+          <input id="play-resolution" type="number" min="1" max="900" step="1" value="1" style="width:50px;text-align:center;font-size:12px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">s/tick
+        </label>
       </div>`;
     this.setAttribute('data-refresh', '');
   }
@@ -111,10 +114,11 @@ class ScheduleHeader extends HTMLElement {
     refreshState();
   }
   async _playTick() {
-    await apiCall('/api/tick', { seconds: 1 });
+    const resolution = parseInt(this.querySelector('#play-resolution').value) || 1;
+    await apiCall('/api/tick', { seconds: resolution });
     // Update clock from tracked time without full re-render so buttons stay clickable
     if (window._lastState && window._lastState.currentTime) {
-      const ms = new Date(window._lastState.currentTime).getTime() + 1000;
+      const ms = new Date(window._lastState.currentTime).getTime() + resolution * 1000;
       const d = new Date(ms);
       window._lastState.currentTime = d.toISOString();
       this.querySelector('#clock').textContent = d.toISOString().substring(11, 19);
