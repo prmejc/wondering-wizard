@@ -136,14 +136,17 @@ public class WorkQueueProcessor implements EventProcessor {
             actionsByTakt.put(i, new ArrayList<>());
         }
 
-        // Track last action per device type across containers so that shared devices
-        // (RTG, QC) chain sequentially: container N's first action on a device depends
-        // on container N-1's last action on that same device.
-        Map<DeviceType, Action> lastActionByDevice = new EnumMap<>(DeviceType.class);
+        // Track last action for shared devices (RTG, QC) across containers so that
+        // container N's first action on a shared device depends on container N-1's last
+        // action on that device. TT is per-container (each container gets its own truck).
+        Map<DeviceType, Action> lastSharedDeviceAction = new EnumMap<>(DeviceType.class);
 
         // Create actions for each container (work instruction)
         for (int containerIndex = 0; containerIndex < numContainers; containerIndex++) {
             int baseTaktIndex = containerIndex + adjustment;
+
+            // Per-container tracking for within-container same-device and cross-device deps
+            Map<DeviceType, Action> lastActionByDevice = new EnumMap<>(DeviceType.class);
 
             for (DeviceActionTemplate template : templates) {
                 int targetTaktIndex = baseTaktIndex + ContainerWorkflow.getTaktOffset(template);
@@ -153,10 +156,16 @@ public class WorkQueueProcessor implements EventProcessor {
                 // Build dependencies: previous action of same device + optional cross-device dependency
                 Set<UUID> dependencies = new HashSet<>();
 
-                // Depend on previous action of the same device type
+                // Depend on previous action of the same device type (within this container)
                 Action prevSameDevice = lastActionByDevice.get(template.deviceType());
                 if (prevSameDevice != null) {
                     dependencies.add(prevSameDevice.id());
+                } else if (template.deviceType() != DeviceType.TT) {
+                    // First action on a shared device: depend on previous container's last action
+                    Action prevShared = lastSharedDeviceAction.get(template.deviceType());
+                    if (prevShared != null) {
+                        dependencies.add(prevShared.id());
+                    }
                 }
 
                 // Cross-device dependency (handover synchronization)
@@ -171,6 +180,13 @@ public class WorkQueueProcessor implements EventProcessor {
                         dependencies.isEmpty() ? Set.of() : Set.copyOf(dependencies));
                 actionsByTakt.get(targetTaktIndex).add(actionWithDeps);
                 lastActionByDevice.put(template.deviceType(), actionWithDeps);
+            }
+
+            // Update shared device tracking for RTG and QC
+            for (var entry : lastActionByDevice.entrySet()) {
+                if (entry.getKey() != DeviceType.TT) {
+                    lastSharedDeviceAction.put(entry.getKey(), entry.getValue());
+                }
             }
         }
 
