@@ -152,6 +152,7 @@ public final class JsonSerializer {
                 writeField(sb, "type", "WorkQueueMessage", true);
                 writeField(sb, "workQueueId", e.workQueueId(), false);
                 writeField(sb, "status", e.status(), false);
+                writeField(sb, "qcMudaSeconds", e.qcMudaSeconds(), false);
                 sb.append('}');
             }
             case WorkInstructionEvent e -> {
@@ -162,6 +163,7 @@ public final class JsonSerializer {
                 writeField(sb, "fetchChe", e.fetchChe(), false);
                 writeField(sb, "status", e.status(), false);
                 writeField(sb, "estimatedMoveTime", e.estimatedMoveTime(), false);
+                writeField(sb, "estimatedCycleTimeSeconds", e.estimatedCycleTimeSeconds(), false);
                 sb.append('}');
             }
             case ActionCompletedEvent e -> {
@@ -257,7 +259,9 @@ public final class JsonSerializer {
     private static void writeTakt(StringBuilder sb, Takt takt) {
         sb.append('{');
         writeField(sb, "name", takt.name(), true);
-        writeField(sb, "startTime", takt.startTime(), false);
+        writeField(sb, "plannedStartTime", takt.plannedStartTime(), false);
+        writeField(sb, "estimatedStartTime", takt.estimatedStartTime(), false);
+        writeField(sb, "durationSeconds", takt.durationSeconds(), false);
         writeFieldKey(sb, "actions", false);
         writeValue(sb, takt.actions());
         sb.append('}');
@@ -282,6 +286,7 @@ public final class JsonSerializer {
         writeField(sb, "fetchChe", wi.fetchChe(), false);
         writeField(sb, "status", wi.status(), false);
         writeField(sb, "estimatedMoveTime", wi.estimatedMoveTime(), false);
+        writeField(sb, "estimatedCycleTimeSeconds", wi.estimatedCycleTimeSeconds(), false);
         sb.append('}');
     }
 
@@ -314,6 +319,10 @@ public final class JsonSerializer {
         sb.append('{');
         writeField(sb, "name", view.name(), true);
         writeField(sb, "status", view.status(), false);
+        writeField(sb, "plannedStartTime", view.plannedStartTime(), false);
+        writeField(sb, "estimatedStartTime", view.estimatedStartTime(), false);
+        writeField(sb, "actualStartTime", view.actualStartTime(), false);
+        writeField(sb, "durationSeconds", view.durationSeconds(), false);
         writeFieldKey(sb, "actions", false);
         writeValue(sb, view.actions());
         sb.append('}');

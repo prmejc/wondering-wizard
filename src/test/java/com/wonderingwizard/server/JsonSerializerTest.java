@@ -126,7 +126,7 @@ class JsonSerializerTest {
         @Test
         @DisplayName("Should serialize WorkQueueMessage")
         void serializesWorkQueueMessage() {
-            WorkQueueMessage event = new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE);
+            WorkQueueMessage event = new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0);
             String json = JsonSerializer.serialize(event);
             assertTrue(json.contains("\"type\":\"WorkQueueMessage\""));
             assertTrue(json.contains("\"workQueueId\":\"WQ-001\""));
@@ -138,7 +138,7 @@ class JsonSerializerTest {
         void serializesWorkInstructionEvent() {
             WorkInstructionEvent event = new WorkInstructionEvent(
                     "WI-001", "WQ-001", "RTG-01", WorkInstructionStatus.PENDING,
-                    Instant.parse("2024-01-01T10:00:00Z"));
+                    Instant.parse("2024-01-01T10:00:00Z"), 120);
             String json = JsonSerializer.serialize(event);
             assertTrue(json.contains("\"type\":\"WorkInstructionEvent\""));
             assertTrue(json.contains("\"workInstructionId\":\"WI-001\""));
@@ -241,10 +241,13 @@ class JsonSerializerTest {
         @DisplayName("Should serialize Takt")
         void serializesTakt() {
             Action action = Action.create(DeviceType.QC, "test action");
-            Takt takt = new Takt("TAKT100", List.of(action), Instant.parse("2024-01-01T10:00:00Z"));
+            Instant time = Instant.parse("2024-01-01T10:00:00Z");
+            Takt takt = new Takt("TAKT100", List.of(action), time, time, 125);
             String json = JsonSerializer.serialize(takt);
             assertTrue(json.contains("\"name\":\"TAKT100\""));
-            assertTrue(json.contains("\"startTime\":\"2024-01-01T10:00:00Z\""));
+            assertTrue(json.contains("\"plannedStartTime\":\"2024-01-01T10:00:00Z\""));
+            assertTrue(json.contains("\"estimatedStartTime\":\"2024-01-01T10:00:00Z\""));
+            assertTrue(json.contains("\"durationSeconds\":125"));
             assertTrue(json.contains("\"actions\":["));
         }
 
@@ -253,7 +256,8 @@ class JsonSerializerTest {
         void serializesScheduleCreatedWithTakts() {
             Action a1 = Action.create(DeviceType.RTG, "action1");
             Action a2 = new Action(UUID.randomUUID(), DeviceType.QC, "action2", Set.of(a1.id()));
-            Takt takt = new Takt("TAKT100", List.of(a1, a2), Instant.parse("2024-01-01T10:00:00Z"));
+            Instant time = Instant.parse("2024-01-01T10:00:00Z");
+            Takt takt = new Takt("TAKT100", List.of(a1, a2), time, time, 120);
             ScheduleCreated se = new ScheduleCreated("WQ-001", List.of(takt),
                     Instant.parse("2024-01-01T10:00:00Z"));
             String json = JsonSerializer.serialize(se);

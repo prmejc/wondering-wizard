@@ -86,6 +86,7 @@ class ScheduleHeader extends HTMLElement {
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <span id="clock" style="font-family:monospace;font-size:20px;color:var(--qc-color)">00:00:00</span>
+        <button class="secondary" onclick="this.closest('schedule-header').tick(1)">+1 sec</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(60)">+1 min</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(300)">+5 min</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(900)">+15 min</button>
@@ -134,6 +135,10 @@ class EventPanel extends HTMLElement {
         <label>Est. Move Time (ISO)</label>
         <input id="wi-emt" value="">
       </div>
+      <div class="form-group">
+        <label>Est. Cycle Time (sec)</label>
+        <input id="wi-ect" type="number" value="120">
+      </div>
       <button onclick="this.closest('event-panel').sendWI()" style="margin-top:8px;width:100%">Add Work Instruction</button>
 
       <h3 style="margin-top:20px">Work Queue</h3>
@@ -147,6 +152,10 @@ class EventPanel extends HTMLElement {
           <option value="ACTIVE">ACTIVE</option>
           <option value="INACTIVE">INACTIVE</option>
         </select>
+      </div>
+      <div class="form-group">
+        <label>QC Muda (sec)</label>
+        <input id="wq-muda" type="number" value="5">
       </div>
       <button onclick="this.closest('event-panel').sendWQ()" style="margin-top:8px;width:100%">Send Work Queue</button>`;
     this.querySelector('#wi-emt').addEventListener('input', () => { this._emtDirty = true; });
@@ -163,6 +172,7 @@ class EventPanel extends HTMLElement {
       workQueueId: this.querySelector('#wi-queue').value,
       fetchChe: this.querySelector('#wi-che').value,
       estimatedMoveTime: this.querySelector('#wi-emt').value,
+      estimatedCycleTimeSeconds: this.querySelector('#wi-ect').value,
       status: 'PENDING'
     };
     await apiCall('/api/work-instruction', data);
@@ -177,7 +187,8 @@ class EventPanel extends HTMLElement {
   async sendWQ() {
     await apiCall('/api/work-queue', {
       workQueueId: this.querySelector('#wq-id').value,
-      status: this.querySelector('#wq-status').value
+      status: this.querySelector('#wq-status').value,
+      qcMudaSeconds: this.querySelector('#wq-muda').value
     });
     refreshState();
   }
@@ -241,8 +252,9 @@ class ScheduleView extends HTMLElement {
 
       const numCols = takts.length;
 
-      // Grid: label column + one column per takt
-      html += '<div style="display:inline-grid;grid-template-columns:56px repeat(' + numCols + ',minmax(110px,1fr));gap:1px;min-width:100%">';
+      // Grid: label column + one column per takt (width proportional to duration)
+      const colDefs = takts.map(t => { const d = t.durationSeconds || 120; return 'minmax(' + Math.round(d * 1.2) + 'px,' + d + 'fr)'; }).join(' ');
+      html += '<div style="display:inline-grid;grid-template-columns:56px ' + colDefs + ';gap:1px;min-width:100%">';
 
       // Header row: corner + takt headers
       html += '<div style="background:var(--surface2);padding:4px"></div>';
@@ -252,6 +264,12 @@ class ScheduleView extends HTMLElement {
         html += '<div style="background:var(--surface2);padding:4px 6px;text-align:center;border-bottom:2px solid ' + tc + '">';
         html += '<div style="font-size:11px;color:var(--text-muted)">' + takt.name + '</div>';
         html += '<div style="font-size:9px;font-weight:600;color:' + tc + '">' + ts + '</div>';
+        const fmtTime = t => t ? new Date(t).toISOString().substring(11, 19) : '--:--:--';
+        html += '<div style="font-size:9px;color:var(--text-muted);margin-top:2px;line-height:1.4">';
+        html += 'P: ' + fmtTime(takt.plannedStartTime) + '<br>';
+        html += 'E: ' + fmtTime(takt.estimatedStartTime) + '<br>';
+        html += '<span style="color:' + (takt.actualStartTime ? 'var(--completed)' : 'var(--text-muted)') + '">A: ' + fmtTime(takt.actualStartTime) + '</span>';
+        html += '</div>';
         html += '</div>';
       }
 

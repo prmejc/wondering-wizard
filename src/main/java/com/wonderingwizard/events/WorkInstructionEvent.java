@@ -15,13 +15,15 @@ import java.time.Instant;
  * @param fetchChe the CHE (Container Handling Equipment) identifier for fetching
  * @param status the status of the work instruction
  * @param estimatedMoveTime the estimated time when this work instruction should start
+ * @param estimatedCycleTimeSeconds the estimated cycle time for this work instruction in seconds
  */
 public record WorkInstructionEvent(
         String workInstructionId,
         String workQueueId,
         String fetchChe,
         WorkInstructionStatus status,
-        Instant estimatedMoveTime
+        Instant estimatedMoveTime,
+        int estimatedCycleTimeSeconds
 ) implements Event {
 
     @Override
@@ -30,6 +32,7 @@ public record WorkInstructionEvent(
                 ", workQueueId=" + workQueueId +
                 ", fetchChe=" + fetchChe +
                 ", status=" + status +
-                ", estimatedMoveTime=" + estimatedMoveTime + "]";
+                ", estimatedMoveTime=" + estimatedMoveTime +
+                ", estimatedCycleTimeSeconds=" + estimatedCycleTimeSeconds + "]";
     }
 }
