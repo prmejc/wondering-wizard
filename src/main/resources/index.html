@@ -296,7 +296,7 @@ class ScheduleView extends HTMLElement {
         // One cell per takt
         for (const takt of takts) {
           const cellActions = (takt.actions || []).filter(row.match);
-          html += '<div style="background:var(--bg);padding:3px;display:flex;flex-direction:row;gap:2px;min-height:28px;align-items:start">';
+          html += '<div style="background:var(--bg);padding:3px;display:flex;flex-direction:row;gap:2px;min-height:28px;align-items:stretch">';
 
           for (const action of cellActions) {
             const ci = action.containerIndex != null ? action.containerIndex : 0;
@@ -325,7 +325,7 @@ class ScheduleView extends HTMLElement {
             const widthPx = Math.round(dur * scale);
             const narrow = widthPx < 30;
 
-            html += '<div title="' + action.description + ' (' + dur + 's)" style="background:' + bgColor + ';border:1px solid ' + borderColor + ';border-left:4px solid ' + containerColor + ';border-radius:4px;padding:' + (narrow ? '1px 2px' : '3px 5px') + ';opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0;overflow:hidden">';
+            html += '<div style="position:relative;background:' + bgColor + ';border:1px solid ' + borderColor + ';border-left:4px solid ' + containerColor + ';border-radius:4px;padding:' + (narrow ? '1px 2px' : '3px 5px') + ';opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0;overflow:hidden;cursor:' + (narrow ? 'pointer' : 'default') + '"' + (narrow ? ' data-popup="' + action.description.replace(/"/g, '&quot;') + ' (' + dur + 's) C' + ci + '"' : '') + '>';
             if (!narrow) {
               html += '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600">' + statusLabel + ' <span style="color:' + containerColor + '">C' + ci + '</span></div>';
               html += '<div>' + action.description + '</div>';
@@ -353,6 +353,27 @@ class ScheduleView extends HTMLElement {
         refreshState();
       });
     });
+
+    // Bind click popups for narrow actions
+    container.querySelectorAll('[data-popup]').forEach(el => {
+      el.addEventListener('click', e => {
+        e.stopPropagation();
+        const existing = el.querySelector('.action-popup');
+        if (existing) { existing.remove(); return; }
+        // Remove any other open popups
+        container.querySelectorAll('.action-popup').forEach(p => p.remove());
+        const popup = document.createElement('div');
+        popup.className = 'action-popup';
+        popup.style.cssText = 'position:absolute;left:0;top:100%;z-index:100;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:11px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.25);pointer-events:auto';
+        popup.textContent = el.dataset.popup;
+        el.appendChild(popup);
+      });
+    });
+    // Close popups on outside click
+    if (!this._popupListener) {
+      this._popupListener = () => this.querySelectorAll('.action-popup').forEach(p => p.remove());
+      document.addEventListener('click', this._popupListener);
+    }
   }
 }
 customElements.define('schedule-view', ScheduleView);
