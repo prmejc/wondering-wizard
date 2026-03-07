@@ -34,8 +34,8 @@ import static com.wonderingwizard.domain.takt.DeviceType.*;
  * <ul>
  *   <li>"rtg handover to TT" (RTG) depends on "drive to RTG under" (TT) completing first.
  *       "handover from RTG" (TT) depends on its own previous TT action.</li>
- *   <li>"handover to QC" (TT) and "handover from TT" (QC) activate simultaneously
- *       in the same takt, each depending only on their own device's previous action.</li>
+ *   <li>"handover from TT" (QC) and "handover to QC" (TT) both depend on "drive under QC" (TT)
+ *       completing first. "handover from TT" has a cross-device dependency on TT.</li>
  * </ul>
  *
  * <p>Early takts have no QC actions because TT has not reached QC position yet.
@@ -72,9 +72,11 @@ public final class ContainerWorkflow {
             DeviceActionTemplate.of(TT, "drive to QC standby", false),
 
             // Takt D: TT-QC handover + QC operations
+            // "handover from TT" must come before "handover to QC" in template order
+            // so both resolve their cross-device/same-device dep to "drive under QC"
             DeviceActionTemplate.of(TT, "drive under QC", true),
+            DeviceActionTemplate.of(QC, "handover from TT", false, TT),
             DeviceActionTemplate.of(TT, "handover to QC", false),
-            DeviceActionTemplate.of(QC, "handover from TT", false),
             DeviceActionTemplate.of(QC, "place on vessel", false),
             DeviceActionTemplate.of(TT, "drive to buffer", false)
     );

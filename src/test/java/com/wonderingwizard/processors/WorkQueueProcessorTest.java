@@ -972,8 +972,8 @@ class WorkQueueProcessorTest {
             }
 
             @Test
-            @DisplayName("Handover from TT should depend on handover to QC (cross-device)")
-            void handoverFromTt_hasCrossDeviceDependency() {
+            @DisplayName("Handover from TT and handover to QC both depend on drive under QC")
+            void handoverFromTtAndHandoverToQc_bothDependOnDriveUnderQc() {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, null));
 
                 List<SideEffect> sideEffects = engine.processEvent(
@@ -984,6 +984,9 @@ class WorkQueueProcessorTest {
                         .flatMap(t -> t.actions().stream())
                         .collect(Collectors.toList());
 
+                Action driveUnderQc = allActions.stream()
+                        .filter(a -> a.description().equals("drive under QC"))
+                        .findFirst().orElseThrow();
                 Action handoverToQc = allActions.stream()
                         .filter(a -> a.description().equals("handover to QC"))
                         .findFirst().orElseThrow();
@@ -991,8 +994,13 @@ class WorkQueueProcessorTest {
                         .filter(a -> a.description().equals("handover from TT"))
                         .findFirst().orElseThrow();
 
-                assertTrue(handoverFromTt.dependsOn().contains(handoverToQc.id()),
-                        "handover from TT should depend on handover to QC (cross-device)");
+                // TT "handover to QC" depends on TT "drive under QC" (same-device sequential)
+                assertTrue(handoverToQc.dependsOn().contains(driveUnderQc.id()),
+                        "handover to QC should depend on drive under QC (same-device TT)");
+
+                // QC "handover from TT" depends on TT "drive under QC" (cross-device)
+                assertTrue(handoverFromTt.dependsOn().contains(driveUnderQc.id()),
+                        "handover from TT should depend on drive under QC (cross-device TT dependency)");
             }
 
             @Test
