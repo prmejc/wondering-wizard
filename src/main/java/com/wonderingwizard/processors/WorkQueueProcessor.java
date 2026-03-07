@@ -152,11 +152,13 @@ public class WorkQueueProcessor implements EventProcessor {
 
             // Per-container tracking for within-container same-device and cross-device deps
             Map<DeviceType, Action> lastActionByDevice = new EnumMap<>(DeviceType.class);
+            Map<String, Integer> actionDurations = new HashMap<>();
 
             for (DeviceActionTemplate template : templates) {
                 int targetTaktIndex = baseTaktIndex + ContainerWorkflow.getTaktOffset(template);
 
-                int actionDuration = resolveActionDuration(template, instructions.get(containerIndex));
+                int actionDuration = resolveActionDuration(template, instructions.get(containerIndex), actionDurations);
+                actionDurations.put(template.description(), actionDuration);
                 Action action = Action.create(template.deviceType(), template.description(), containerIndex, actionDuration);
 
                 // Build dependencies: previous action of same device + optional cross-device dependency
@@ -261,13 +263,15 @@ public class WorkQueueProcessor implements EventProcessor {
     private static final int RTG_HANDOVER_DURATION_SECONDS = 20;
     private static final int RTG_DRIVE_DURATION_SECONDS = 1;
 
-    private static int resolveActionDuration(DeviceActionTemplate template, WorkInstruction instruction) {
+    private static int resolveActionDuration(DeviceActionTemplate template, WorkInstruction instruction,
+                                              Map<String, Integer> actionDurations) {
         return switch (template.description()) {
             case "handover from TT" -> HANDOVER_DURATION_SECONDS;
             case "place on vessel" -> instruction.estimatedCycleTimeSeconds() - HANDOVER_DURATION_SECONDS;
             case "rtg drive" -> RTG_DRIVE_DURATION_SECONDS;
             case "fetch" -> instruction.estimatedRtgCycleTimeSeconds() - RTG_HANDOVER_DURATION_SECONDS;
-            case "rtg handover to TT" -> RTG_HANDOVER_DURATION_SECONDS;
+            case "rtg handover to TT" -> RTG_HANDOVER_DURATION_SECONDS
+                    + actionDurations.getOrDefault("drive to RTG under", 0);
             default -> template.durationSeconds();
         };
     }
