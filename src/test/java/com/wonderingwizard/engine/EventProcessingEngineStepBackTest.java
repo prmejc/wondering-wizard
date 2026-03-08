@@ -30,7 +30,7 @@ class EventProcessingEngineStepBackTest {
     void setUp() {
         engine = new EventProcessingEngine();
         timeAlarmProcessor = new TimeAlarmProcessor();
-        workQueueProcessor = new WorkQueueProcessor();
+        workQueueProcessor = new WorkQueueProcessor(() -> 30);
         engine.register(timeAlarmProcessor);
         engine.register(workQueueProcessor);
     }

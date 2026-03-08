@@ -18,13 +18,13 @@ import java.util.List;
  *       Tracked at runtime by the ScheduleRunnerProcessor, not stored on this record.</li>
  * </ul>
  *
- * @param name the takt identifier (e.g., "PULSE97", "TAKT100")
+ * @param sequence the takt identifier (e.g., "PULSE97", "TAKT100")
  * @param actions the list of actions in this takt
  * @param plannedStartTime the originally scheduled start time from the work instruction
  * @param estimatedStartTime the current estimated start time (initially equal to plannedStartTime)
  * @param durationSeconds the duration of this takt in seconds (typically 115-135)
  */
-public record Takt(String name, List<Action> actions, Instant plannedStartTime, Instant estimatedStartTime, int durationSeconds) {
+public record Takt(int sequence, List<Action> actions, Instant plannedStartTime, Instant estimatedStartTime, int durationSeconds) {
 
     private static final int STARTING_TAKT_NUMBER = 100;
 
@@ -42,5 +42,13 @@ public record Takt(String name, List<Action> actions, Instant plannedStartTime, 
             return "TAKT" + (STARTING_TAKT_NUMBER + index - firstQcTaktIndex);
         }
         return "PULSE" + (STARTING_TAKT_NUMBER - 1 - (firstQcTaktIndex - 1 - index));
+    }
+
+    public String name() {
+        if (sequence < 0) {
+            return "PULSE" + (STARTING_TAKT_NUMBER + sequence);
+        }
+
+        return "TAKT" + (STARTING_TAKT_NUMBER + sequence);
     }
 }

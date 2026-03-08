@@ -265,6 +265,40 @@ class ScheduleRunnerProcessorTest {
             TaktCompleted taktCompleted = (TaktCompleted) sideEffects.get(1);
             assertEquals("TAKT100", taktCompleted.taktName());
         }
+
+        @Test
+        @DisplayName("Empty takt should be activated and completed immediately on first TimeEvent")
+        void emptyTakt_completesImmediately() {
+            // Create 3 takts: first with actions, second empty, third with action depending on first
+            Action a1 = Action.create(DeviceType.QC, "action 1");
+            Action a2 = Action.create(DeviceType.QC, "action 2");
+            Takt takt0 = new Takt(0, List.of(a1.withDependencies(Set.of())), EMT, EMT, 120);
+            Takt takt1 = new Takt(1, List.of(), EMT, EMT, 120);
+            Takt takt2 = new Takt(2, List.of(a2.withDependencies(Set.of(a1.id()))), EMT, EMT, 120);
+
+            processor.process(new ScheduleCreated("queue-1", List.of(takt0, takt1, takt2), EMT));
+
+            // TimeEvent triggers activation — empty takt1 completes immediately
+            List<SideEffect> tickEffects = processor.process(new TimeEvent(EMT.plusSeconds(1)));
+
+            assertTrue(tickEffects.stream().anyMatch(se ->
+                            se instanceof TaktActivated ta && ta.taktName().equals("TAKT101")),
+                    "Empty takt TAKT101 should be activated");
+            assertTrue(tickEffects.stream().anyMatch(se ->
+                            se instanceof TaktCompleted tc && tc.taktName().equals("TAKT101")),
+                    "Empty takt TAKT101 should be completed immediately");
+
+            // Complete a1 — takt2 should now activate since a2's dependency is met
+            List<SideEffect> completeEffects = processor.process(
+                    new ActionCompletedEvent(a1.id(), "queue-1"));
+
+            assertTrue(completeEffects.stream().anyMatch(se ->
+                            se instanceof TaktActivated ta && ta.taktName().equals("TAKT102")),
+                    "TAKT102 should be activated after a1 completes");
+            assertTrue(completeEffects.stream().anyMatch(se ->
+                            se instanceof ActionActivated aa && aa.actionId().equals(a2.id())),
+                    "Action in TAKT102 should be activated");
+        }
     }
 
     @Nested
@@ -386,7 +420,7 @@ class ScheduleRunnerProcessorTest {
             Action action2 = Action.create("Action 2");
             Action action3 = new Action(UUID.randomUUID(), DeviceType.QC, "Action 3", Set.of(action1.id(), action2.id()));
 
-            Takt takt = new Takt("TAKT100", List.of(action1, action2, action3), EMT, EMT, 120);
+            Takt takt = new Takt(0, List.of(action1, action2, action3), EMT, EMT, 120);
             List<Takt> takts = List.of(takt);
 
             processor.process(new ScheduleCreated("queue-1", takts, EMT));
@@ -419,7 +453,7 @@ class ScheduleRunnerProcessorTest {
             Action action2 = new Action(UUID.randomUUID(), DeviceType.QC, "Action 2", Set.of(action1.id()));
             Action action3 = new Action(UUID.randomUUID(), DeviceType.QC, "Action 3", Set.of(action1.id()));
 
-            Takt takt = new Takt("TAKT100", List.of(action1, action2, action3), EMT, EMT, 120);
+            Takt takt = new Takt(0, List.of(action1, action2, action3), EMT, EMT, 120);
             List<Takt> takts = List.of(takt);
 
             processor.process(new ScheduleCreated("queue-1", takts, EMT));
@@ -467,8 +501,7 @@ class ScheduleRunnerProcessorTest {
             Action linkedAction1 = action1.withDependencies(action1Deps);
             Action linkedAction2 = action2.withDependencies(action2Deps);
 
-            String taktName = Takt.createTaktName(taktIndex, 0);
-            takts.add(new Takt(taktName, List.of(linkedAction1, linkedAction2), startTime, startTime, 120));
+            takts.add(new Takt(taktIndex, List.of(linkedAction1, linkedAction2), startTime, startTime, 120));
         }
 
         return takts;
