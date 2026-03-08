@@ -14,15 +14,18 @@ import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
 import com.wonderingwizard.sideeffects.WorkInstruction;
+import jdk.jfr.Timespan;
 
-import java.util.ArrayList;
-import java.util.EnumMap;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
+import java.security.Timestamp;
+import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.IntSupplier;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import static com.wonderingwizard.domain.takt.DeviceType.*;
+import static com.wonderingwizard.domain.takt.DeviceType.QC;
+import static com.wonderingwizard.domain.takt.DeviceType.TT;
 
 /**
  * Processor that handles work queue messages and manages schedule creation.
@@ -45,9 +48,31 @@ import java.util.UUID;
  */
 public class WorkQueueProcessor implements EventProcessor {
 
+    private static final int DRIVE_TIME_MIN_SECONDS = 30;
+    private static final int DRIVE_TIME_MAX_SECONDS = 300;
+    private static final int QC_DRIVE_TIME_OFFSET_RANGE = 30;
+
     private final Map<String, Boolean> activeSchedules = new HashMap<>();
     private final Map<String, List<WorkInstruction>> workInstructions = new HashMap<>();
     private final Map<String, Integer> qcMudaByQueue = new HashMap<>();
+    private final IntSupplier driveTimeSupplier;
+    private final IntSupplier qcDriveTimeOffsetSupplier;
+
+    public WorkQueueProcessor() {
+        this(
+                () -> ThreadLocalRandom.current().nextInt(DRIVE_TIME_MIN_SECONDS, DRIVE_TIME_MAX_SECONDS + 1),
+                () -> ThreadLocalRandom.current().nextInt(-QC_DRIVE_TIME_OFFSET_RANGE, QC_DRIVE_TIME_OFFSET_RANGE + 1)
+        );
+    }
+
+    public WorkQueueProcessor(IntSupplier driveTimeSupplier) {
+        this(driveTimeSupplier, () -> 0);
+    }
+
+    public WorkQueueProcessor(IntSupplier driveTimeSupplier, IntSupplier qcDriveTimeOffsetSupplier) {
+        this.driveTimeSupplier = driveTimeSupplier;
+        this.qcDriveTimeOffsetSupplier = qcDriveTimeOffsetSupplier;
+    }
 
     @Override
     public List<SideEffect> process(Event event) {
@@ -116,247 +141,246 @@ public class WorkQueueProcessor implements EventProcessor {
                 .orElse(null);
 
         int qcMuda = qcMudaByQueue.getOrDefault(workQueueId, 0);
-        List<Takt> takts = createTaktsFromWorkInstructions(instructions, estimatedMoveTime, qcMuda);
+        List<Takt> takts = createTaktsFromWorkInstructionsPrimvs(instructions, estimatedMoveTime, qcMuda);
 
-        return List.of(new ScheduleCreated(workQueueId, takts, estimatedMoveTime));
+        return List.of(new ScheduleCreated(workQueueId, takts.stream().sorted( (a, b) -> a.sequence() - b.sequence()).toList(), estimatedMoveTime));
     }
 
-    private List<Takt> createTaktsFromWorkInstructions(List<WorkInstruction> instructions, java.time.Instant estimatedMoveTime, int qcMudaSeconds) {
-        if (instructions.isEmpty()) {
-            return List.of();
+    public List<Takt> createTaktsFromWorkInstructionsPrimvs(List<WorkInstruction> instructions, java.time.Instant estimatedMoveTime, int qcMudaSeconds) {
+        var taktsHashMap = new HashMap<Integer, Takt>();
+
+        for (int i = 0;  i < instructions.size(); i++) {
+            createTaktsForWorinstructionQc(instructions.get(i), qcMudaSeconds, i, taktsHashMap);
         }
 
-        List<DeviceActionTemplate> templates = ContainerWorkflow.ACTION_TEMPLATES;
-
-        // Compute pulse duration and dynamic takt offsets based on TT action durations
-        int pulseDuration = computePulseDuration(instructions, qcMudaSeconds);
-        Map<DeviceActionTemplate, Integer> dynamicOffsets = computeDynamicTaktOffsets(instructions, pulseDuration);
-
-        int minOffset = dynamicOffsets.values().stream().mapToInt(Integer::intValue).min().orElse(0);
-        int adjustment = -minOffset; // Makes earliest takt index 0
-
-        // Calculate total number of takts needed
-        int numContainers = instructions.size();
-        int maxTaktIndex = (numContainers - 1) + adjustment; // Last container's base takt
-        int totalTakts = maxTaktIndex + 1;
-
-        // Initialize takt action lists
-        Map<Integer, List<Action>> actionsByTakt = new HashMap<>();
-        for (int i = 0; i < totalTakts; i++) {
-            actionsByTakt.put(i, new ArrayList<>());
+        for (int i = instructions.size()-1; i >= 0; i--) {
+            createTaktsForWorinstructionTT(instructions.get(i), qcMudaSeconds, i, taktsHashMap);
         }
 
-        // Track last action for shared devices (RTG, QC) across containers so that
-        // container N's first action on a shared device depends on container N-1's last
-        // action on that device. TT is per-container (each container gets its own truck).
-        Map<DeviceType, Action> lastSharedDeviceAction = new EnumMap<>(DeviceType.class);
+        for (int i = instructions.size()-1; i >= 0; i--) {
+            createTaktsForWorinstructionRTG(instructions.get(i), qcMudaSeconds, i, taktsHashMap);
+        }
 
-        // Create actions for each container (work instruction)
-        for (int containerIndex = 0; containerIndex < numContainers; containerIndex++) {
-            int baseTaktIndex = containerIndex + adjustment;
+        return taktsHashMap.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(Map.Entry::getValue)
+                .toList();
+    }
 
-            // Per-container tracking for within-container same-device and cross-device deps
-            Map<DeviceType, Action> lastActionByDevice = new EnumMap<>(DeviceType.class);
-            Map<String, Integer> actionDurations = new HashMap<>();
+    private void createTaktsForWorinstructionQc(WorkInstruction workInstruction, int qcMudaSeconds, int containerIndex, HashMap<Integer, Takt> taktsHashMap) {
 
-            for (DeviceActionTemplate template : templates) {
-                int targetTaktIndex = baseTaktIndex + dynamicOffsets.getOrDefault(template, 0);
+        var qcLiftDuration = 20;
+        var qcActions = List.of(new ResourceAction("QC Lift", qcLiftDuration, true, "QC Lift"), new ResourceAction("QC Place", workInstruction.estimatedCycleTimeSeconds() - qcLiftDuration, false, "QC Lift"));
 
-                int actionDuration = resolveActionDuration(template, instructions.get(containerIndex), actionDurations);
-                actionDurations.put(template.description(), actionDuration);
-                Action action = Action.create(template.deviceType(), template.description(), containerIndex, actionDuration);
 
-                // Build dependencies: previous action of same device + optional cross-device dependency
-                Set<UUID> dependencies = new HashSet<>();
+        // Find previous container's last QC action for cross-container chaining
+        Action previousAction = null;
+        if (containerIndex > 0) {
+            var prevTakt = taktsHashMap.get(containerIndex - 1);
+            if (prevTakt != null) {
+                previousAction = prevTakt.actions().stream()
+                        .filter(a -> a.deviceType() == QC && a.containerIndex() == containerIndex - 1)
+                        .reduce((first, second) -> second)
+                        .orElse(null);
+            }
+        }
+        for (ResourceAction qcAction : qcActions) {
+            if(!taktsHashMap.containsKey(containerIndex)) {
+                var startTime = workInstruction.estimatedMoveTime();
 
-                // Depend on previous action of the same device type (within this container)
-                Action prevSameDevice = lastActionByDevice.get(template.deviceType());
-                if (prevSameDevice != null) {
-                    dependencies.add(prevSameDevice.id());
-                } else if (template.deviceType() != DeviceType.TT) {
-                    // First action on a shared device: depend on previous container's last action
-                    Action prevShared = lastSharedDeviceAction.get(template.deviceType());
-                    if (prevShared != null) {
-                        dependencies.add(prevShared.id());
+                var previousTakt = taktsHashMap.get(containerIndex-1);
+                if(previousTakt != null) {
+                    startTime = previousTakt.plannedStartTime().plusSeconds(previousTakt.durationSeconds());
+                }
+
+                taktsHashMap.put(containerIndex, new Takt(containerIndex, new ArrayList<>(), startTime, startTime, workInstruction.estimatedCycleTimeSeconds() + qcMudaSeconds));
+            }
+            var dependsOn = new HashSet<UUID>();
+            if(previousAction != null) {
+                dependsOn.add(previousAction.id());
+            }
+            var action = new Action(UUID.randomUUID(), QC, qcAction.actionName(), dependsOn, containerIndex, qcAction.duration());
+            taktsHashMap.get(containerIndex).actions().add(action);
+            previousAction = action;
+        }
+    }
+
+    private void createTaktsForWorinstructionTT(WorkInstruction workInstruction, int qcMudaSeconds, int containerIndex, HashMap<Integer, Takt> taktsHashMap) {
+
+        var qcLiftDuration = 20;
+        var rtgPlaceDuration = 20;
+        var driveToUnderRtg = 30;
+        var averageTaktDuration = 120;
+        var driveToRtgPull = driveTimeSupplier.getAsInt();
+        var driveToQcPull = Math.clamp(driveToRtgPull + qcDriveTimeOffsetSupplier.getAsInt(), DRIVE_TIME_MIN_SECONDS, DRIVE_TIME_MAX_SECONDS);
+        var ttActions = List.of(
+                new ResourceAction("drive to RTG pull", driveToRtgPull, false),
+                new ResourceAction("drive to RTG standby", 30, false),
+                new ResourceAction("drive to RTG under", driveToUnderRtg, true),
+                new ResourceAction("handover from RTG", rtgPlaceDuration, false, null, true),
+                new ResourceAction("drive to QC pull", driveToQcPull, false),
+                new ResourceAction("drive to QC standby", 30, false),
+                new ResourceAction("drive under QC", 30, false),
+                new ResourceAction("handover to QC", qcLiftDuration, true, "QC Lift"),
+                new ResourceAction("drive to buffer", 30, false)
+        );
+
+        var currentActions = new LinkedList<Action>();
+        var onlyOnePerTaktNames = new HashSet<String>();
+        var currentTaktOffest = 0;
+        Action previousAction = null;
+        for (int i = 0; i < ttActions.size(); i++) {
+            var ttActionTemplate = ttActions.reversed().get(i);
+            var action = new Action(UUID.randomUUID(), TT, ttActionTemplate.actionName(), new HashSet<>(), containerIndex, ttActionTemplate.duration());
+
+            if(previousAction != null) {
+                previousAction.dependsOn().add(action.id());
+            }
+            previousAction = action;
+
+            //add action to a list
+            currentActions.addFirst(action);
+            if(ttActionTemplate.onlyOnePerTakt()) {
+                onlyOnePerTaktNames.add(ttActionTemplate.actionName());
+            }
+            //if action is first in takt, add all actions to the takt and decrease offset by 1
+            var taktIndex = (containerIndex + currentTaktOffest);
+            if(ttActionTemplate.firstInTakt()){
+                if(!taktsHashMap.containsKey(taktIndex)) {
+                    if(taktIndex < 100) {
+                        var startTime = taktsHashMap.get(taktIndex+1).plannedStartTime().plusSeconds(-averageTaktDuration);
+                        taktsHashMap.put(taktIndex, new Takt(taktIndex, new ArrayList<>(), startTime, startTime, averageTaktDuration));
+
                     }
                 }
+                var takt = taktsHashMap.get(containerIndex + currentTaktOffest);
+                var taktEndTime = takt.plannedStartTime().plusSeconds(takt.durationSeconds());
 
-                // Cross-device dependency (handover synchronization)
-                if (template.crossDeviceDependency() != null) {
-                    Action prevOtherDevice = lastActionByDevice.get(template.crossDeviceDependency());
-                    if (prevOtherDevice != null) {
-                        dependencies.add(prevOtherDevice.id());
+                var allActionDuration = currentActions.stream().map(Action::durationSeconds).reduce(Integer::sum).orElse(0);
+                while(taktEndTime.getEpochSecond() < takt.plannedStartTime().plusSeconds(allActionDuration).getEpochSecond()
+                        || hasOnlyOnePerTaktConflict(takt, onlyOnePerTaktNames)){
+                    currentTaktOffest--;
+                    taktIndex = (containerIndex + currentTaktOffest);
+                    if(!taktsHashMap.containsKey(taktIndex)) {
+                        var startTime = taktsHashMap.get(taktIndex+1).plannedStartTime().plusSeconds(-averageTaktDuration);
+                        taktsHashMap.put(taktIndex, new Takt(taktIndex, new ArrayList<>(), startTime, startTime, averageTaktDuration));
                     }
+                    takt = taktsHashMap.get(taktIndex);
                 }
-
-                Action actionWithDeps = action.withDependencies(
-                        dependencies.isEmpty() ? Set.of() : Set.copyOf(dependencies));
-                actionsByTakt.get(targetTaktIndex).add(actionWithDeps);
-                lastActionByDevice.put(template.deviceType(), actionWithDeps);
+                takt.actions().addAll(currentActions);
+                currentActions.clear();
+                onlyOnePerTaktNames.clear();
+                currentTaktOffest--;
             }
+        }
+        var taktIndex = (containerIndex + currentTaktOffest);
+        if(currentActions.size() > 0) {
+            if(!taktsHashMap.containsKey(taktIndex)) {
+                var startTime = taktsHashMap.get(taktIndex+1).plannedStartTime().plusSeconds(-averageTaktDuration);
+                taktsHashMap.put(taktIndex, new Takt(taktIndex, new ArrayList<>(),startTime,startTime, averageTaktDuration));
+            }
+            var takt = taktsHashMap.get(containerIndex + currentTaktOffest);
+            var taktEndTime = takt.plannedStartTime().plusSeconds(takt.durationSeconds());
 
-            // Update shared device tracking for RTG and QC
-            for (var entry : lastActionByDevice.entrySet()) {
-                if (entry.getKey() != DeviceType.TT) {
-                    lastSharedDeviceAction.put(entry.getKey(), entry.getValue());
+            var allActionDuration = currentActions.stream().map(Action::durationSeconds).reduce(Integer::sum).orElse(0);
+            while(taktEndTime.getEpochSecond() < takt.plannedStartTime().plusSeconds(allActionDuration).getEpochSecond()
+                    || hasOnlyOnePerTaktConflict(takt, onlyOnePerTaktNames)){
+                currentTaktOffest--;
+                var nextTaktIndex = containerIndex + currentTaktOffest;
+                if(!taktsHashMap.containsKey(nextTaktIndex)) {
+                    var newStartTime = takt.plannedStartTime().plusSeconds(-averageTaktDuration);
+                    taktsHashMap.put(nextTaktIndex, new Takt(nextTaktIndex, new ArrayList<>(), newStartTime, newStartTime, averageTaktDuration));
                 }
+                takt = taktsHashMap.get(nextTaktIndex);
             }
+            taktsHashMap.get(containerIndex + currentTaktOffest).actions().addAll(currentActions);
+            currentActions.clear();
         }
-
-        // Convert to Takt objects
-        // The first QC takt is at index 'adjustment'
-        // Takt duration = estimatedCycleTime of the WI whose QC works in that takt + qcMuda
-        // Planned start time is computed sequentially: next takt = prev takt start + prev takt duration
-        int firstQcTaktIndex = adjustment;
-
-        // Pre-compute duration for each takt based on the QC container's estimated cycle time
-        // PULSE takts use the average takt duration rounded up to the nearest 10 seconds
-        int[] durations = new int[totalTakts];
-        for (int i = 0; i < totalTakts; i++) {
-            int containerIndex = i - firstQcTaktIndex;
-            if (containerIndex >= 0 && containerIndex < instructions.size()) {
-                durations[i] = instructions.get(containerIndex).estimatedCycleTimeSeconds() + qcMudaSeconds;
-            } else {
-                durations[i] = pulseDuration;
-            }
-        }
-
-        // Compute planned start times sequentially
-        // TAKT100 (first QC takt) starts at the first WI's estimatedMoveTime
-        java.time.Instant firstQcTime = instructions.get(0).estimatedMoveTime();
-        if (firstQcTime == null) {
-            firstQcTime = java.time.Instant.EPOCH;
-        }
-
-        // Work backwards from firstQcTaktIndex for PULSE takts, forwards for QC takts
-        java.time.Instant[] plannedTimes = new java.time.Instant[totalTakts];
-        plannedTimes[firstQcTaktIndex] = firstQcTime;
-        // Backward for PULSE takts
-        for (int i = firstQcTaktIndex - 1; i >= 0; i--) {
-            plannedTimes[i] = plannedTimes[i + 1].minusSeconds(durations[i]);
-        }
-        // Forward for subsequent QC takts
-        for (int i = firstQcTaktIndex + 1; i < totalTakts; i++) {
-            plannedTimes[i] = plannedTimes[i - 1].plusSeconds(durations[i - 1]);
-        }
-
-        List<Takt> takts = new ArrayList<>();
-        for (int i = 0; i < totalTakts; i++) {
-            String taktName = Takt.createTaktName(i, firstQcTaktIndex);
-            takts.add(new Takt(taktName, actionsByTakt.get(i), plannedTimes[i], plannedTimes[i], durations[i]));
-        }
-
-        return takts;
     }
 
-    private static final int HANDOVER_DURATION_SECONDS = 20;
-
-    private static final int RTG_HANDOVER_DURATION_SECONDS = 20;
-    private static final int RTG_DRIVE_DURATION_SECONDS = 1;
-
-    private static int resolveActionDuration(DeviceActionTemplate template, WorkInstruction instruction,
-                                              Map<String, Integer> actionDurations) {
-        return switch (template.description()) {
-            case "handover from TT" -> HANDOVER_DURATION_SECONDS;
-            case "handover from RTG", "handover to QC" -> RTG_HANDOVER_DURATION_SECONDS;
-            case "place on vessel" -> instruction.estimatedCycleTimeSeconds() - HANDOVER_DURATION_SECONDS;
-            case "rtg drive" -> RTG_DRIVE_DURATION_SECONDS;
-            case "fetch" -> instruction.estimatedRtgCycleTimeSeconds() - RTG_HANDOVER_DURATION_SECONDS;
-            case "rtg handover to TT" -> RTG_HANDOVER_DURATION_SECONDS
-                    + actionDurations.getOrDefault("drive to RTG under", 0);
-            default -> template.durationSeconds();
-        };
+    private boolean hasOnlyOnePerTaktConflict(Takt takt, Set<String> onlyOnePerTaktNames) {
+        return takt.actions().stream()
+                .anyMatch(a -> onlyOnePerTaktNames.contains(a.description()));
     }
 
-    /**
-     * Computes the pulse duration: average of QC takt durations, rounded up to nearest 10 seconds.
-     */
-    private static int computePulseDuration(List<WorkInstruction> instructions, int qcMudaSeconds) {
-        if (instructions.isEmpty()) {
-            return 0;
+    private void createTaktsForWorinstructionRTG(WorkInstruction workInstruction, int qcMudaSeconds, int containerIndex, HashMap<Integer, Takt> taktsHashMap) {
+        var rtgPlaceDuration = 20;
+        var driveToUnderRtg = 30;
+        var rtgActions = List.of(
+                new ResourceAction("drive", 1, false),
+                new ResourceAction("fetch", (workInstruction.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration) + driveToUnderRtg, false),
+                new ResourceAction("handover to tt", driveToUnderRtg + rtgPlaceDuration, true)
+        );
+
+        //find takt with TT action "handover from RTG" for this container index, build backwards from there
+        var foundTaktIndex = taktsHashMap.entrySet().stream().filter((entry) -> entry.getValue().actions().stream().anyMatch(b -> b.description() == "handover from RTG" && b.containerIndex() == containerIndex)).map(integerTaktEntry -> integerTaktEntry.getKey()).findFirst().orElse(0);
+
+
+        var currentActions = new LinkedList<Action>();
+        var currentOffest = 0;
+        Action previousAction = getRtgPreviousAction(foundTaktIndex, taktsHashMap);
+        for (int i = 0; i < rtgActions.size(); i++) {
+            var rtgActionTemplate = rtgActions.reversed().get(i);
+            var action = new Action(UUID.randomUUID(), RTG, rtgActionTemplate.actionName(), new HashSet<>(), containerIndex, rtgActionTemplate.duration());
+            if(previousAction != null) {
+                previousAction.dependsOn().add(action.id());
+            }
+            previousAction = action;
+            currentActions.addFirst(action);
+
+            if(rtgActionTemplate.firstInTakt()){
+                var taktIndex = foundTaktIndex + currentOffest;
+                currentOffest--;
+                if(!taktsHashMap.containsKey(taktIndex)) {
+                    taktsHashMap.put(taktIndex, new Takt(taktIndex, new ArrayList<>(), workInstruction.estimatedMoveTime(), workInstruction.estimatedMoveTime(), workInstruction.estimatedCycleTimeSeconds() + qcMudaSeconds));
+                }
+                taktsHashMap.get(taktIndex).actions().addAll(0, currentActions);
+                currentActions.clear();
+            }
         }
-        int sum = 0;
-        for (WorkInstruction instruction : instructions) {
-            sum += instruction.estimatedCycleTimeSeconds() + qcMudaSeconds;
+
+        var taktIndex = (foundTaktIndex + currentOffest);
+        if(currentActions.size() > 0) {
+            if(!taktsHashMap.containsKey(taktIndex)) {
+                taktsHashMap.put(taktIndex, new Takt(taktIndex, new ArrayList<>(), workInstruction.estimatedMoveTime(), workInstruction.estimatedMoveTime(), workInstruction.estimatedCycleTimeSeconds() + qcMudaSeconds));
+            }
+            var takt = taktsHashMap.get(taktIndex);
+            var taktEndTime = takt.plannedStartTime().plusSeconds(takt.durationSeconds());
+
+            var allActionDuration = currentActions.stream().map(Action::durationSeconds).reduce(Integer::sum).orElse(0);
+            while(taktEndTime.getEpochSecond() < takt.plannedStartTime().plusSeconds(allActionDuration).getEpochSecond()){
+                currentOffest--;
+                var nextTaktIndex = containerIndex + currentOffest;
+                if(!taktsHashMap.containsKey(nextTaktIndex)) {
+                    var newStartTime = takt.plannedStartTime().plusSeconds(-takt.durationSeconds());
+                    taktsHashMap.put(nextTaktIndex, new Takt(nextTaktIndex, new ArrayList<>(), newStartTime, newStartTime, workInstruction.estimatedCycleTimeSeconds() + qcMudaSeconds));
+                }
+                takt = taktsHashMap.get(nextTaktIndex);
+            }
+            taktsHashMap.get(taktIndex).actions().addAll(0, currentActions);
+            currentActions.clear();
         }
-        int avg = (sum + instructions.size() - 1) / instructions.size(); // ceiling division
-        return ((avg + 9) / 10) * 10; // round up to nearest 10
+
     }
 
-    /**
-     * Computes dynamic takt offsets by grouping templates according to their
-     * {@code isFirstInTaktForDevice} boundaries and adding extra pulse slot
-     * spacing when a group's cumulative TT sequential time exceeds the pulse duration.
-     *
-     * <p>Actions always stay in their template-defined takt groups — no splitting
-     * within a group. When a group needs more time than one pulse slot, extra gap
-     * slots are inserted between that group and the next one.
-     *
-     * <p>Offsets are computed backwards from the last group (QC handover) at offset 0.
-     */
-    private Map<DeviceActionTemplate, Integer> computeDynamicTaktOffsets(
-            List<WorkInstruction> instructions, int pulseDuration) {
-        // Compute max TT action durations across all containers
-        Map<String, Integer> maxTtDurations = new HashMap<>();
-        for (WorkInstruction instruction : instructions) {
-            Map<String, Integer> durations = new HashMap<>();
-            for (DeviceActionTemplate template : ContainerWorkflow.ACTION_TEMPLATES) {
-                int duration = resolveActionDuration(template, instruction, durations);
-                durations.put(template.description(), duration);
-                if (template.deviceType() == DeviceType.TT) {
-                    maxTtDurations.merge(template.description(), duration, Math::max);
-                }
+    private Action getRtgPreviousAction(Integer foundTaktIndex, HashMap<Integer, Takt> taktsHashMap) {
+        if(taktsHashMap.containsKey(foundTaktIndex)) {
+            var thisTakt = taktsHashMap.get(foundTaktIndex);
+            var previousAction = thisTakt.actions().stream().filter(a -> a.deviceType() == RTG).findFirst();
+            if(previousAction.isPresent()){
+                return previousAction.get();
             }
         }
 
-        // Identify takt groups from template boundaries
-        List<List<DeviceActionTemplate>> groups = new ArrayList<>();
-        List<DeviceActionTemplate> currentGroup = new ArrayList<>();
-        boolean prevWasFirst = false;
-
-        for (DeviceActionTemplate template : ContainerWorkflow.ACTION_TEMPLATES) {
-            boolean templateFirst = template.isFirstInTaktForDevice();
-            if (templateFirst && !prevWasFirst && !currentGroup.isEmpty()) {
-                groups.add(currentGroup);
-                currentGroup = new ArrayList<>();
-            }
-            currentGroup.add(template);
-            prevWasFirst = templateFirst;
-        }
-        if (!currentGroup.isEmpty()) {
-            groups.add(currentGroup);
-        }
-
-        // Calculate TT sequential time per group and slots needed
-        int[] slotsNeeded = new int[groups.size()];
-        for (int i = 0; i < groups.size(); i++) {
-            int ttTime = 0;
-            for (DeviceActionTemplate t : groups.get(i)) {
-                if (t.deviceType() == DeviceType.TT) {
-                    ttTime += maxTtDurations.getOrDefault(t.description(), 0);
-                }
-            }
-            slotsNeeded[i] = (pulseDuration > 0 && ttTime > 0)
-                    ? Math.max(1, (ttTime + pulseDuration - 1) / pulseDuration)
-                    : 1;
-        }
-
-        // Compute offsets backwards from last group at offset 0
-        int[] groupOffsets = new int[groups.size()];
-        groupOffsets[groups.size() - 1] = 0;
-        for (int i = groups.size() - 2; i >= 0; i--) {
-            groupOffsets[i] = groupOffsets[i + 1] - slotsNeeded[i];
-        }
-
-        // Assign each template the offset of its group
-        Map<DeviceActionTemplate, Integer> offsets = new HashMap<>();
-        for (int i = 0; i < groups.size(); i++) {
-            for (DeviceActionTemplate template : groups.get(i)) {
-                offsets.put(template, groupOffsets[i]);
+        var nextTakt = foundTaktIndex + 1;
+        if(taktsHashMap.containsKey(nextTakt)) {
+            var thisTakt = taktsHashMap.get(nextTakt);
+            var previousAction = thisTakt.actions().stream().filter(a -> a.deviceType() == RTG).findFirst();
+            if(previousAction.isPresent()){
+                return previousAction.get();
             }
         }
-
-        return offsets;
+        return null;
     }
 
     private List<SideEffect> handleInactiveStatus(String workQueueId) {

@@ -44,7 +44,7 @@ class EventPropagatingEngineTest {
         @Test
         @DisplayName("register delegates to inner engine")
         void registerDelegatesToInnerEngine() {
-            WorkQueueProcessor processor = new WorkQueueProcessor();
+            WorkQueueProcessor processor = new WorkQueueProcessor(() -> 30);
             propagatingEngine.register(processor);
 
             // Verify by processing an event that the processor would handle
@@ -57,7 +57,7 @@ class EventPropagatingEngineTest {
         @Test
         @DisplayName("stepBack delegates to inner engine")
         void stepBackDelegatesToInnerEngine() {
-            propagatingEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new WorkQueueProcessor(() -> 30));
 
             assertFalse(propagatingEngine.stepBack());
 
@@ -73,7 +73,7 @@ class EventPropagatingEngineTest {
         @Test
         @DisplayName("getHistorySize delegates to inner engine")
         void getHistorySizeDelegatesToInnerEngine() {
-            propagatingEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new WorkQueueProcessor(() -> 30));
 
             assertEquals(0, propagatingEngine.getHistorySize());
 
@@ -89,7 +89,7 @@ class EventPropagatingEngineTest {
         @Test
         @DisplayName("clearHistory delegates to inner engine")
         void clearHistoryDelegatesToInnerEngine() {
-            propagatingEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new WorkQueueProcessor(() -> 30));
 
             propagatingEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
             propagatingEngine.processEvent(new WorkQueueMessage("queue2", WorkQueueStatus.ACTIVE, 0));
@@ -109,7 +109,7 @@ class EventPropagatingEngineTest {
         @Test
         @DisplayName("processEvent returns side effects from inner engine when no Event side effects")
         void processEventReturnsInnerEngineSideEffects() {
-            propagatingEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new WorkQueueProcessor(() -> 30));
 
             List<SideEffect> effects = propagatingEngine.processEvent(
                     new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
@@ -123,7 +123,7 @@ class EventPropagatingEngineTest {
         void processEventRecursivelyProcessesEventSideEffects() {
             // WorkQueueProcessor produces ScheduleCreated (which implements Event)
             // ScheduleRunnerProcessor consumes ScheduleCreated events
-            propagatingEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new WorkQueueProcessor(() -> 30));
             propagatingEngine.register(new ScheduleRunnerProcessor());
 
             String workQueueId = "queue1";
@@ -159,7 +159,7 @@ class EventPropagatingEngineTest {
         @DisplayName("processEvent includes all side effects from recursive calls at end of list")
         void processEventAppendsRecursiveSideEffectsAtEnd() {
             // Create a mock processor that produces a dual SideEffect/Event
-            propagatingEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new WorkQueueProcessor(() -> 30));
             propagatingEngine.register(new ScheduleRunnerProcessor());
 
             String workQueueId = "queue1";
@@ -203,7 +203,7 @@ class EventPropagatingEngineTest {
         void processEventHandlesMultipleLevelsOfRecursion() {
             // This test verifies that if a recursive call produces another Event side effect,
             // it will also be processed recursively
-            propagatingEngine.register(new WorkQueueProcessor());
+            propagatingEngine.register(new WorkQueueProcessor(() -> 30));
             propagatingEngine.register(new ScheduleRunnerProcessor());
 
             String workQueueId = "queue1";
@@ -241,7 +241,7 @@ class EventPropagatingEngineTest {
         @Test
         @DisplayName("ScheduleCreated side effect triggers ScheduleRunnerProcessor")
         void scheduleCreatedTrigersScheduleRunner() {
-            WorkQueueProcessor workQueueProcessor = new WorkQueueProcessor();
+            WorkQueueProcessor workQueueProcessor = new WorkQueueProcessor(() -> 30);
             ScheduleRunnerProcessor scheduleRunnerProcessor = new ScheduleRunnerProcessor();
 
             propagatingEngine.register(workQueueProcessor);
@@ -274,7 +274,7 @@ class EventPropagatingEngineTest {
         void withoutEventPropagatingEngineScheduleCreatedNotProcessed() {
             // Compare behavior with and without propagating engine
             EventProcessingEngine plainEngine = new EventProcessingEngine();
-            WorkQueueProcessor workQueueProcessor = new WorkQueueProcessor();
+            WorkQueueProcessor workQueueProcessor = new WorkQueueProcessor(() -> 30);
             ScheduleRunnerProcessor scheduleRunnerProcessor = new ScheduleRunnerProcessor();
 
             plainEngine.register(workQueueProcessor);

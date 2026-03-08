@@ -1,6 +1,7 @@
 module com.wonderingwizard {
     requires java.logging;
     requires jdk.httpserver;
+    requires jdk.jfr;
 
     exports com.wonderingwizard;
     exports com.wonderingwizard.engine;
