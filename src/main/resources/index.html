@@ -321,7 +321,15 @@ class ScheduleView extends HTMLElement {
         const ts = takt.status || 'WAITING';
         const tc = ts === 'ACTIVE' ? 'var(--active)' : ts === 'COMPLETED' ? 'var(--completed)' : 'var(--pending)';
         html += '<div style="background:var(--surface2);padding:4px 6px;text-align:center;border-bottom:2px solid ' + tc + '">';
-        html += '<div style="font-size:11px;color:var(--text-muted)">' + takt.name + '</div>';
+        html += '<div style="font-size:11px;color:var(--text-muted)">' + takt.name;
+        // Conditions button for WAITING takts with unsatisfied conditions
+        const conditions = takt.conditions || [];
+        const unsatisfied = conditions.filter(c => !c.satisfied);
+        if (ts === 'WAITING' && conditions.length > 0) {
+          const condColor = unsatisfied.length > 0 ? '#ef4444' : 'var(--completed)';
+          html += ' <span class="conditions-btn" data-takt="' + takt.name + '" data-wq="' + schedule.workQueueId + '" data-conditions="' + encodeURIComponent(JSON.stringify(conditions)) + '" style="cursor:pointer;font-size:12px;vertical-align:middle;color:' + condColor + '" title="' + unsatisfied.length + ' condition(s) blocking">&#9881;</span>';
+        }
+        html += '</div>';
         html += '<div style="font-size:9px;font-weight:600;color:' + tc + '">' + ts + '</div>';
         const fmtTime = t => t ? new Date(t).toISOString().substring(11, 19) : '--:--:--';
         html += '<div style="font-size:9px;color:var(--text-muted);margin-top:2px;line-height:1.4">';
@@ -431,6 +439,69 @@ class ScheduleView extends HTMLElement {
           btn.addEventListener('click', async (ev) => {
             ev.stopPropagation();
             await apiCall('/api/action-completed', { actionId: btn.dataset.actionId, workQueueId: btn.dataset.wq });
+            popup.remove();
+            refreshState();
+          });
+        });
+      });
+    });
+
+    // Bind conditions buttons
+    container.querySelectorAll('.conditions-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        // Remove any existing conditions popup
+        self.querySelectorAll('.conditions-popup').forEach(p => p.remove());
+
+        const conditions = JSON.parse(decodeURIComponent(btn.dataset.conditions));
+        const taktName = btn.dataset.takt;
+        const wqId = btn.dataset.wq;
+
+        const popup = document.createElement('div');
+        popup.className = 'conditions-popup';
+        const rect = btn.getBoundingClientRect();
+        const parentRect = self.getBoundingClientRect();
+        popup.style.cssText = 'position:absolute;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,0.4);min-width:260px;max-width:400px;left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 4) + 'px';
+
+        let popupHtml = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+        popupHtml += '<strong style="font-size:13px">Conditions for ' + taktName + '</strong>';
+        popupHtml += '<span style="cursor:pointer;font-size:15px;line-height:1;color:var(--text-muted);padding:0 2px" onclick="this.closest(\'.conditions-popup\').remove()">&#10005;</span>';
+        popupHtml += '</div>';
+
+        for (const cond of conditions) {
+          const icon = cond.satisfied ? '<span style="color:var(--completed)">&#10003;</span>'
+                     : cond.overridden ? '<span style="color:var(--tt-color)">&#8623;</span>'
+                     : '<span style="color:#ef4444">&#10007;</span>';
+          const label = cond.type === 'TIME' ? 'Start Time' : 'Dependencies';
+
+          popupHtml += '<div style="padding:6px 0;border-top:1px solid var(--border)">';
+          popupHtml += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
+          popupHtml += '<span>' + icon + ' <strong>' + label + '</strong></span>';
+          if (!cond.satisfied && !cond.overridden) {
+            popupHtml += '<button class="override-btn" data-wq="' + wqId + '" data-takt="' + taktName + '" data-cond-id="' + cond.id + '" style="background:#f59e0b;color:white;border:none;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-weight:600">Override</button>';
+          }
+          popupHtml += '</div>';
+          if (cond.explanation) {
+            popupHtml += '<div style="font-size:11px;color:var(--text-muted);margin-top:3px;word-break:break-word">' + cond.explanation + '</div>';
+          }
+          if (cond.overridden) {
+            popupHtml += '<div style="font-size:10px;color:var(--tt-color);margin-top:2px">Overridden</div>';
+          }
+          popupHtml += '</div>';
+        }
+
+        popup.innerHTML = popupHtml;
+        self.appendChild(popup);
+
+        // Bind override buttons
+        popup.querySelectorAll('.override-btn').forEach(obtn => {
+          obtn.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            await apiCall('/api/override-condition', {
+              workQueueId: obtn.dataset.wq,
+              taktName: obtn.dataset.takt,
+              conditionId: obtn.dataset.condId
+            });
             popup.remove();
             refreshState();
           });

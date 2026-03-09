@@ -1,11 +1,16 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ConditionContext;
+import com.wonderingwizard.domain.takt.DependencyCondition;
+import com.wonderingwizard.domain.takt.TaktCondition;
 import com.wonderingwizard.domain.takt.Takt;
+import com.wonderingwizard.domain.takt.TimeCondition;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
@@ -19,6 +24,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -29,8 +35,8 @@ import java.util.UUID;
  * <p>
  * Takt state machine: Waiting → Active → Completed
  * <ul>
- *   <li>A takt transitions to Active when the previous takt is Completed (or it is the first)
- *       AND the current time >= the takt's start time</li>
+ *   <li>A takt transitions to Active when all its {@link TaktCondition}s are satisfied
+ *       (or overridden)</li>
  *   <li>A takt transitions to Completed when all its actions are Completed</li>
  * </ul>
  * <p>
@@ -55,6 +61,10 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         Map<UUID, ActionInfo> actionLookup;
         Map<String, TaktState> taktStates;
         Map<String, Instant> actualStartTimes;
+        /** Conditions per takt, keyed by takt name. */
+        Map<String, List<TaktCondition>> taktConditions;
+        /** Overridden condition IDs per takt, keyed by takt name. */
+        Map<String, Set<String>> overriddenConditions;
 
         ScheduleState(Instant estimatedMoveTime, List<Takt> takts) {
             this.estimatedMoveTime = estimatedMoveTime;
@@ -64,10 +74,13 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             this.actionLookup = new HashMap<>();
             this.taktStates = new HashMap<>();
             this.actualStartTimes = new HashMap<>();
+            this.taktConditions = new LinkedHashMap<>();
+            this.overriddenConditions = new HashMap<>();
 
             // Build action lookup and initialize takt states
             for (Takt takt : takts) {
                 taktStates.put(takt.name(), TaktState.WAITING);
+                overriddenConditions.put(takt.name(), new HashSet<>());
                 for (Action action : takt.actions()) {
                     actionLookup.put(action.id(), new ActionInfo(takt.name(), action));
                 }
@@ -124,6 +137,14 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             copy.completedActionIds = new HashSet<>(this.completedActionIds);
             copy.taktStates = new HashMap<>(this.taktStates);
             copy.actualStartTimes = new HashMap<>(this.actualStartTimes);
+            copy.taktConditions = new LinkedHashMap<>();
+            for (Map.Entry<String, List<TaktCondition>> entry : this.taktConditions.entrySet()) {
+                copy.taktConditions.put(entry.getKey(), new ArrayList<>(entry.getValue()));
+            }
+            copy.overriddenConditions = new HashMap<>();
+            for (Map.Entry<String, Set<String>> entry : this.overriddenConditions.entrySet()) {
+                copy.overriddenConditions.put(entry.getKey(), new HashSet<>(entry.getValue()));
+            }
             return copy;
         }
     }
@@ -151,6 +172,9 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         if (event instanceof ActionCompletedEvent completed) {
             return handleActionCompleted(completed);
         }
+        if (event instanceof OverrideConditionEvent override) {
+            return handleOverrideCondition(override);
+        }
         return List.of();
     }
 
@@ -160,9 +184,81 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         Instant estimatedMoveTime = scheduleCreated.estimatedMoveTime();
 
         ScheduleState state = new ScheduleState(estimatedMoveTime, takts);
+        buildConditions(state);
         scheduleStates.put(workQueueId, state);
 
         return List.of();
+    }
+
+    /**
+     * Builds TaktConditions for each takt based on its properties and action dependencies.
+     */
+    private void buildConditions(ScheduleState state) {
+        for (Takt takt : state.takts) {
+            List<TaktCondition> conditions = new ArrayList<>();
+
+            // Condition 1: Time — estimated start time must be reached
+            if (takt.estimatedStartTime() != null) {
+                conditions.add(new TimeCondition(takt.estimatedStartTime()));
+            }
+
+            // Condition 2: Dependencies — first actions' external dependencies must be completed
+            DependencyCondition depCondition = buildDependencyCondition(takt, state);
+            if (depCondition != null) {
+                conditions.add(depCondition);
+            }
+
+            state.taktConditions.put(takt.name(), conditions);
+        }
+    }
+
+    /**
+     * Builds a DependencyCondition for a takt by finding first actions (those with no
+     * intra-takt dependencies) and collecting their external dependencies from earlier takts.
+     * Dependencies pointing to actions in later takts do not gate takt activation.
+     */
+    private DependencyCondition buildDependencyCondition(Takt takt, ScheduleState state) {
+        if (takt.actions().isEmpty()) {
+            return null;
+        }
+
+        Set<UUID> taktActionIds = new HashSet<>();
+        for (Action action : takt.actions()) {
+            taktActionIds.add(action.id());
+        }
+
+        Set<UUID> laterTaktActionIds = collectLaterTaktActionIds(takt, state);
+
+        Map<String, Set<UUID>> externalDeps = new LinkedHashMap<>();
+        Map<UUID, String> depDescriptions = new HashMap<>();
+
+        for (Action action : takt.actions()) {
+            boolean hasIntraTaktDep = action.dependsOn().stream().anyMatch(taktActionIds::contains);
+            if (hasIntraTaktDep) {
+                continue;
+            }
+            // This is a first action — collect its external dependencies from earlier takts
+            Set<UUID> externalActionDeps = new HashSet<>();
+            for (UUID depId : action.dependsOn()) {
+                if (taktActionIds.contains(depId) || laterTaktActionIds.contains(depId)) {
+                    continue; // skip intra-takt and later-takt dependencies
+                }
+                externalActionDeps.add(depId);
+                ActionInfo depInfo = state.actionLookup.get(depId);
+                if (depInfo != null) {
+                    depDescriptions.put(depId, depInfo.action().description());
+                }
+            }
+            if (!externalActionDeps.isEmpty()) {
+                externalDeps.put(action.description(), externalActionDeps);
+            }
+        }
+
+        if (externalDeps.isEmpty()) {
+            return null;
+        }
+
+        return new DependencyCondition(externalDeps, depDescriptions);
     }
 
     private List<SideEffect> handleWorkInstructionEvent(WorkInstructionEvent event) {
@@ -209,12 +305,31 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         return sideEffects;
     }
 
+    private List<SideEffect> handleOverrideCondition(OverrideConditionEvent event) {
+        ScheduleState state = scheduleStates.get(event.workQueueId());
+        if (state == null) {
+            return List.of();
+        }
+
+        Set<String> overrides = state.overriddenConditions.get(event.taktName());
+        if (overrides == null) {
+            return List.of();
+        }
+
+        overrides.add(event.conditionId());
+
+        // Try to activate takts now that a condition was overridden
+        return tryActivateTakts(event.workQueueId(), state);
+    }
+
     /**
-     * Tries to activate takts whose conditions are met (previous takt completed + time >= estimatedStartTime).
+     * Tries to activate takts whose conditions are all satisfied (or overridden).
      * When a takt becomes Active, eligible actions within it are also activated.
      */
     private List<SideEffect> tryActivateTakts(String workQueueId, ScheduleState state) {
         List<SideEffect> sideEffects = new ArrayList<>();
+
+        ConditionContext context = new ConditionContext(this.currentTime, state.completedActionIds);
 
         for (int i = 0; i < state.takts.size(); i++) {
             Takt takt = state.takts.get(i);
@@ -224,14 +339,19 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 continue;
             }
 
-            // Check condition: current time >= takt's estimated start time
-            Instant estimatedStartTime = takt.estimatedStartTime();
-            if (estimatedStartTime != null && this.currentTime.isBefore(estimatedStartTime)) {
-                continue;
+            // Check all conditions
+            List<TaktCondition> conditions = state.taktConditions.getOrDefault(takt.name(), List.of());
+            Set<String> overrides = state.overriddenConditions.getOrDefault(takt.name(), Set.of());
+
+            boolean allSatisfied = true;
+            for (TaktCondition condition : conditions) {
+                if (!overrides.contains(condition.id()) && !condition.evaluate(context)) {
+                    allSatisfied = false;
+                    break;
+                }
             }
 
-            // Check that all first actions' dependencies from earlier takts are completed
-            if (!areFirstActionDependenciesMet(takt, state)) {
+            if (!allSatisfied) {
                 continue;
             }
 
@@ -252,42 +372,6 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
 
         return sideEffects;
-    }
-
-    /**
-     * Checks if all "first actions" in a takt have their dependencies from earlier takts met.
-     * First actions are those with no dependencies within the same takt.
-     * Dependencies pointing to actions in later takts do not gate takt activation —
-     * those actions will wait within the active takt until their deps are met.
-     * For an empty takt, returns true.
-     */
-    private boolean areFirstActionDependenciesMet(Takt takt, ScheduleState state) {
-        if (takt.actions().isEmpty()) {
-            return true;
-        }
-        // Build sets for intra-takt and later-takt action IDs
-        Set<UUID> taktActionIds = new HashSet<>();
-        for (Action action : takt.actions()) {
-            taktActionIds.add(action.id());
-        }
-        Set<UUID> laterTaktActionIds = collectLaterTaktActionIds(takt, state);
-
-        for (Action action : takt.actions()) {
-            boolean hasIntraTaktDep = action.dependsOn().stream().anyMatch(taktActionIds::contains);
-            if (hasIntraTaktDep) {
-                continue;
-            }
-            // This is a first action — check dependencies from earlier takts are completed
-            for (UUID depId : action.dependsOn()) {
-                if (laterTaktActionIds.contains(depId)) {
-                    continue; // dependency is in a later takt, don't gate on it
-                }
-                if (!state.completedActionIds.contains(depId)) {
-                    return false;
-                }
-            }
-        }
-        return true;
     }
 
     /**
