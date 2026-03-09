@@ -16,6 +16,7 @@ import com.wonderingwizard.sideeffects.ActionActivated;
 import com.wonderingwizard.sideeffects.ActionCompleted;
 import com.wonderingwizard.sideeffects.AlarmSet;
 import com.wonderingwizard.sideeffects.AlarmTriggered;
+import com.wonderingwizard.sideeffects.DelayUpdated;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
 import com.wonderingwizard.sideeffects.TaktActivated;
@@ -203,6 +204,22 @@ public final class JsonSerializer {
                 writeField(sb, "estimatedMoveTime", e.estimatedMoveTime(), false);
                 sb.append('}');
             }
+            case TaktActivated e -> {
+                sb.append('{');
+                writeField(sb, "type", "TaktActivated", true);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "taktName", e.taktName(), false);
+                writeField(sb, "activatedAt", e.activatedAt(), false);
+                sb.append('}');
+            }
+            case TaktCompleted e -> {
+                sb.append('{');
+                writeField(sb, "type", "TaktCompleted", true);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "taktName", e.taktName(), false);
+                writeField(sb, "completedAt", e.completedAt(), false);
+                sb.append('}');
+            }
             default -> writeString(sb, event.toString());
         }
     }
@@ -274,6 +291,13 @@ public final class JsonSerializer {
                 writeField(sb, "completedAt", e.completedAt(), false);
                 sb.append('}');
             }
+            case DelayUpdated e -> {
+                sb.append('{');
+                writeField(sb, "type", "DelayUpdated", true);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "totalDelaySeconds", e.totalDelaySeconds(), false);
+                sb.append('}');
+            }
         }
     }
 
@@ -332,6 +356,7 @@ public final class JsonSerializer {
         writeField(sb, "workQueueId", view.workQueueId(), true);
         writeField(sb, "active", view.active(), false);
         writeField(sb, "estimatedMoveTime", view.estimatedMoveTime(), false);
+        writeField(sb, "totalDelaySeconds", view.totalDelaySeconds(), false);
         writeFieldKey(sb, "takts", false);
         writeValue(sb, view.takts());
         sb.append('}');
@@ -344,7 +369,10 @@ public final class JsonSerializer {
         writeField(sb, "plannedStartTime", view.plannedStartTime(), false);
         writeField(sb, "estimatedStartTime", view.estimatedStartTime(), false);
         writeField(sb, "actualStartTime", view.actualStartTime(), false);
+        writeField(sb, "completedAt", view.completedAt(), false);
         writeField(sb, "durationSeconds", view.durationSeconds(), false);
+        writeField(sb, "startDelaySeconds", view.startDelaySeconds(), false);
+        writeField(sb, "taktDelaySeconds", view.taktDelaySeconds(), false);
         writeFieldKey(sb, "actions", false);
         writeValue(sb, view.actions());
         writeFieldKey(sb, "conditions", false);

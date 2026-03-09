@@ -631,3 +631,86 @@ new WorkQueueProcessor(driveTimeSupplier, qcOffsetSupplier, true);
 - `src/main/java/com/wonderingwizard/processors/GraphScheduleBuilder.java` (new)
 - `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java` (modified — feature flag)
 - `src/test/java/com/wonderingwizard/processors/GraphScheduleBuilderTest.java` (new)
+
+---
+
+### F-10: Delay Processor
+
+**Status:** Implemented
+
+**Description:**
+Implement a DelayProcessor that calculates and tracks schedule delays based on takt execution times. The processor monitors all active schedules and detects when takts overrun their planned duration, propagating delay information to the schedule view.
+
+1. On each `TimeEvent`, check all active schedules for delays
+2. A takt is delayed when it has been active longer than its planned duration (`plannedStartTime + durationSeconds < currentTime`)
+3. The total delay propagates to future takts by shifting their estimated start times forward
+4. Total delay can decrease if subsequent takts complete faster than their planned duration
+5. Per-takt delay information (start delay, execution delay) is displayed in the webview
+
+**Delay Definitions:**
+
+- **Start delay:** How late a takt started relative to its planned start time. Computed as `actualStartTime - plannedStartTime`.
+- **Takt delay (execution delay):** How much longer a takt took (or is taking) beyond its planned duration. For active takts: `max(0, currentTime - actualStartTime - durationSeconds)`. For completed takts: `max(0, completedAt - actualStartTime - durationSeconds)`.
+- **Total delay:** The cumulative delay of the schedule. For the active takt: `max(0, currentTime - (plannedStartTime + durationSeconds))`. Decreases when takts complete faster than their planned duration.
+
+**Requested Behavior:**
+
+```
+Example scenario:
+- TAKT100 starts on time (0s start delay), duration = 120s
+- TAKT100 runs for 150s → 30s takt delay, 30s total delay
+- TAKT101 starts 30s late (30s start delay)
+- TAKT101 finishes in 120s from its actual start → 0s takt delay
+- Total delay remains 30s (unless future takts make up time)
+```
+
+**Events:**
+
+| Event | Description |
+|-------|-------------|
+| `TimeEvent` | Triggers delay recalculation for all active schedules |
+| `TaktActivated` | Records actual start time for delay tracking |
+| `TaktCompleted` | Records completion time for delay tracking |
+| `ScheduleCreated` | Initializes delay tracking for a new schedule |
+| `WorkQueueMessage(INACTIVE)` | Removes delay tracking for deactivated schedule |
+
+**Side Effects:**
+
+| Side Effect | Description |
+|-------------|-------------|
+| `DelayUpdated(workQueueId, totalDelaySeconds)` | Emitted when the total delay changes for a schedule |
+
+**Webview Display:**
+
+- Total delay badge at the top of each schedule (red "DELAY: +Xs" or green "ON TIME")
+- Per-takt delay indicators: start delay and execution delay shown in takt headers
+- Start delay shown in red if > 0, green if 0
+- Execution delay shown for COMPLETED takts; "..." shown for ACTIVE takts
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Create schedule with 2 takts (120s duration each) | DelayProcessor initializes tracking |
+| 2 | Activate TAKT100 on time | No delay emitted |
+| 3 | TimeEvent at 150s (30s past planned end) | `DelayUpdated(queue, 30)` emitted |
+| 4 | Complete TAKT100 at 150s, activate TAKT101 at 150s | Delay remains 30s based on completed takt |
+| 5 | Complete TAKT101 at 270s (120s from start) | Delay 30s (takt completed on time relative to its duration but schedule is 30s behind) |
+| 6 | Deactivate schedule | Delay tracking removed |
+
+**Test Execution:**
+```bash
+# Run tests
+mvn test -Dtest=DelayProcessorTest
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/sideeffects/DelayUpdated.java`
+- `src/main/java/com/wonderingwizard/processors/DelayProcessor.java`
+- `src/main/java/com/wonderingwizard/sideeffects/TaktActivated.java` (modified — also implements Event)
+- `src/main/java/com/wonderingwizard/sideeffects/TaktCompleted.java` (modified — also implements Event)
+- `src/main/java/com/wonderingwizard/engine/SideEffect.java` (modified — permits DelayUpdated)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — delay display in ScheduleView/TaktView)
+- `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — serialize delay fields)
+- `src/main/resources/index.html` (modified — delay badges and per-takt delay display)
+- `src/test/java/com/wonderingwizard/processors/DelayProcessorTest.java`

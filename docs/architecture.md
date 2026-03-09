@@ -32,6 +32,9 @@ Marker interface for all side effects produced by event processing. Side effects
 - `ScheduleAborted` - Indicates a schedule was aborted for a work queue
 - `ActionActivated` - Indicates an action has been activated and is ready for execution
 - `ActionCompleted` - Indicates an action has been completed
+- `TaktActivated` - Indicates a takt has been activated (also implements Event for BFS propagation)
+- `TaktCompleted` - Indicates a takt has been completed (also implements Event for BFS propagation)
+- `DelayUpdated` - Indicates a schedule's total delay has changed
 
 ### EventProcessor (Interface)
 ```
@@ -197,13 +200,17 @@ com.wonderingwizard
 │   ├── ScheduleAborted.java         # Schedule abortion notification
 │   ├── WorkInstruction.java         # Work instruction data (with estimatedMoveTime)
 │   ├── ActionActivated.java         # Action activation notification
-│   └── ActionCompleted.java         # Action completion notification
+│   ├── ActionCompleted.java         # Action completion notification
+│   ├── TaktActivated.java           # Takt activation (also implements Event)
+│   ├── TaktCompleted.java           # Takt completion (also implements Event)
+│   └── DelayUpdated.java            # Schedule delay change notification
 ├── processors/
 │   ├── TimeAlarmProcessor.java      # Time alarm handling
 │   ├── WorkQueueProcessor.java      # Work queue schedule and takt generation
 │   ├── GraphScheduleBuilder.java    # Graph-based takt generation (feature-flagged alternative)
 │   ├── ResourceAction.java          # Legacy action template for imperative takt generation
-│   └── ScheduleRunnerProcessor.java # Schedule execution and action state management
+│   ├── ScheduleRunnerProcessor.java # Schedule execution and action state management
+│   └── DelayProcessor.java         # Schedule delay tracking and calculation
 ├── server/
 │   ├── DemoServer.java              # HTTP demo server with REST API (JDK HttpServer)
 │   ├── JsonSerializer.java          # Hand-rolled JSON serializer (no external libs)

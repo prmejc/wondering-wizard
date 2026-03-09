@@ -280,6 +280,12 @@ class ScheduleView extends HTMLElement {
       if (schedule.estimatedMoveTime) {
         html += '<span style="font-size:12px;color:var(--text-muted)">EMT: ' + schedule.estimatedMoveTime + '</span>';
       }
+      const totalDelay = schedule.totalDelaySeconds || 0;
+      if (totalDelay > 0) {
+        html += '<span style="font-size:12px;font-weight:600;color:#ef4444;background:rgba(239,68,68,0.15);padding:2px 8px;border-radius:4px">DELAY: +' + totalDelay + 's</span>';
+      } else {
+        html += '<span style="font-size:12px;font-weight:600;color:var(--completed);background:rgba(34,197,94,0.15);padding:2px 8px;border-radius:4px">ON TIME</span>';
+      }
       html += '</div>';
 
       const takts = schedule.takts || [];
@@ -337,6 +343,19 @@ class ScheduleView extends HTMLElement {
         html += 'E: ' + fmtTime(takt.estimatedStartTime) + '<br>';
         html += '<span style="color:' + (takt.actualStartTime ? 'var(--completed)' : 'var(--text-muted)') + '">A: ' + fmtTime(takt.actualStartTime) + '</span>';
         html += '</div>';
+        // Delay indicators for started/completed takts
+        if (takt.actualStartTime) {
+          const startDel = takt.startDelaySeconds || 0;
+          const taktDel = takt.taktDelaySeconds || 0;
+          html += '<div style="font-size:9px;margin-top:3px;line-height:1.3">';
+          html += '<span style="color:' + (startDel > 0 ? '#ef4444' : 'var(--completed)') + '">start: ' + (startDel > 0 ? '+' + startDel + 's' : '0s') + '</span><br>';
+          if (ts === 'COMPLETED') {
+            html += '<span style="color:' + (taktDel > 0 ? '#ef4444' : 'var(--completed)') + '">exec: ' + (taktDel > 0 ? '+' + taktDel + 's' : '0s') + '</span>';
+          } else if (ts === 'ACTIVE') {
+            html += '<span style="color:var(--text-muted)">exec: ...</span>';
+          }
+          html += '</div>';
+        }
         html += '</div>';
       }
 

@@ -1,13 +1,17 @@
 package com.wonderingwizard.sideeffects;
 
+import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.SideEffect;
 
 import java.time.Instant;
 
 /**
- * Side effect produced when a takt transitions from Active to Completed.
+ * Side effect and event produced when a takt transitions from Active to Completed.
  * <p>
  * A takt becomes completed when all actions within it have been completed.
+ * <p>
+ * Implements Event so that downstream processors (e.g., DelayProcessor) can
+ * react to takt completions via the EventPropagatingEngine's BFS mechanism.
  *
  * @param workQueueId the work queue this takt belongs to
  * @param taktName the name of the takt (e.g., "TAKT100")
@@ -17,7 +21,7 @@ public record TaktCompleted(
         String workQueueId,
         String taktName,
         Instant completedAt
-) implements SideEffect {
+) implements SideEffect, Event {
 
     @Override
     public String toString() {
