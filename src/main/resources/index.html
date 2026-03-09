@@ -486,7 +486,7 @@ class ScheduleView extends HTMLElement {
           popupHtml += '<div style="padding:6px 0;border-top:1px solid var(--border)">';
           popupHtml += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
           popupHtml += '<span>' + icon + ' <strong>' + label + '</strong></span>';
-          if (!cond.satisfied && !cond.overridden && cond.type !== 'TAKT_ACTIVATION') {
+          if (!cond.satisfied && !cond.overridden) {
             popupHtml += '<button class="action-override-btn" data-wq="' + wqId + '" data-action-id="' + actionId + '" data-cond-id="' + cond.id + '" style="background:#f59e0b;color:white;border:none;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-weight:600">Override</button>';
           }
           popupHtml += '</div>';

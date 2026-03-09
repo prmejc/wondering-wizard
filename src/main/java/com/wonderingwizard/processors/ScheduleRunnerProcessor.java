@@ -357,9 +357,59 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         String taktName = actionInfo.taktName();
         if (state.taktStates.get(taktName) == TaktState.ACTIVE) {
             sideEffects.addAll(activateEligibleActions(event.workQueueId(), state, taktName));
+        } else if (state.taktStates.get(taktName) == TaktState.WAITING) {
+            // If all action conditions are satisfied/overridden, activate the action
+            // even though its takt is still WAITING
+            sideEffects.addAll(tryForceActivateAction(event.workQueueId(), state, event.actionId(), actionInfo));
         }
 
         return sideEffects;
+    }
+
+    /**
+     * Checks if all conditions for an action are satisfied or overridden,
+     * and activates the action even if its takt is still WAITING.
+     */
+    private List<SideEffect> tryForceActivateAction(String workQueueId, ScheduleState state,
+                                                      UUID actionId, ActionInfo actionInfo) {
+        if (state.activeActionIds.contains(actionId) || state.completedActionIds.contains(actionId)) {
+            return List.of();
+        }
+
+        Set<String> overrides = state.overriddenActionConditions.getOrDefault(actionId, Set.of());
+        Action action = actionInfo.action();
+        String taktName = actionInfo.taktName();
+
+        // Determine what conditions this action has and check each
+        Set<UUID> taktActionIds = new HashSet<>();
+        for (Action a : state.takts.stream().filter(t -> t.name().equals(taktName)).findFirst().get().actions()) {
+            taktActionIds.add(a.id());
+        }
+
+        boolean hasIntraTaktDep = action.dependsOn() != null &&
+                action.dependsOn().stream().anyMatch(taktActionIds::contains);
+
+        if (!hasIntraTaktDep) {
+            // First action: has takt-activation condition
+            boolean taktActive = state.taktStates.get(taktName) == TaktState.ACTIVE;
+            if (!taktActive && !overrides.contains("takt-activation")) {
+                return List.of();
+            }
+        } else {
+            // Non-first action: has action-dependencies condition
+            boolean depsComplete = action.dependsOn() == null || action.dependsOn().isEmpty()
+                    || state.completedActionIds.containsAll(action.dependsOn());
+            if (!depsComplete && !overrides.contains("action-dependencies")) {
+                return List.of();
+            }
+        }
+
+        // All conditions met — activate the action
+        state.activeActionIds.add(actionId);
+        return List.of(new ActionActivated(
+                actionId, workQueueId, taktName,
+                action.description(), this.currentTime
+        ));
     }
 
     /**
@@ -491,6 +541,16 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         for (Takt t : state.takts) {
             if (state.taktStates.get(t.name()) == TaktState.ACTIVE) {
                 sideEffects.addAll(activateEligibleActions(workQueueId, state, t.name()));
+            }
+        }
+
+        // Also check actions in WAITING takts that have all conditions overridden/satisfied
+        for (ActionInfo info : state.actionLookup.values()) {
+            if (state.taktStates.get(info.taktName()) == TaktState.WAITING) {
+                UUID actionId = info.action().id();
+                if (!state.activeActionIds.contains(actionId) && !state.completedActionIds.contains(actionId)) {
+                    sideEffects.addAll(tryForceActivateAction(workQueueId, state, actionId, info));
+                }
             }
         }
 
