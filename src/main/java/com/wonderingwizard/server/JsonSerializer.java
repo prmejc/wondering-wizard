@@ -6,6 +6,8 @@ import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.OverrideActionConditionEvent;
+import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.SetTimeAlarm;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
@@ -87,6 +89,8 @@ public final class JsonSerializer {
             writeTaktView(sb, taktView);
         } else if (obj instanceof DemoServer.ActionView actionView) {
             writeActionView(sb, actionView);
+        } else if (obj instanceof DemoServer.ConditionView conditionView) {
+            writeConditionView(sb, conditionView);
         } else {
             writeString(sb, obj.toString());
         }
@@ -172,6 +176,22 @@ public final class JsonSerializer {
                 writeField(sb, "type", "ActionCompletedEvent", true);
                 writeField(sb, "actionId", e.actionId(), false);
                 writeField(sb, "workQueueId", e.workQueueId(), false);
+                sb.append('}');
+            }
+            case OverrideConditionEvent e -> {
+                sb.append('{');
+                writeField(sb, "type", "OverrideConditionEvent", true);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "taktName", e.taktName(), false);
+                writeField(sb, "conditionId", e.conditionId(), false);
+                sb.append('}');
+            }
+            case OverrideActionConditionEvent e -> {
+                sb.append('{');
+                writeField(sb, "type", "OverrideActionConditionEvent", true);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "actionId", e.actionId(), false);
+                writeField(sb, "conditionId", e.conditionId(), false);
                 sb.append('}');
             }
             case ScheduleCreated e -> {
@@ -327,6 +347,8 @@ public final class JsonSerializer {
         writeField(sb, "durationSeconds", view.durationSeconds(), false);
         writeFieldKey(sb, "actions", false);
         writeValue(sb, view.actions());
+        writeFieldKey(sb, "conditions", false);
+        writeValue(sb, view.conditions());
         sb.append('}');
     }
 
@@ -344,6 +366,18 @@ public final class JsonSerializer {
         writeValue(sb, view.dependsOn() != null ? view.dependsOn().stream().toList() : List.of());
         writeField(sb, "containerIndex", view.containerIndex(), false);
         writeField(sb, "durationSeconds", view.durationSeconds(), false);
+        writeFieldKey(sb, "conditions", false);
+        writeValue(sb, view.conditions() != null ? view.conditions() : List.of());
+        sb.append('}');
+    }
+
+    private static void writeConditionView(StringBuilder sb, DemoServer.ConditionView view) {
+        sb.append('{');
+        writeField(sb, "id", view.id(), true);
+        writeField(sb, "type", view.type(), false);
+        writeField(sb, "satisfied", view.satisfied(), false);
+        writeField(sb, "overridden", view.overridden(), false);
+        writeField(sb, "explanation", view.explanation(), false);
         sb.append('}');
     }
 

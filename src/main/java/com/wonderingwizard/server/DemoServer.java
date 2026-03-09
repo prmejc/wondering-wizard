@@ -1,14 +1,24 @@
 package com.wonderingwizard.server;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionCondition;
+import com.wonderingwizard.domain.takt.ActionConditionContext;
+import com.wonderingwizard.domain.takt.ActionDependencyCondition;
+import com.wonderingwizard.domain.takt.ConditionContext;
+import com.wonderingwizard.domain.takt.DependencyCondition;
 import com.wonderingwizard.domain.takt.DeviceType;
+import com.wonderingwizard.domain.takt.TaktActivationCondition;
+import com.wonderingwizard.domain.takt.TaktCondition;
 import com.wonderingwizard.domain.takt.Takt;
+import com.wonderingwizard.domain.takt.TimeCondition;
 import com.wonderingwizard.engine.Engine;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessingEngine;
 import com.wonderingwizard.engine.EventPropagatingEngine;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.OverrideActionConditionEvent;
+import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkInstructionStatus;
@@ -87,15 +97,19 @@ public class DemoServer {
     public record ScheduleView(String workQueueId, boolean active, Instant estimatedMoveTime,
                                 List<TaktView> takts) {}
 
+    /** Condition evaluation result for the API. */
+    public record ConditionView(String id, String type, boolean satisfied, boolean overridden, String explanation) {}
+
     /** Takt view within a schedule. */
     public record TaktView(String name, TaktState status, Instant plannedStartTime,
                             Instant estimatedStartTime, Instant actualStartTime,
-                            int durationSeconds, List<ActionView> actions) {}
+                            int durationSeconds, List<ActionView> actions,
+                            List<ConditionView> conditions) {}
 
     /** Action view within a takt. */
     public record ActionView(UUID id, DeviceType deviceType, String description,
                               ActionState status, Set<UUID> dependsOn, int containerIndex,
-                              int durationSeconds) {}
+                              int durationSeconds, List<ConditionView> conditions) {}
 
     public DemoServer() {
         EventProcessingEngine baseEngine = new EventProcessingEngine();
@@ -123,6 +137,8 @@ public class DemoServer {
         httpServer.createContext("/api/work-queue", this::handleWorkQueue);
         httpServer.createContext("/api/tick", this::handleTick);
         httpServer.createContext("/api/action-completed", this::handleActionCompleted);
+        httpServer.createContext("/api/override-condition", this::handleOverrideCondition);
+        httpServer.createContext("/api/override-action-condition", this::handleOverrideActionCondition);
         httpServer.createContext("/api/step-back-to", this::handleStepBackTo);
         httpServer.start();
         logger.info("Demo server started on port " + port);
@@ -217,12 +233,13 @@ public class DemoServer {
                                 actionViews.add(new ActionView(
                                         action.id(), action.deviceType(), action.description(),
                                         ActionState.PENDING, action.dependsOn(), action.containerIndex(),
-                                        action.durationSeconds()));
+                                        action.durationSeconds(), List.of()));
                             }
                             builder.takts.add(new TaktView(takt.name(), TaktState.WAITING,
                                     takt.plannedStartTime(), takt.estimatedStartTime(), null,
-                                    takt.durationSeconds(), actionViews));
+                                    takt.durationSeconds(), actionViews, List.of()));
                         }
+                        builder.storeTakts(created.takts());
                         builders.put(created.workQueueId(), builder);
                     }
                     case ScheduleAborted aborted ->
@@ -255,10 +272,23 @@ public class DemoServer {
                     default -> { /* Other side effects don't affect schedule view */ }
                 }
             }
+            // Track override events (they are events, not side effects)
+            if (step.event() instanceof OverrideConditionEvent override) {
+                ScheduleViewBuilder builder = builders.get(override.workQueueId());
+                if (builder != null) {
+                    builder.addOverride(override.taktName(), override.conditionId());
+                }
+            }
+            if (step.event() instanceof OverrideActionConditionEvent override) {
+                ScheduleViewBuilder builder = builders.get(override.workQueueId());
+                if (builder != null) {
+                    builder.addActionOverride(override.actionId(), override.conditionId());
+                }
+            }
         }
 
         return builders.values().stream()
-                .map(ScheduleViewBuilder::build)
+                .map(b -> b.build(currentTime))
                 .toList();
     }
 
@@ -270,11 +300,21 @@ public class DemoServer {
         final Map<UUID, ActionState> actionStates = new HashMap<>();
         final Map<String, TaktState> taktStates = new HashMap<>();
         final Map<String, Instant> actualStartTimes = new HashMap<>();
+        /** Original takt data for building conditions. */
+        List<Takt> originalTakts = List.of();
+        /** Overridden conditions per takt name. */
+        final Map<String, Set<String>> overriddenConditions = new HashMap<>();
+        /** Overridden action conditions per action UUID. */
+        final Map<UUID, Set<String>> overriddenActionConditions = new HashMap<>();
 
         ScheduleViewBuilder(String workQueueId, boolean active, Instant estimatedMoveTime) {
             this.workQueueId = workQueueId;
             this.active = active;
             this.estimatedMoveTime = estimatedMoveTime;
+        }
+
+        void storeTakts(List<Takt> takts) {
+            this.originalTakts = takts;
         }
 
         void setActionStatus(UUID actionId, ActionState status) {
@@ -289,24 +329,172 @@ public class DemoServer {
             actualStartTimes.put(taktName, time);
         }
 
-        ScheduleView build() {
+        void addOverride(String taktName, String conditionId) {
+            overriddenConditions.computeIfAbsent(taktName, k -> new HashSet<>()).add(conditionId);
+        }
+
+        void addActionOverride(UUID actionId, String conditionId) {
+            overriddenActionConditions.computeIfAbsent(actionId, k -> new HashSet<>()).add(conditionId);
+        }
+
+        ScheduleView build(Instant currentTime) {
+            // Build action lookup for dependency descriptions
+            Map<UUID, String> actionDescriptions = new HashMap<>();
+            for (Takt takt : originalTakts) {
+                for (Action action : takt.actions()) {
+                    actionDescriptions.put(action.id(), action.description());
+                }
+            }
+
+            // Build completed action IDs from action states
+            Set<UUID> completedActionIds = new HashSet<>();
+            for (Map.Entry<UUID, ActionState> entry : actionStates.entrySet()) {
+                if (entry.getValue() == ActionState.COMPLETED) {
+                    completedActionIds.add(entry.getKey());
+                }
+            }
+
+            ConditionContext context = new ConditionContext(currentTime, completedActionIds);
+
             List<TaktView> updatedTakts = new ArrayList<>();
-            for (TaktView takt : takts) {
+            for (int i = 0; i < takts.size(); i++) {
+                TaktView takt = takts.get(i);
                 TaktState taktState = taktStates.getOrDefault(takt.name(), takt.status());
                 Instant actualStartTime = actualStartTimes.get(takt.name());
                 List<ActionView> updatedActions = new ArrayList<>();
+                Takt originalTakt = i < originalTakts.size() ? originalTakts.get(i) : null;
                 for (ActionView action : takt.actions()) {
-                    ActionState state = actionStates.getOrDefault(action.id(), action.status());
+                    ActionState actionState = actionStates.getOrDefault(action.id(), action.status());
+                    List<ConditionView> actionConditions = List.of();
+                    if (actionState == ActionState.PENDING && originalTakt != null) {
+                        actionConditions = buildActionConditionViews(
+                                action, originalTakt, taktState, completedActionIds, actionDescriptions,
+                                overriddenActionConditions.getOrDefault(action.id(), Set.of()));
+                    }
                     updatedActions.add(new ActionView(
                             action.id(), action.deviceType(), action.description(),
-                            state, action.dependsOn(), action.containerIndex(),
-                            action.durationSeconds()));
+                            actionState, action.dependsOn(), action.containerIndex(),
+                            action.durationSeconds(), actionConditions));
                 }
+
+                // Build conditions for WAITING takts
+                List<ConditionView> conditionViews = List.of();
+                if (taktState == TaktState.WAITING && i < originalTakts.size()) {
+                    conditionViews = buildConditionViews(originalTakts.get(i), context,
+                            actionDescriptions,
+                            overriddenConditions.getOrDefault(takt.name(), Set.of()));
+                }
+
                 updatedTakts.add(new TaktView(takt.name(), taktState,
                         takt.plannedStartTime(), takt.estimatedStartTime(), actualStartTime,
-                        takt.durationSeconds(), updatedActions));
+                        takt.durationSeconds(), updatedActions, conditionViews));
             }
             return new ScheduleView(workQueueId, active, estimatedMoveTime, updatedTakts);
+        }
+
+        private List<ConditionView> buildActionConditionViews(
+                ActionView action, Takt takt, TaktState taktState,
+                Set<UUID> completedActionIds, Map<UUID, String> actionDescriptions,
+                Set<String> overrides) {
+            List<ConditionView> views = new ArrayList<>();
+
+            // Determine if this is a first action (no intra-takt dependencies)
+            Set<UUID> taktActionIds = new HashSet<>();
+            for (Action a : takt.actions()) {
+                taktActionIds.add(a.id());
+            }
+
+            Set<UUID> intraTaktDeps = new HashSet<>();
+            for (UUID depId : action.dependsOn() != null ? action.dependsOn() : Set.<UUID>of()) {
+                if (taktActionIds.contains(depId)) {
+                    intraTaktDeps.add(depId);
+                }
+            }
+
+            boolean isFirstAction = intraTaktDeps.isEmpty();
+            ActionConditionContext context = new ActionConditionContext(
+                    taktState == TaktState.ACTIVE, completedActionIds);
+
+            if (isFirstAction) {
+                // First action: condition is takt activation
+                TaktActivationCondition cond = new TaktActivationCondition(takt.name());
+                boolean overridden = overrides.contains(cond.id());
+                boolean satisfied = overridden || cond.evaluate(context);
+                views.add(new ConditionView(cond.id(), cond.type(),
+                        satisfied, overridden,
+                        satisfied ? null : cond.explanation(context)));
+            } else {
+                // Non-first action: condition is dependency completion
+                Map<UUID, String> depDescs = new HashMap<>();
+                for (UUID depId : intraTaktDeps) {
+                    depDescs.put(depId, actionDescriptions.getOrDefault(depId,
+                            depId.toString().substring(0, 8)));
+                }
+                ActionDependencyCondition cond = new ActionDependencyCondition(intraTaktDeps, depDescs);
+                boolean overridden = overrides.contains(cond.id());
+                boolean satisfied = overridden || cond.evaluate(context);
+                views.add(new ConditionView(cond.id(), cond.type(),
+                        satisfied, overridden,
+                        satisfied ? null : cond.explanation(context)));
+            }
+
+            return views;
+        }
+
+        private List<ConditionView> buildConditionViews(Takt takt, ConditionContext context,
+                                                         Map<UUID, String> actionDescriptions,
+                                                         Set<String> overrides) {
+            List<ConditionView> views = new ArrayList<>();
+
+            // Time condition
+            if (takt.estimatedStartTime() != null) {
+                TimeCondition timeCond = new TimeCondition(takt.estimatedStartTime());
+                boolean overridden = overrides.contains(timeCond.id());
+                boolean satisfied = overridden || timeCond.evaluate(context);
+                views.add(new ConditionView(timeCond.id(), timeCond.type(),
+                        satisfied, overridden,
+                        satisfied ? null : timeCond.explanation(context)));
+            }
+
+            // Dependency condition
+            if (!takt.actions().isEmpty()) {
+                Set<UUID> taktActionIds = new HashSet<>();
+                for (Action action : takt.actions()) {
+                    taktActionIds.add(action.id());
+                }
+
+                Map<String, Set<UUID>> externalDeps = new LinkedHashMap<>();
+                Map<UUID, String> depDescs = new HashMap<>();
+
+                for (Action action : takt.actions()) {
+                    boolean hasIntraTaktDep = action.dependsOn().stream()
+                            .anyMatch(taktActionIds::contains);
+                    if (hasIntraTaktDep) continue;
+
+                    Set<UUID> extDeps = new HashSet<>();
+                    for (UUID depId : action.dependsOn()) {
+                        if (!taktActionIds.contains(depId)) {
+                            extDeps.add(depId);
+                            depDescs.put(depId, actionDescriptions.getOrDefault(depId,
+                                    depId.toString().substring(0, 8)));
+                        }
+                    }
+                    if (!extDeps.isEmpty()) {
+                        externalDeps.put(action.description(), extDeps);
+                    }
+                }
+
+                if (!externalDeps.isEmpty()) {
+                    DependencyCondition depCond = new DependencyCondition(externalDeps, depDescs);
+                    boolean overridden = overrides.contains(depCond.id());
+                    boolean satisfied = overridden || depCond.evaluate(context);
+                    views.add(new ConditionView(depCond.id(), depCond.type(),
+                            satisfied, overridden,
+                            satisfied ? null : depCond.explanation(context)));
+                }
+            }
+
+            return views;
         }
     }
 
@@ -436,6 +624,54 @@ public class DemoServer {
 
             ActionCompletedEvent event = new ActionCompletedEvent(actionId, workQueueId);
             List<SideEffect> effects = processStep("Complete action: " + actionIdStr.substring(0, 8), event);
+
+            sendJsonResponse(exchange, 200, JsonSerializer.serialize(
+                    Map.of("step", steps.get(steps.size() - 1), "sideEffects", effects)));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handleOverrideCondition(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            String workQueueId = requireField(body, "workQueueId");
+            String taktName = requireField(body, "taktName");
+            String conditionId = requireField(body, "conditionId");
+
+            OverrideConditionEvent event = new OverrideConditionEvent(workQueueId, taktName, conditionId);
+            List<SideEffect> effects = processStep(
+                    "Override condition: " + conditionId + " on " + taktName, event);
+
+            sendJsonResponse(exchange, 200, JsonSerializer.serialize(
+                    Map.of("step", steps.get(steps.size() - 1), "sideEffects", effects)));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handleOverrideActionCondition(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            String workQueueId = requireField(body, "workQueueId");
+            String actionIdStr = requireField(body, "actionId");
+            String conditionId = requireField(body, "conditionId");
+            UUID actionId = UUID.fromString(actionIdStr);
+
+            OverrideActionConditionEvent event = new OverrideActionConditionEvent(
+                    workQueueId, actionId, conditionId);
+            List<SideEffect> effects = processStep(
+                    "Override action condition: " + conditionId + " on " + actionIdStr.substring(0, 8), event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
                     Map.of("step", steps.get(steps.size() - 1), "sideEffects", effects)));
