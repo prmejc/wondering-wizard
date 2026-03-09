@@ -350,13 +350,16 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 .computeIfAbsent(event.actionId(), k -> new HashSet<>())
                 .add(event.conditionId());
 
-        // Try to activate actions in the action's takt if it's active
+        // Try to activate takts first (in case this unblocks takt activation),
+        // then try to activate actions in the action's takt if it's active
+        List<SideEffect> sideEffects = new ArrayList<>(tryActivateTakts(event.workQueueId(), state));
+
         String taktName = actionInfo.taktName();
         if (state.taktStates.get(taktName) == TaktState.ACTIVE) {
-            return activateEligibleActions(event.workQueueId(), state, taktName);
+            sideEffects.addAll(activateEligibleActions(event.workQueueId(), state, taktName));
         }
 
-        return List.of();
+        return sideEffects;
     }
 
     /**
