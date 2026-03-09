@@ -1,9 +1,13 @@
 package com.wonderingwizard.server;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionCondition;
+import com.wonderingwizard.domain.takt.ActionConditionContext;
+import com.wonderingwizard.domain.takt.ActionDependencyCondition;
 import com.wonderingwizard.domain.takt.ConditionContext;
 import com.wonderingwizard.domain.takt.DependencyCondition;
 import com.wonderingwizard.domain.takt.DeviceType;
+import com.wonderingwizard.domain.takt.TaktActivationCondition;
 import com.wonderingwizard.domain.takt.TaktCondition;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.domain.takt.TimeCondition;
@@ -104,7 +108,7 @@ public class DemoServer {
     /** Action view within a takt. */
     public record ActionView(UUID id, DeviceType deviceType, String description,
                               ActionState status, Set<UUID> dependsOn, int containerIndex,
-                              int durationSeconds) {}
+                              int durationSeconds, List<ConditionView> conditions) {}
 
     public DemoServer() {
         EventProcessingEngine baseEngine = new EventProcessingEngine();
@@ -227,7 +231,7 @@ public class DemoServer {
                                 actionViews.add(new ActionView(
                                         action.id(), action.deviceType(), action.description(),
                                         ActionState.PENDING, action.dependsOn(), action.containerIndex(),
-                                        action.durationSeconds()));
+                                        action.durationSeconds(), List.of()));
                             }
                             builder.takts.add(new TaktView(takt.name(), TaktState.WAITING,
                                     takt.plannedStartTime(), takt.estimatedStartTime(), null,
@@ -344,12 +348,18 @@ public class DemoServer {
                 TaktState taktState = taktStates.getOrDefault(takt.name(), takt.status());
                 Instant actualStartTime = actualStartTimes.get(takt.name());
                 List<ActionView> updatedActions = new ArrayList<>();
+                Takt originalTakt = i < originalTakts.size() ? originalTakts.get(i) : null;
                 for (ActionView action : takt.actions()) {
-                    ActionState state = actionStates.getOrDefault(action.id(), action.status());
+                    ActionState actionState = actionStates.getOrDefault(action.id(), action.status());
+                    List<ConditionView> actionConditions = List.of();
+                    if (actionState == ActionState.PENDING && originalTakt != null) {
+                        actionConditions = buildActionConditionViews(
+                                action, originalTakt, taktState, completedActionIds, actionDescriptions);
+                    }
                     updatedActions.add(new ActionView(
                             action.id(), action.deviceType(), action.description(),
-                            state, action.dependsOn(), action.containerIndex(),
-                            action.durationSeconds()));
+                            actionState, action.dependsOn(), action.containerIndex(),
+                            action.durationSeconds(), actionConditions));
                 }
 
                 // Build conditions for WAITING takts
@@ -365,6 +375,52 @@ public class DemoServer {
                         takt.durationSeconds(), updatedActions, conditionViews));
             }
             return new ScheduleView(workQueueId, active, estimatedMoveTime, updatedTakts);
+        }
+
+        private List<ConditionView> buildActionConditionViews(
+                ActionView action, Takt takt, TaktState taktState,
+                Set<UUID> completedActionIds, Map<UUID, String> actionDescriptions) {
+            List<ConditionView> views = new ArrayList<>();
+
+            // Determine if this is a first action (no intra-takt dependencies)
+            Set<UUID> taktActionIds = new HashSet<>();
+            for (Action a : takt.actions()) {
+                taktActionIds.add(a.id());
+            }
+
+            Set<UUID> intraTaktDeps = new HashSet<>();
+            for (UUID depId : action.dependsOn() != null ? action.dependsOn() : Set.<UUID>of()) {
+                if (taktActionIds.contains(depId)) {
+                    intraTaktDeps.add(depId);
+                }
+            }
+
+            boolean isFirstAction = intraTaktDeps.isEmpty();
+            ActionConditionContext context = new ActionConditionContext(
+                    taktState == TaktState.ACTIVE, completedActionIds);
+
+            if (isFirstAction) {
+                // First action: condition is takt activation
+                TaktActivationCondition cond = new TaktActivationCondition(takt.name());
+                boolean satisfied = cond.evaluate(context);
+                views.add(new ConditionView(cond.id(), cond.type(),
+                        satisfied, false,
+                        satisfied ? null : cond.explanation(context)));
+            } else {
+                // Non-first action: condition is dependency completion
+                Map<UUID, String> depDescs = new HashMap<>();
+                for (UUID depId : intraTaktDeps) {
+                    depDescs.put(depId, actionDescriptions.getOrDefault(depId,
+                            depId.toString().substring(0, 8)));
+                }
+                ActionDependencyCondition cond = new ActionDependencyCondition(intraTaktDeps, depDescs);
+                boolean satisfied = cond.evaluate(context);
+                views.add(new ConditionView(cond.id(), cond.type(),
+                        satisfied, false,
+                        satisfied ? null : cond.explanation(context)));
+            }
+
+            return views;
         }
 
         private List<ConditionView> buildConditionViews(Takt takt, ConditionContext context,

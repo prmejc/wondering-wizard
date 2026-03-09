@@ -379,7 +379,16 @@ class ScheduleView extends HTMLElement {
             const widthPx = Math.round(dur * scale);
             const narrow = widthPx < 30;
 
-            let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600">' + statusLabel + ' <span style="color:' + containerColor + '">C' + ci + '</span></div><div>' + action.description + '</div>';
+            // Action conditions icon for PENDING actions
+            const actionConditions = action.conditions || [];
+            const actionUnsatisfied = actionConditions.filter(c => !c.satisfied);
+            let conditionsIcon = '';
+            if (action.status === 'PENDING' && actionConditions.length > 0) {
+              const acondColor = actionUnsatisfied.length > 0 ? '#ef4444' : 'var(--completed)';
+              conditionsIcon = ' <span class="action-conditions-btn" data-action-id="' + action.id + '" data-action-desc="' + action.description.replace(/"/g, '&quot;') + '" data-wq="' + schedule.workQueueId + '" data-conditions="' + encodeURIComponent(JSON.stringify(actionConditions)) + '" style="cursor:pointer;font-size:10px;color:' + acondColor + '" title="' + actionUnsatisfied.length + ' condition(s) blocking">&#9881;</span>';
+            }
+
+            let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600">' + statusLabel + ' <span style="color:' + containerColor + '">C' + ci + '</span>' + conditionsIcon + '</div><div>' + action.description + '</div>';
             if (action.status === 'ACTIVE') {
               innerHtml += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + schedule.workQueueId + '">Complete</button>';
             }
@@ -443,6 +452,46 @@ class ScheduleView extends HTMLElement {
             refreshState();
           });
         });
+      });
+    });
+
+    // Bind action conditions buttons
+    container.querySelectorAll('.action-conditions-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        self.querySelectorAll('.conditions-popup').forEach(p => p.remove());
+
+        const conditions = JSON.parse(decodeURIComponent(btn.dataset.conditions));
+        const actionDesc = btn.dataset.actionDesc;
+
+        const popup = document.createElement('div');
+        popup.className = 'conditions-popup';
+        const rect = btn.getBoundingClientRect();
+        const parentRect = self.getBoundingClientRect();
+        popup.style.cssText = 'position:absolute;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,0.4);min-width:260px;max-width:400px;left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 4) + 'px';
+
+        let popupHtml = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+        popupHtml += '<strong style="font-size:13px">Conditions for "' + actionDesc + '"</strong>';
+        popupHtml += '<span style="cursor:pointer;font-size:15px;line-height:1;color:var(--text-muted);padding:0 2px" onclick="this.closest(\'.conditions-popup\').remove()">&#10005;</span>';
+        popupHtml += '</div>';
+
+        for (const cond of conditions) {
+          const icon = cond.satisfied ? '<span style="color:var(--completed)">&#10003;</span>'
+                     : '<span style="color:#ef4444">&#10007;</span>';
+          const label = cond.type === 'TAKT_ACTIVATION' ? 'Takt Activation' : 'Action Dependencies';
+
+          popupHtml += '<div style="padding:6px 0;border-top:1px solid var(--border)">';
+          popupHtml += '<div style="display:flex;align-items:center;gap:8px">';
+          popupHtml += '<span>' + icon + ' <strong>' + label + '</strong></span>';
+          popupHtml += '</div>';
+          if (cond.explanation) {
+            popupHtml += '<div style="font-size:11px;color:var(--text-muted);margin-top:3px;word-break:break-word">' + cond.explanation + '</div>';
+          }
+          popupHtml += '</div>';
+        }
+
+        popup.innerHTML = popupHtml;
+        self.appendChild(popup);
       });
     });
 
