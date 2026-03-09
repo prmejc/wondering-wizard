@@ -574,3 +574,60 @@ Schedule updates:
 | 3 | Complete all actions in a dependency chain | Each completion triggers the next activation |
 | 4 | Click a past event in the timeline to revert | Completed action returns to active, dependent actions return to pending |
 
+---
+
+### F-9: Graph-Based Schedule Builder
+
+**Status:** Implemented
+
+**Description:**
+Alternative takt generation algorithm using a declarative graph-based approach. Replaces the imperative per-resource methods (`createTaktsForWorinstructionQc`, `TT`, `RTG`) with a single generic placement algorithm driven by a declarative action blueprint.
+
+1. Each container's workflow is defined as a flat list of `ActionTemplate` declarations
+2. Templates declare constraints: `firstInTakt`, `anchor`, `syncWith`, `onlyOnePerTakt`
+3. One anchor action pins the QC takt to `containerIndex`
+4. Cross-resource synchronization uses `syncWith` (e.g., TT "handover to QC" syncs with QC "QC Lift")
+5. The algorithm places segments into takts, then wires dependencies as a post-processing step
+6. Enabled via a feature flag (`useGraphScheduleBuilder`) on `WorkQueueProcessor`
+
+**Key Concepts:**
+
+- **ActionTemplate**: Declarative action definition with name, device type, duration, and placement constraints
+- **Segment**: Group of consecutive actions (within one resource) that belong to the same takt
+- **Anchor**: Exactly one action per container that pins to takt index = containerIndex
+- **SyncWith**: Cross-resource constraint — places this segment in the same takt as the referenced action
+- **Blueprint**: Full action list for one container, built dynamically from work instruction parameters
+
+**Algorithm:**
+
+1. Build blueprint per container (durations from work instruction)
+2. Split per-device chains into segments at `firstInTakt` boundaries
+3. Place anchor segment at `containerIndex`
+4. Resolve sync-based segments (place in same takt as sync target)
+5. Place backward adjacent segments with overflow handling
+6. Wire intra-chain and cross-container dependencies in blueprint execution order
+
+**Feature Flag:**
+
+```java
+// Legacy (default)
+new WorkQueueProcessor(driveTimeSupplier, qcOffsetSupplier, false);
+
+// Graph-based
+new WorkQueueProcessor(driveTimeSupplier, qcOffsetSupplier, true);
+```
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Create GraphScheduleBuilder with fixed drive time | Builder created |
+| 2 | Build blueprint for single work instruction | Blueprint contains QC, TT, RTG actions with correct durations |
+| 3 | Create takts for single container | QC in anchor takt, TT/RTG in pulse takts, all syncs resolved |
+| 4 | Create takts for multiple containers | Cross-container dependencies wired, anchors at container indices |
+| 5 | Enable feature flag and activate work queue | ScheduleCreated uses graph builder output |
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/processors/GraphScheduleBuilder.java` (new)
+- `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java` (modified — feature flag)
+- `src/test/java/com/wonderingwizard/processors/GraphScheduleBuilderTest.java` (new)

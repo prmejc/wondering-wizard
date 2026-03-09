@@ -57,21 +57,28 @@ public class WorkQueueProcessor implements EventProcessor {
     private final Map<String, Integer> qcMudaByQueue = new HashMap<>();
     private final IntSupplier driveTimeSupplier;
     private final IntSupplier qcDriveTimeOffsetSupplier;
+    private final boolean useGraphScheduleBuilder;
 
     public WorkQueueProcessor() {
         this(
                 () -> ThreadLocalRandom.current().nextInt(DRIVE_TIME_MIN_SECONDS, DRIVE_TIME_MAX_SECONDS + 1),
-                () -> ThreadLocalRandom.current().nextInt(-QC_DRIVE_TIME_OFFSET_RANGE, QC_DRIVE_TIME_OFFSET_RANGE + 1)
+                () -> ThreadLocalRandom.current().nextInt(-QC_DRIVE_TIME_OFFSET_RANGE, QC_DRIVE_TIME_OFFSET_RANGE + 1),
+                true
         );
     }
 
     public WorkQueueProcessor(IntSupplier driveTimeSupplier) {
-        this(driveTimeSupplier, () -> 0);
+        this(driveTimeSupplier, () -> 0, false);
     }
 
     public WorkQueueProcessor(IntSupplier driveTimeSupplier, IntSupplier qcDriveTimeOffsetSupplier) {
+        this(driveTimeSupplier, qcDriveTimeOffsetSupplier, false);
+    }
+
+    public WorkQueueProcessor(IntSupplier driveTimeSupplier, IntSupplier qcDriveTimeOffsetSupplier, boolean useGraphScheduleBuilder) {
         this.driveTimeSupplier = driveTimeSupplier;
         this.qcDriveTimeOffsetSupplier = qcDriveTimeOffsetSupplier;
+        this.useGraphScheduleBuilder = useGraphScheduleBuilder;
     }
 
     @Override
@@ -141,7 +148,10 @@ public class WorkQueueProcessor implements EventProcessor {
                 .orElse(null);
 
         int qcMuda = qcMudaByQueue.getOrDefault(workQueueId, 0);
-        List<Takt> takts = createTaktsFromWorkInstructionsPrimvs(instructions, estimatedMoveTime, qcMuda);
+        List<Takt> takts = useGraphScheduleBuilder
+                ? new GraphScheduleBuilder(driveTimeSupplier, qcDriveTimeOffsetSupplier)
+                        .createTakts(instructions, estimatedMoveTime, qcMuda)
+                : createTaktsFromWorkInstructionsPrimvs(instructions, estimatedMoveTime, qcMuda);
 
         return List.of(new ScheduleCreated(workQueueId, takts.stream().sorted( (a, b) -> a.sequence() - b.sequence()).toList(), estimatedMoveTime));
     }

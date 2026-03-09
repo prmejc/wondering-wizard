@@ -224,14 +224,14 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 continue;
             }
 
-            // Check condition 1: all first actions' dependencies must be completed
-            if (!areFirstActionDependenciesMet(takt, state)) {
+            // Check condition: current time >= takt's estimated start time
+            Instant estimatedStartTime = takt.estimatedStartTime();
+            if (estimatedStartTime != null && this.currentTime.isBefore(estimatedStartTime)) {
                 continue;
             }
 
-            // Check condition 2: current time >= takt's estimated start time
-            Instant estimatedStartTime = takt.estimatedStartTime();
-            if (estimatedStartTime != null && this.currentTime.isBefore(estimatedStartTime)) {
+            // Check that all first actions' dependencies from earlier takts are completed
+            if (!areFirstActionDependenciesMet(takt, state)) {
                 continue;
             }
 
@@ -255,29 +255,54 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     }
 
     /**
-     * Checks if all "first actions" in a takt have their dependencies met.
+     * Checks if all "first actions" in a takt have their dependencies from earlier takts met.
      * First actions are those with no dependencies within the same takt.
+     * Dependencies pointing to actions in later takts do not gate takt activation —
+     * those actions will wait within the active takt until their deps are met.
      * For an empty takt, returns true.
      */
     private boolean areFirstActionDependenciesMet(Takt takt, ScheduleState state) {
         if (takt.actions().isEmpty()) {
             return true;
         }
+        // Build sets for intra-takt and later-takt action IDs
         Set<UUID> taktActionIds = new HashSet<>();
         for (Action action : takt.actions()) {
             taktActionIds.add(action.id());
         }
+        Set<UUID> laterTaktActionIds = collectLaterTaktActionIds(takt, state);
+
         for (Action action : takt.actions()) {
             boolean hasIntraTaktDep = action.dependsOn().stream().anyMatch(taktActionIds::contains);
             if (hasIntraTaktDep) {
                 continue;
             }
-            // This is a first action — check all its dependencies are completed
-            if (!state.completedActionIds.containsAll(action.dependsOn())) {
-                return false;
+            // This is a first action — check dependencies from earlier takts are completed
+            for (UUID depId : action.dependsOn()) {
+                if (laterTaktActionIds.contains(depId)) {
+                    continue; // dependency is in a later takt, don't gate on it
+                }
+                if (!state.completedActionIds.contains(depId)) {
+                    return false;
+                }
             }
         }
         return true;
+    }
+
+    /**
+     * Collects action IDs from all takts that come after the given takt in sequence order.
+     */
+    private Set<UUID> collectLaterTaktActionIds(Takt currentTakt, ScheduleState state) {
+        Set<UUID> laterIds = new HashSet<>();
+        for (Takt t : state.takts) {
+            if (t.sequence() > currentTakt.sequence()) {
+                for (Action a : t.actions()) {
+                    laterIds.add(a.id());
+                }
+            }
+        }
+        return laterIds;
     }
 
     /**
@@ -336,17 +361,20 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 currentTime
         ));
 
-        // Activate any actions in the same takt whose dependencies are now satisfied
-        String taktName = completedActionInfo.taktName();
-        TaktState taktState = state.taktStates.get(taktName);
-        if (taktState == TaktState.ACTIVE) {
-            sideEffects.addAll(activateEligibleActions(workQueueId, state, taktName));
+        // Activate any actions in all active takts whose dependencies are now satisfied.
+        // With cross-container dependencies, an action in a later takt may unblock
+        // actions in earlier (already active) takts.
+        for (Takt t : state.takts) {
+            if (state.taktStates.get(t.name()) == TaktState.ACTIVE) {
+                sideEffects.addAll(activateEligibleActions(workQueueId, state, t.name()));
+            }
         }
 
-        // Check if the takt is now fully completed
-        if (state.isTaktFullyCompleted(taktName)) {
-            state.taktStates.put(taktName, TaktState.COMPLETED);
-            sideEffects.add(new TaktCompleted(workQueueId, taktName, currentTime));
+        // Check if the completed action's takt is now fully completed
+        String completedTaktName = completedActionInfo.taktName();
+        if (state.isTaktFullyCompleted(completedTaktName)) {
+            state.taktStates.put(completedTaktName, TaktState.COMPLETED);
+            sideEffects.add(new TaktCompleted(workQueueId, completedTaktName, currentTime));
         }
 
         // Try to activate takts whose first action dependencies are now met

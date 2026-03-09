@@ -201,6 +201,8 @@ com.wonderingwizard
 ├── processors/
 │   ├── TimeAlarmProcessor.java      # Time alarm handling
 │   ├── WorkQueueProcessor.java      # Work queue schedule and takt generation
+│   ├── GraphScheduleBuilder.java    # Graph-based takt generation (feature-flagged alternative)
+│   ├── ResourceAction.java          # Legacy action template for imperative takt generation
 │   └── ScheduleRunnerProcessor.java # Schedule execution and action state management
 ├── server/
 │   ├── DemoServer.java              # HTTP demo server with REST API (JDK HttpServer)
