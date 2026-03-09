@@ -216,3 +216,4 @@ TAKT101:  Container 1 Takt D  (4 actions)
 | `TaktCompleted` | Takt transitions from Active to Completed |
 | `ActionActivated` | Action transitions from Waiting to Active |
 | `ActionCompleted` | Action transitions from Active to Completed |
+| `TtCountReport` | ScheduleCreated event processed by TtCountReportProcessor |

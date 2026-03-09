@@ -574,3 +574,84 @@ Schedule updates:
 | 3 | Complete all actions in a dependency chain | Each completion triggers the next activation |
 | 4 | Click a past event in the timeline to revert | Completed action returns to active, dependent actions return to pending |
 
+---
+
+### F-9: TT Count Report
+
+**Status:** Implemented
+
+**Description:**
+Implement a TtCountReportProcessor that generates a report of required TT (Terminal Truck) count per 5-minute interval whenever a takt schedule is created. The processor listens for `ScheduleCreated` events (propagated via `EventPropagatingEngine`) and analyzes the takts to count TT actions grouped by time intervals.
+
+1. Listen for `ScheduleCreated` events (which implement both `SideEffect` and `Event`)
+2. For each takt, count the number of actions with `DeviceType.TT`
+3. Group TT action counts into 5-minute intervals based on the takt's `plannedStartTime`
+4. Produce a `TtCountReport` side effect with the aggregated interval data
+
+**Requested Behavior:**
+
+```java
+engine.register(new WorkQueueProcessor());
+engine.register(new ScheduleRunnerProcessor());
+engine.register(new TtCountReportProcessor());
+
+// Register work instructions and activate queue
+engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "RTG-01", PENDING, estimatedMoveTime, 120));
+engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "RTG-02", PENDING, estimatedMoveTime.plusSeconds(5), 120));
+
+var effects = engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0));
+// effects contains ScheduleCreated + TtCountReport (among others)
+```
+
+**Expected Results:**
+- When a `ScheduleCreated` event is propagated, `TtCountReportProcessor` produces a `TtCountReport` side effect
+- The report contains one entry per 5-minute interval that has TT actions
+- Each entry shows the interval start time (truncated to 5-minute boundary) and the total TT action count in that interval
+- Takts without TT actions or without a `plannedStartTime` are skipped
+
+**Side Effect:**
+
+| Side Effect | Description |
+|-------------|-------------|
+| `TtCountReport(workQueueId, intervals)` | Required TT count per 5-minute interval |
+
+**TtCountReport.IntervalEntry:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `intervalStart` | `Instant` | Start of the 5-minute interval (truncated to 300-second boundary) |
+| `ttCount` | `int` | Number of TT actions scheduled in this interval |
+
+**Processing Flow:**
+
+```
+WorkQueueMessage(ACTIVE)
+    → WorkQueueProcessor produces ScheduleCreated
+    → EventPropagatingEngine re-injects as Event
+    → ScheduleRunnerProcessor initializes schedule
+    → TtCountReportProcessor produces TtCountReport
+```
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Register processors including `TtCountReportProcessor` | Processor registered |
+| 2 | Register work instructions for a queue | Empty side effects |
+| 3 | Activate the work queue | `ScheduleCreated` + `TtCountReport` in side effects |
+| 4 | Check `TtCountReport.intervals()` | Non-empty list of interval entries with TT counts |
+| 5 | Verify interval boundaries | All `intervalStart` values are multiples of 300 seconds |
+
+**Design Notes:**
+- The processor is **stateless** — it only reacts to `ScheduleCreated` events and produces a report
+- `captureState()` and `restoreState()` are no-ops (returns empty map)
+- Interval truncation: `epochSecond / 300 * 300` ensures consistent 5-minute boundaries
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/sideeffects/TtCountReport.java`
+- `src/main/java/com/wonderingwizard/processors/TtCountReportProcessor.java`
+- `src/main/java/com/wonderingwizard/engine/SideEffect.java` (modified — added TtCountReport to permits)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — registered processor)
+- `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — added serialization)
+- `src/main/java/com/wonderingwizard/Main.java` (modified — registered processor)
+

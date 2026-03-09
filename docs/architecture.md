@@ -32,6 +32,9 @@ Marker interface for all side effects produced by event processing. Side effects
 - `ScheduleAborted` - Indicates a schedule was aborted for a work queue
 - `ActionActivated` - Indicates an action has been activated and is ready for execution
 - `ActionCompleted` - Indicates an action has been completed
+- `TaktActivated` - Indicates a takt has transitioned to Active
+- `TaktCompleted` - Indicates a takt has transitioned to Completed
+- `TtCountReport` - Required TT count per 5-minute interval (produced when a schedule is created)
 
 ### EventProcessor (Interface)
 ```
@@ -197,11 +200,15 @@ com.wonderingwizard
 │   ├── ScheduleAborted.java         # Schedule abortion notification
 │   ├── WorkInstruction.java         # Work instruction data (with estimatedMoveTime)
 │   ├── ActionActivated.java         # Action activation notification
-│   └── ActionCompleted.java         # Action completion notification
+│   ├── ActionCompleted.java         # Action completion notification
+│   ├── TaktActivated.java          # Takt activation notification
+│   ├── TaktCompleted.java          # Takt completion notification
+│   └── TtCountReport.java          # TT count per 5-min interval report
 ├── processors/
 │   ├── TimeAlarmProcessor.java      # Time alarm handling
 │   ├── WorkQueueProcessor.java      # Work queue schedule and takt generation
-│   └── ScheduleRunnerProcessor.java # Schedule execution and action state management
+│   ├── ScheduleRunnerProcessor.java # Schedule execution and action state management
+│   └── TtCountReportProcessor.java  # TT count report generation from schedules
 ├── server/
 │   ├── DemoServer.java              # HTTP demo server with REST API (JDK HttpServer)
 │   ├── JsonSerializer.java          # Hand-rolled JSON serializer (no external libs)
