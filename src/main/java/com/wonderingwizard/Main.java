@@ -12,6 +12,7 @@ import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
+import com.wonderingwizard.processors.TtCountReportProcessor;
 import com.wonderingwizard.processors.WorkQueueProcessor;
 import com.wonderingwizard.server.DemoServer;
 
@@ -116,6 +117,7 @@ public class Main {
         Engine engine = new EventPropagatingEngine(new EventProcessingEngine());
         engine.register(new WorkQueueProcessor());
         engine.register(new ScheduleRunnerProcessor());
+        engine.register(new TtCountReportProcessor());
 
         // Get current time as reference point
         Instant now = Instant.now();

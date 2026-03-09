@@ -16,6 +16,7 @@ import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
+import com.wonderingwizard.processors.TtCountReportProcessor;
 import com.wonderingwizard.processors.WorkQueueProcessor;
 import com.wonderingwizard.sideeffects.ActionActivated;
 import com.wonderingwizard.sideeffects.ActionCompleted;
@@ -103,6 +104,7 @@ public class DemoServer {
         engine.register(new TimeAlarmProcessor());
         engine.register(new WorkQueueProcessor());
         engine.register(new ScheduleRunnerProcessor());
+        engine.register(new TtCountReportProcessor());
     }
 
     DemoServer(Engine engine) {

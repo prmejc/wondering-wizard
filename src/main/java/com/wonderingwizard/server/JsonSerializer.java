@@ -18,6 +18,7 @@ import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
 import com.wonderingwizard.sideeffects.TaktActivated;
 import com.wonderingwizard.sideeffects.TaktCompleted;
+import com.wonderingwizard.sideeffects.TtCountReport;
 import com.wonderingwizard.sideeffects.WorkInstruction;
 
 import java.time.Instant;
@@ -87,6 +88,8 @@ public final class JsonSerializer {
             writeTaktView(sb, taktView);
         } else if (obj instanceof DemoServer.ActionView actionView) {
             writeActionView(sb, actionView);
+        } else if (obj instanceof TtCountReport.IntervalEntry entry) {
+            writeTtCountIntervalEntry(sb, entry);
         } else {
             writeString(sb, obj.toString());
         }
@@ -254,6 +257,14 @@ public final class JsonSerializer {
                 writeField(sb, "completedAt", e.completedAt(), false);
                 sb.append('}');
             }
+            case TtCountReport e -> {
+                sb.append('{');
+                writeField(sb, "type", "TtCountReport", true);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeFieldKey(sb, "intervals", false);
+                writeValue(sb, e.intervals());
+                sb.append('}');
+            }
         }
     }
 
@@ -344,6 +355,13 @@ public final class JsonSerializer {
         writeValue(sb, view.dependsOn() != null ? view.dependsOn().stream().toList() : List.of());
         writeField(sb, "containerIndex", view.containerIndex(), false);
         writeField(sb, "durationSeconds", view.durationSeconds(), false);
+        sb.append('}');
+    }
+
+    private static void writeTtCountIntervalEntry(StringBuilder sb, TtCountReport.IntervalEntry entry) {
+        sb.append('{');
+        writeField(sb, "intervalStart", entry.intervalStart(), true);
+        writeField(sb, "ttCount", entry.ttCount(), false);
         sb.append('}');
     }
 
