@@ -6,6 +6,7 @@ import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.SetTimeAlarm;
 import com.wonderingwizard.events.TimeEvent;
@@ -182,6 +183,14 @@ public final class JsonSerializer {
                 writeField(sb, "type", "OverrideConditionEvent", true);
                 writeField(sb, "workQueueId", e.workQueueId(), false);
                 writeField(sb, "taktName", e.taktName(), false);
+                writeField(sb, "conditionId", e.conditionId(), false);
+                sb.append('}');
+            }
+            case OverrideActionConditionEvent e -> {
+                sb.append('{');
+                writeField(sb, "type", "OverrideActionConditionEvent", true);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "actionId", e.actionId(), false);
                 writeField(sb, "conditionId", e.conditionId(), false);
                 sb.append('}');
             }

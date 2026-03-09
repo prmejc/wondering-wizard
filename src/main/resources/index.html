@@ -463,6 +463,8 @@ class ScheduleView extends HTMLElement {
 
         const conditions = JSON.parse(decodeURIComponent(btn.dataset.conditions));
         const actionDesc = btn.dataset.actionDesc;
+        const actionId = btn.dataset.actionId;
+        const wqId = btn.dataset.wq;
 
         const popup = document.createElement('div');
         popup.className = 'conditions-popup';
@@ -477,21 +479,42 @@ class ScheduleView extends HTMLElement {
 
         for (const cond of conditions) {
           const icon = cond.satisfied ? '<span style="color:var(--completed)">&#10003;</span>'
+                     : cond.overridden ? '<span style="color:var(--tt-color)">&#8623;</span>'
                      : '<span style="color:#ef4444">&#10007;</span>';
           const label = cond.type === 'TAKT_ACTIVATION' ? 'Takt Activation' : 'Action Dependencies';
 
           popupHtml += '<div style="padding:6px 0;border-top:1px solid var(--border)">';
-          popupHtml += '<div style="display:flex;align-items:center;gap:8px">';
+          popupHtml += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
           popupHtml += '<span>' + icon + ' <strong>' + label + '</strong></span>';
+          if (!cond.satisfied && !cond.overridden) {
+            popupHtml += '<button class="action-override-btn" data-wq="' + wqId + '" data-action-id="' + actionId + '" data-cond-id="' + cond.id + '" style="background:#f59e0b;color:white;border:none;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-weight:600">Override</button>';
+          }
           popupHtml += '</div>';
           if (cond.explanation) {
             popupHtml += '<div style="font-size:11px;color:var(--text-muted);margin-top:3px;word-break:break-word">' + cond.explanation + '</div>';
+          }
+          if (cond.overridden) {
+            popupHtml += '<div style="font-size:10px;color:var(--tt-color);margin-top:2px">Overridden</div>';
           }
           popupHtml += '</div>';
         }
 
         popup.innerHTML = popupHtml;
         self.appendChild(popup);
+
+        // Bind action override buttons
+        popup.querySelectorAll('.action-override-btn').forEach(obtn => {
+          obtn.addEventListener('click', async (ev) => {
+            ev.stopPropagation();
+            await apiCall('/api/override-action-condition', {
+              workQueueId: obtn.dataset.wq,
+              actionId: obtn.dataset.actionId,
+              conditionId: obtn.dataset.condId
+            });
+            popup.remove();
+            refreshState();
+          });
+        });
       });
     });
 

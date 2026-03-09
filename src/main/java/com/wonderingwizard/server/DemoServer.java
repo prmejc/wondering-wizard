@@ -17,6 +17,7 @@ import com.wonderingwizard.engine.EventProcessingEngine;
 import com.wonderingwizard.engine.EventPropagatingEngine;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
@@ -137,6 +138,7 @@ public class DemoServer {
         httpServer.createContext("/api/tick", this::handleTick);
         httpServer.createContext("/api/action-completed", this::handleActionCompleted);
         httpServer.createContext("/api/override-condition", this::handleOverrideCondition);
+        httpServer.createContext("/api/override-action-condition", this::handleOverrideActionCondition);
         httpServer.createContext("/api/step-back-to", this::handleStepBackTo);
         httpServer.start();
         logger.info("Demo server started on port " + port);
@@ -277,6 +279,12 @@ public class DemoServer {
                     builder.addOverride(override.taktName(), override.conditionId());
                 }
             }
+            if (step.event() instanceof OverrideActionConditionEvent override) {
+                ScheduleViewBuilder builder = builders.get(override.workQueueId());
+                if (builder != null) {
+                    builder.addActionOverride(override.actionId(), override.conditionId());
+                }
+            }
         }
 
         return builders.values().stream()
@@ -296,6 +304,8 @@ public class DemoServer {
         List<Takt> originalTakts = List.of();
         /** Overridden conditions per takt name. */
         final Map<String, Set<String>> overriddenConditions = new HashMap<>();
+        /** Overridden action conditions per action UUID. */
+        final Map<UUID, Set<String>> overriddenActionConditions = new HashMap<>();
 
         ScheduleViewBuilder(String workQueueId, boolean active, Instant estimatedMoveTime) {
             this.workQueueId = workQueueId;
@@ -321,6 +331,10 @@ public class DemoServer {
 
         void addOverride(String taktName, String conditionId) {
             overriddenConditions.computeIfAbsent(taktName, k -> new HashSet<>()).add(conditionId);
+        }
+
+        void addActionOverride(UUID actionId, String conditionId) {
+            overriddenActionConditions.computeIfAbsent(actionId, k -> new HashSet<>()).add(conditionId);
         }
 
         ScheduleView build(Instant currentTime) {
@@ -354,7 +368,8 @@ public class DemoServer {
                     List<ConditionView> actionConditions = List.of();
                     if (actionState == ActionState.PENDING && originalTakt != null) {
                         actionConditions = buildActionConditionViews(
-                                action, originalTakt, taktState, completedActionIds, actionDescriptions);
+                                action, originalTakt, taktState, completedActionIds, actionDescriptions,
+                                overriddenActionConditions.getOrDefault(action.id(), Set.of()));
                     }
                     updatedActions.add(new ActionView(
                             action.id(), action.deviceType(), action.description(),
@@ -379,7 +394,8 @@ public class DemoServer {
 
         private List<ConditionView> buildActionConditionViews(
                 ActionView action, Takt takt, TaktState taktState,
-                Set<UUID> completedActionIds, Map<UUID, String> actionDescriptions) {
+                Set<UUID> completedActionIds, Map<UUID, String> actionDescriptions,
+                Set<String> overrides) {
             List<ConditionView> views = new ArrayList<>();
 
             // Determine if this is a first action (no intra-takt dependencies)
@@ -402,9 +418,10 @@ public class DemoServer {
             if (isFirstAction) {
                 // First action: condition is takt activation
                 TaktActivationCondition cond = new TaktActivationCondition(takt.name());
-                boolean satisfied = cond.evaluate(context);
+                boolean overridden = overrides.contains(cond.id());
+                boolean satisfied = overridden || cond.evaluate(context);
                 views.add(new ConditionView(cond.id(), cond.type(),
-                        satisfied, false,
+                        satisfied, overridden,
                         satisfied ? null : cond.explanation(context)));
             } else {
                 // Non-first action: condition is dependency completion
@@ -414,9 +431,10 @@ public class DemoServer {
                             depId.toString().substring(0, 8)));
                 }
                 ActionDependencyCondition cond = new ActionDependencyCondition(intraTaktDeps, depDescs);
-                boolean satisfied = cond.evaluate(context);
+                boolean overridden = overrides.contains(cond.id());
+                boolean satisfied = overridden || cond.evaluate(context);
                 views.add(new ConditionView(cond.id(), cond.type(),
-                        satisfied, false,
+                        satisfied, overridden,
                         satisfied ? null : cond.explanation(context)));
             }
 
@@ -629,6 +647,31 @@ public class DemoServer {
             OverrideConditionEvent event = new OverrideConditionEvent(workQueueId, taktName, conditionId);
             List<SideEffect> effects = processStep(
                     "Override condition: " + conditionId + " on " + taktName, event);
+
+            sendJsonResponse(exchange, 200, JsonSerializer.serialize(
+                    Map.of("step", steps.get(steps.size() - 1), "sideEffects", effects)));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handleOverrideActionCondition(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            String workQueueId = requireField(body, "workQueueId");
+            String actionIdStr = requireField(body, "actionId");
+            String conditionId = requireField(body, "conditionId");
+            UUID actionId = UUID.fromString(actionIdStr);
+
+            OverrideActionConditionEvent event = new OverrideActionConditionEvent(
+                    workQueueId, actionId, conditionId);
+            List<SideEffect> effects = processStep(
+                    "Override action condition: " + conditionId + " on " + actionIdStr.substring(0, 8), event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
                     Map.of("step", steps.get(steps.size() - 1), "sideEffects", effects)));

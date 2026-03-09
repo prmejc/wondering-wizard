@@ -10,6 +10,7 @@ import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
@@ -65,6 +66,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         Map<String, List<TaktCondition>> taktConditions;
         /** Overridden condition IDs per takt, keyed by takt name. */
         Map<String, Set<String>> overriddenConditions;
+        /** Overridden action condition IDs per action, keyed by action UUID. */
+        Map<UUID, Set<String>> overriddenActionConditions;
 
         ScheduleState(Instant estimatedMoveTime, List<Takt> takts) {
             this.estimatedMoveTime = estimatedMoveTime;
@@ -76,6 +79,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             this.actualStartTimes = new HashMap<>();
             this.taktConditions = new LinkedHashMap<>();
             this.overriddenConditions = new HashMap<>();
+            this.overriddenActionConditions = new HashMap<>();
 
             // Build action lookup and initialize takt states
             for (Takt takt : takts) {
@@ -102,8 +106,10 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 if (activeActionIds.contains(actionId) || completedActionIds.contains(actionId)) {
                     continue;
                 }
+                Set<String> actionOverrides = overriddenActionConditions.getOrDefault(actionId, Set.of());
+                boolean depsOverridden = actionOverrides.contains("action-dependencies");
                 Set<UUID> dependencies = info.action().dependsOn();
-                if (dependencies == null || dependencies.isEmpty() || completedActionIds.containsAll(dependencies)) {
+                if (depsOverridden || dependencies == null || dependencies.isEmpty() || completedActionIds.containsAll(dependencies)) {
                     result.add(actionId);
                 }
             }
@@ -145,6 +151,10 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             for (Map.Entry<String, Set<String>> entry : this.overriddenConditions.entrySet()) {
                 copy.overriddenConditions.put(entry.getKey(), new HashSet<>(entry.getValue()));
             }
+            copy.overriddenActionConditions = new HashMap<>();
+            for (Map.Entry<UUID, Set<String>> entry : this.overriddenActionConditions.entrySet()) {
+                copy.overriddenActionConditions.put(entry.getKey(), new HashSet<>(entry.getValue()));
+            }
             return copy;
         }
     }
@@ -174,6 +184,9 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
         if (event instanceof OverrideConditionEvent override) {
             return handleOverrideCondition(override);
+        }
+        if (event instanceof OverrideActionConditionEvent override) {
+            return handleOverrideActionCondition(override);
         }
         return List.of();
     }
@@ -320,6 +333,30 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
         // Try to activate takts now that a condition was overridden
         return tryActivateTakts(event.workQueueId(), state);
+    }
+
+    private List<SideEffect> handleOverrideActionCondition(OverrideActionConditionEvent event) {
+        ScheduleState state = scheduleStates.get(event.workQueueId());
+        if (state == null) {
+            return List.of();
+        }
+
+        ActionInfo actionInfo = state.actionLookup.get(event.actionId());
+        if (actionInfo == null) {
+            return List.of();
+        }
+
+        state.overriddenActionConditions
+                .computeIfAbsent(event.actionId(), k -> new HashSet<>())
+                .add(event.conditionId());
+
+        // Try to activate actions in the action's takt if it's active
+        String taktName = actionInfo.taktName();
+        if (state.taktStates.get(taktName) == TaktState.ACTIVE) {
+            return activateEligibleActions(event.workQueueId(), state, taktName);
+        }
+
+        return List.of();
     }
 
     /**
