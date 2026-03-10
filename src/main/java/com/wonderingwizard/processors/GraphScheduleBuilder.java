@@ -105,6 +105,40 @@ public class GraphScheduleBuilder {
                 driveToRtgPull + qcDriveTimeOffsetSupplier.getAsInt(),
                 DRIVE_TIME_MIN_SECONDS, DRIVE_TIME_MAX_SECONDS);
 
+        return getDischargeTwinTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+    }
+
+    private static List<ActionTemplate> getDischargeTwinTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+        return List.of(
+                // ── QC chain (forward from anchor) ──
+                ActionTemplate.of("QC Lift", QC, qcLiftDuration)
+                        .withFirstInTakt().withAnchor(),
+                ActionTemplate.of("QC Place", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+
+                // ── TT chain (backward from sync point) ──
+                ActionTemplate.of("drive to QC pull", TT, driveToQcPull),
+                ActionTemplate.of("drive to QC standby", TT, 30),
+                ActionTemplate.of("drive under QC", TT, 30),
+                ActionTemplate.of("handover from QC", TT, qcLiftDuration)
+                        .withFirstInTakt().withSyncWith(QC, "QC Place"),
+
+                ActionTemplate.of("drive to RTG pull", TT, driveToRtgPull),
+                ActionTemplate.of("drive to RTG standby", TT, 240),
+                ActionTemplate.of("drive to RTG under", TT, driveToUnderRtg)
+                        .withFirstInTakt().withOnlyOnePerTakt(),
+                ActionTemplate.of("handover to RTG", TT, rtgPlaceDuration)
+                        .withOnlyOnePerTakt(),
+                ActionTemplate.of("drive to buffer", TT, 30),
+
+                // ── RTG chain (backward from sync point) ──
+                ActionTemplate.of("drive", RTG, 1),
+                ActionTemplate.of("lift from tt", RTG,
+                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, "handover to RTG"),
+                ActionTemplate.of("place on yard", RTG, driveToUnderRtg + rtgPlaceDuration)
+        );
+    }
+
+    private static List<ActionTemplate> getLoadSingleTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of("QC Lift", QC, qcLiftDuration)
@@ -133,6 +167,7 @@ public class GraphScheduleBuilder {
                         .withFirstInTakt().withSyncWith(TT, "handover from RTG")
         );
     }
+
 
     // ── Public entry point ─────────────────────────────────────────────
 
@@ -247,6 +282,27 @@ public class GraphScheduleBuilder {
                         deviceTaktCursor.put(backSeg.deviceType(), backwardTakt);
                         remaining.remove(backSeg);
                     }
+
+                    // Place forward segments for this device (after the sync point).
+                    // Each forward segment must start after the previous segment's chain has finished.
+                    int prevFwdTaktIdx = targetTakt;
+                    int prevSegDuration = segmentDuration(seg);
+                    for (int i = syncIdx + 1; i < deviceSegs.size(); i++) {
+                        var fwdSeg = deviceSegs.get(i);
+                        if (!remaining.contains(fwdSeg)) continue;
+                        int forwardTaktIdx = prevFwdTaktIdx + 1;
+                        ensureTaktExists(takts, forwardTaktIdx,
+                                computeTaktStartTime(forwardTaktIdx, takts), DEFAULT_TAKT_DURATION);
+                        forwardTaktIdx = pushForwardUntilFits(forwardTaktIdx, prevSegDuration,
+                                takts.get(prevFwdTaktIdx), takts);
+                        forwardTaktIdx = resolveOverflow(fwdSeg, forwardTaktIdx, takts);
+                        placeSegment(fwdSeg, forwardTaktIdx, containerIndex, takts, placementIndex, placedActions, blueprintOrder);
+                        deviceTaktCursor.put(fwdSeg.deviceType(), forwardTaktIdx);
+                        remaining.remove(fwdSeg);
+                        prevFwdTaktIdx = forwardTaktIdx;
+                        prevSegDuration = segmentDuration(fwdSeg);
+                    }
+
                     break; // restart iteration
                 }
             }
@@ -418,6 +474,25 @@ public class GraphScheduleBuilder {
      * The chain (placed at PULSEx) must finish before the original target takt ends:
      * {@code PULSEx.start + chainDuration <= target.start + target.duration}.
      */
+    /**
+     * Pushes a segment forward to a later takt until the previous segment's chain
+     * has finished before this takt starts.
+     * {@code prevTakt.start + prevChainDuration <= candidate.start}
+     */
+    private int pushForwardUntilFits(int candidateTakt, int prevChainDuration,
+                                      Takt prevTakt, Map<Integer, Takt> takts) {
+        Instant prevChainEnd = prevTakt.plannedStartTime().plusSeconds(prevChainDuration);
+        for (int shifts = 0; shifts < 50; shifts++) {
+            Takt candidate = takts.get(candidateTakt);
+            if (!candidate.plannedStartTime().isBefore(prevChainEnd)) {
+                return candidateTakt;
+            }
+            candidateTakt++;
+            ensureTaktExists(takts, candidateTakt, computeTaktStartTime(candidateTakt, takts), DEFAULT_TAKT_DURATION);
+        }
+        return candidateTakt;
+    }
+
     private int pushBackUntilFits(int targetTakt, int chainDuration, Map<Integer, Takt> takts) {
         Takt target = takts.get(targetTakt);
         Instant deadline = target.plannedStartTime().plusSeconds(target.durationSeconds());
