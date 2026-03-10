@@ -239,23 +239,13 @@ class DelayProcessorTest {
             processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
             processor.process(new TaktActivated("queue-2", "TAKT100", BASE_TIME));
 
-            // At 90s: queue-1 (120s takt) no delay, queue-2 (60s takt) 30s delay
+            // At 90s: queue-1 (120s takt) still within planned duration — no emission,
+            // queue-2 (60s takt) 30s past planned end — emits delay
             List<SideEffect> effects = processor.process(new TimeEvent(BASE_TIME.plusSeconds(90)));
-            assertEquals(2, effects.size());
+            assertEquals(1, effects.size());
 
-            // Find the delay for each queue
-            DelayUpdated q1Delay = effects.stream()
-                    .filter(e -> e instanceof DelayUpdated du && du.workQueueId().equals("queue-1"))
-                    .map(e -> (DelayUpdated) e)
-                    .findFirst().orElse(null);
-            DelayUpdated q2Delay = effects.stream()
-                    .filter(e -> e instanceof DelayUpdated du && du.workQueueId().equals("queue-2"))
-                    .map(e -> (DelayUpdated) e)
-                    .findFirst().orElse(null);
-
-            assertNotNull(q1Delay);
-            assertNotNull(q2Delay);
-            assertEquals(0, q1Delay.totalDelaySeconds());
+            DelayUpdated q2Delay = (DelayUpdated) effects.get(0);
+            assertEquals("queue-2", q2Delay.workQueueId());
             assertEquals(30, q2Delay.totalDelaySeconds());
         }
     }

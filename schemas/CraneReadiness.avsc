@@ -1,0 +1,38 @@
+{
+  "type": "record",
+  "name": "CraneReadiness",
+  "namespace": "com.apmt.terminaloperations.cranereadiness.internal.dedicated.v1",
+  "doc": "QC resume (QC Ready) intent emitted by PMB to inform T-ONE that QC can continue.",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": {
+        "type": "string",
+        "logicalType": "uuid"
+      }
+    },
+    {
+      "name": "qcShortName",
+      "type": "string"
+    },
+    {
+      "name": "workQueueId",
+      "type": "long"
+    },
+    {
+      "name": "updatedBy",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null,
+      "doc": "User or system id initiating resume"
+    },
+    {
+      "name": "qcResumeTimestamp",
+      "type": "long",
+      "logicalType": "timestamp-millis",
+      "doc": "Timestamp when the QC resume was initiated"
+    }
+  ]
+}

@@ -1,0 +1,289 @@
+{
+  "type": "record",
+  "name": "FlowStatus",
+  "namespace": "apmt.terminaloperations.flowstatus.topic.confidential.dedicated.v2",
+  "fields": [
+    {
+      "name": "workQueueName", // Name of WQ being executed by the PoW for which the data is being sent
+      "type": "string"
+    },
+    {
+      "name": "workQueueId",
+      "type": [
+        "null",
+        "long"
+      ],
+      "default": null
+    },
+    {
+      "name": "workQueueState",
+      "type": {
+        "type": "enum",
+        "name": "WorkQueueState",
+        "namespace": "apmt.terminaloperations.workqueuestate.confidential.dedicated.v2",
+        "default": "UNKNOWN",
+        "symbols": [ "UNKNOWN", "PLANNED", "IN_PROGRESS", "DONE", "CANCELLED", "BLOCKED_BY_MANUAL_WORK" ]
+      }
+    },
+    {
+      "name": "qcShortName", //PoW for WQ
+      "type": "string"
+    },
+    {
+      "name": "qcNotReadyReasonsForNextTriggerState",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "enum",
+          "name": "CraneNotReadyReasons",
+          "namespace": "apmt.terminaloperations.nexttriggerstate.confidential.dedicated.v2",
+          "symbols": [
+            "OPEN_PRECEDING_WORKINSTRUCTIONS",
+            "DELAY_CODE",
+            "WAITING_FOR_SPREADER",
+            "BLOCKED_BY_MANUAL_WORK"
+          ]
+        }
+      },
+      "default": []
+    },
+    {
+      "name": "isNextTriggerDependentOnQc",
+      "type": "boolean"
+    },
+    {
+      "name": "moveKind",
+      "type": {
+        "type": "enum",
+        "name": "MoveKind",
+        "namespace": "apmt.terminaloperations.movekind.confidential.dedicated.v2",
+        "default": "UNKNOWN",
+        "symbols": [ "UNKNOWN", "LOAD", "DISCHARGE", "DUAL_CYCLING" ]
+      }
+    },
+    {
+      "name": "lastTriggerType",
+      "default": null, // Can be null if the first Pulse/Takt of WQ has not yet triggered (WQ status = PLANNED)
+      "type": [
+        "null",
+        {
+          "type": "enum",
+          "name": "TriggerType",
+          "namespace": "apmt.terminaloperations.triggertype.confidential.dedicated.v2",
+          "default": "UNKNOWN",
+          "symbols": [ "UNKNOWN", "PULSE", "TAKT" ]
+        }
+      ]
+    },
+    {
+      "name": "lastTriggerSequenceNumber", // last/actual trigger sequence number of current active cycle
+      "type": [
+        "null",
+        "int"
+      ],
+      "default": null // Can be null if the first Pulse/Takt of WQ has not yet triggered  (WQ status = PLANNED)
+    },
+    {
+      "name": "expectedTriggerSequenceNumber", // sequence number of Trigger originally planned to have been triggered at this timestamp
+      "type": [
+        "null",
+        "int"
+      ],
+      "default": null // Can be null if the planned time of first Pulse/Takt was not reached
+    },
+    {
+      "name": "lastTriggerActualTimestamp",
+      "type": [
+        "null",
+        "long"
+      ],
+      "default": null // Can be null if the first Pulse/Takt of WQ has not yet triggered (WQ status = PLANNED)
+    },
+    {
+      "name": "lastTriggerActualTimestamp_Long",
+      "type": [
+        "null",
+        {
+          "type": "long",
+          "connect.version": 1,
+          "connect.name": "org.apache.kafka.connect.data.Timestamp",
+          "logicalType": "timestamp-millis"
+        }
+      ],
+      "default": null // Can be null if the first Pulse/Takt of WQ has not yet triggered (WQ status = PLANNED)
+    },
+    {
+      "name": "lastTriggerPlannedTimestamp",
+      "type": [
+        "null",
+        "long"
+      ],
+      "default": null // Can be null if the first Pulse/Takt of WQ has not yet triggered (WQ status = PLANNED)
+    },
+    {
+      "name": "lastTriggerPlannedTimestamp_Long",
+      "type": [
+        "null",
+        {
+          "type": "long",
+          "connect.version": 1,
+          "connect.name": "org.apache.kafka.connect.data.Timestamp",
+          "logicalType": "timestamp-millis"
+        }
+      ],
+      "default": null // Can be null if the first Pulse/Takt of WQ has not yet triggered (WQ status = PLANNED)
+    },
+    {
+      "name": "nextTriggerExpectedTimestamp",
+      "type": [
+        "null",
+        "long"
+      ],
+      "default": null // Can be null if the last Pulse/Takt of WQ was triggered (WQ status = DONE)
+    },
+    {
+      "name": "nextTriggerExpectedTimestamp_Long",
+      "type": [
+        "null",
+        {
+          "type": "long",
+          "connect.version": 1,
+          "connect.name": "org.apache.kafka.connect.data.Timestamp",
+          "logicalType": "timestamp-millis"
+        }
+      ],
+      "default": null // Can be null if the last Pulse/Takt of WQ was triggered (WQ status = DONE)
+    },
+    {
+      "name": "nextTriggerPlannedTimestamp",
+      "type": [
+        "null",
+        "long"
+      ],
+      "default": null // Can be null if the last Pulse/Takt of WQ was triggered (WQ status = DONE)
+    },
+    {
+      "name": "nextTriggerPlannedTimestamp_Long",
+      "type": [
+        "null",
+        {
+          "type": "long",
+          "connect.version": 1,
+          "connect.name": "org.apache.kafka.connect.data.Timestamp",
+          "logicalType": "timestamp-millis"
+        }
+      ],
+      "default": null // Can be null if the last Pulse/Takt of WQ was triggered (WQ status = DONE)
+    },
+    {
+      "name": "currentTaktManagementTime", // takt management time of current takt cycle
+      "type": [
+        "null",
+        "long"
+      ],
+      "default": null // Can be null if the first Pulse/Takt of WQ has not yet triggered or QC is complete (WQ status = PLANNED, DONE)
+    },
+    {
+      "name": "expectedLiftCount", // count of the number of container lifts originally planned to be completed at the end of the active Takt/Pulse:
+      // single load:  QC container  placed on vessel += 1
+      // single disch: QC container  placed on TT     += 1
+      // twin load:    QC containers placed on vessel += 1
+      // twin disch:   QC containers placed on TT     += 1
+      "type": "int"
+    },
+    {
+      "name": "actualLiftCount", // count of the number of container lifts actually completed at this timestamp
+      // single load:  QC container  placed on vessel += 1
+      // single disch: QC container  placed on TT     += 1
+      // twin load:    QC containers placed on vessel += 1
+      // twin disch:   QC containers placed on TT     += 1
+      "type": "int"
+    },
+    {
+      "name": "nextTaktDependencies", // for the next TAKT to start, these action dependencies need to be resolved.
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "TaktDependency",
+          "fields": [
+            {
+              "name": "cheShortName",
+              "type": "string"
+            },
+            {
+              "name": "cheKind",
+              "type": "string"
+            },
+            {
+              "name": "actionId", // T-One actionId
+              "type": "string"
+            },
+            {
+              "name": "actionName", //T-One instruction name
+              "type": "string"
+            },
+            {
+              "name": "actionState", // IN_PROGRESS (not ready yet), PLANNED (not ready yet), DONE (Ready)
+              "type": {
+                "type": "enum",
+                "name": "ActionState",
+                "namespace": "apmt.terminaloperations.actionstate.confidential.dedicated.v2",
+                "default": "UNKNOWN",
+                "symbols": [ "UNKNOWN", "PLANNED", "IN_PROGRESS", "DONE" ]
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "activeChesForWQ", // all CHE's (QC/RTG/EH/TT) that are currently active for the WQ
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "activeCheForWQ",
+          "fields": [
+            {
+              "name": "cheShortName", // name of CHE
+              "type": [
+                "null",
+                "string"
+              ],
+              "default": null
+            },
+            {
+              "name": "cheKind", // type of CHE like QC, RTG, EH or TT
+              "type": "string"
+            },
+            {
+              "name": "actionId", // T-One actionId of the action with state IN_PROGRESS, or if none IN_PROGRESS, (2) action PLANNED
+              "type": "string"
+            },
+            {
+              "name": "actionName", // T-One instruction name
+              "type": "string"
+            },
+            {
+              "name": "actionState", // PLANNED (instruction not sent yet), IN_PROGRESS (instruction sent to operator), DONE
+              "type": "apmt.terminaloperations.actionstate.confidential.dedicated.v2.ActionState"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "terminalCode",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null
+    },
+    {
+      "name": "SOURCE_TS_MS",
+      "type": "long"
+    }
+  ]
+}

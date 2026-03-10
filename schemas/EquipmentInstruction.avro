@@ -1,0 +1,150 @@
+{
+  "type": "record",
+  "name": "EquipmentInstruction",
+  "namespace": "apmt.terminaloperations.equipmentinstruction.topic.confidential.dedicated.v1",
+  "fields": [
+   {
+     "name": "equipmentInstructionType",
+     "type": "string"
+   },
+   {
+     "name": "equipmentInstructionId",
+     "type": "string"
+   },
+   {
+     "name": "equipmentInstructionText",
+     "type": [
+       "null",
+       "string"
+     ],
+     "default": null
+   },
+   {
+     "name": "destinationNodeId",
+     "type": "string"
+   },
+   {
+     "name": "destinationNodeName",
+     "type": "string"
+   },
+   {
+     "name": "targetTime",
+     "type": "long"
+   },
+   {
+     "name": "recipientCHEShortName",
+     "type": "string"
+   },
+   {
+     "name": "destinationCHEShortName",
+     "type": "string"
+   },
+   {
+     "name": "recipientCHEKind",
+     "type": "string"
+   },
+   {
+     "name": "confirmationRequired",
+     "type": "boolean"
+   },
+   {
+     "name": "moveKind",
+     "type": "string"
+   },
+   {
+     "name": "containers",
+     "type": {
+       "type": "array",
+       "items": {
+         "type": "record",
+         "name": "Container",
+         "fields": [
+           {
+             "name": "sequence",
+             "type": "long"
+           },
+           {
+             "name": "containerId",
+             "type": "string"
+           },
+           {
+             "name": "instructionDetails",
+             "type": {
+               "type": "array",
+               "items": "string"
+             }
+           },
+           {
+             "name": "frozenWorkQueueId",
+             "type": [
+               "null",
+               "string"
+             ],
+             "default": null
+           },
+           {
+             "name": "workInstructionId",
+             "type": "long"
+           },
+           {
+             "name": "isoType",
+             "type": "string"
+           },
+           {
+             "name": "containerTruckPosition",
+             "type": "string"
+           },
+           {
+             "name": "freightKind",
+             "type": "string"
+           },
+           {
+             "name": "fromPosition",
+             "type": "string"
+           },
+           {
+             "name": "toPosition",
+             "type": "string"
+           }
+         ]
+       }
+     }
+   },
+   {
+     "name": "fetchCHEShortName",
+     "type": [
+       "null",
+       "string"
+     ],
+     "default": null
+   },
+   {
+     "name": "carryCHEShortName",
+     "type": [
+       "null",
+       "string"
+     ],
+     "default": null
+   },
+   {
+     "name": "putCHEShortName",
+     "type": [
+       "null",
+       "string"
+     ],
+     "default": null
+   },
+   {
+     "name": "eventSource",
+     "type": "string"
+   },
+   {
+     "name": "SOURCE_TS_MS",
+     "type": "long"
+   },
+   {
+     "name": "terminalCode",
+     "type": "string"
+   }
+  ]
+}

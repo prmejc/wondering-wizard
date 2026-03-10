@@ -567,44 +567,61 @@ class GraphScheduleBuilderTest {
     class TtOverflowTests {
 
         @Test
-        @DisplayName("TT segments are pushed back enough takts based on their own duration")
-        void ttSegmentsPushedBackByDuration() {
+        @DisplayName("TT segment chain stays together in one takt")
+        void ttSegmentChainStaysTogether() {
             var instructions = List.of(wi("wi-1", 120, 60));
             var takts = builder.createTakts(instructions, EMT, 0);
 
-            // The sync segment (handover to QC + drive to buffer) is at anchor takt 0.
-            // The middle TT segment (drive to RTG under..drive under QC) has 140s duration.
-            // ceil(140/120) = 2, so it should be placed 2 takts before the anchor.
-            int anchorTakt = 0;
-
-            int middleSegTakt = takts.stream()
-                    .filter(t -> t.actions().stream().anyMatch(a -> a.description().equals("drive to RTG under")))
-                    .mapToInt(Takt::sequence)
-                    .findFirst().orElseThrow();
-
-            assertTrue(anchorTakt - middleSegTakt >= 2,
-                    "Middle TT segment (140s) should be at least 2 takts before anchor. "
-                            + "Middle at " + middleSegTakt + ", anchor at " + anchorTakt);
-        }
-
-        @Test
-        @DisplayName("Single container TT segment is allowed even if it exceeds takt duration")
-        void singleContainerTtSegmentAllowed() {
-            var instructions = List.of(wi("wi-1", 120, 60));
-            var takts = builder.createTakts(instructions, EMT, 0);
-
-            // The middle TT segment has duration > 120s but should still be placed in one takt
+            // The middle TT segment (drive to RTG under..drive under QC) should stay together
             var middleTakt = takts.stream()
                     .filter(t -> t.actions().stream().anyMatch(a -> a.description().equals("drive to RTG under")))
                     .findFirst()
                     .orElseThrow();
 
             var ttActionsInMiddle = middleTakt.actions().stream()
-                    .filter(a -> a.deviceType() == TT)
+                    .filter(a -> a.deviceType() == TT && a.containerIndex() == 0)
+                    .map(Action::description)
                     .toList();
+            assertTrue(ttActionsInMiddle.containsAll(List.of(
+                    "drive to RTG under", "handover from RTG",
+                    "drive to QC pull", "drive to QC standby", "drive under QC")),
+                    "Middle TT segment should be kept together in one takt. Got: " + ttActionsInMiddle);
+        }
 
-            assertTrue(ttActionsInMiddle.size() >= 3,
-                    "Middle TT segment should be kept together in one takt");
+        @Test
+        @DisplayName("Chain finishes before its original target takt ends")
+        void chainFinishesBeforeTargetTaktEnds() {
+            var instructions = List.of(
+                    wi("wi-1", 120, 60),
+                    wi("wi-2", 120, 60)
+            );
+            var takts = builder.createTakts(instructions, EMT, 0);
+
+            // For each takt, the chain placed there (start + chainDuration) must not
+            // extend beyond the next takt with same-device same-container actions
+            for (int ci = 0; ci < 2; ci++) {
+                final int containerIdx = ci;
+                // Collect takts that have TT actions for this container, sorted by sequence
+                var ttTakts = takts.stream()
+                        .filter(t -> t.actions().stream()
+                                .anyMatch(a -> a.deviceType() == TT && a.containerIndex() == containerIdx))
+                        .sorted(Comparator.comparingInt(Takt::sequence))
+                        .toList();
+
+                for (int i = 0; i < ttTakts.size() - 1; i++) {
+                    Takt current = ttTakts.get(i);
+                    Takt next = ttTakts.get(i + 1);
+                    int ttDuration = current.actions().stream()
+                            .filter(a -> a.deviceType() == TT && a.containerIndex() == containerIdx)
+                            .mapToInt(Action::durationSeconds).sum();
+                    Instant chainEnd = current.plannedStartTime().plusSeconds(ttDuration);
+                    assertTrue(!chainEnd.isAfter(next.plannedStartTime()),
+                            "C" + containerIdx + " TT chain in " + current.name()
+                                    + " (duration " + ttDuration + "s, ends " + chainEnd
+                                    + ") overlaps with " + next.name()
+                                    + " (starts " + next.plannedStartTime() + ")");
+                }
+            }
         }
     }
 

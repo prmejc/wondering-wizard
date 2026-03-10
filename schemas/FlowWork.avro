@@ -1,0 +1,76 @@
+{
+    "type": "record",
+    "name": "FlowWork",
+    "namespace": "apmt.terminaloperations.flowwork.executionstate.topic.internal.any.v1",
+    "fields": [
+        {
+            "name": "workQueueId",
+            "type": "string"
+        },
+        {
+            "name": "workQueueName",
+            "type": "string"
+        },
+        {
+            "name": "workInstructionId",
+            "type": "string"
+        },
+        {
+            "name": "workInstructionState",
+            "type": {
+                "type": "enum",
+                "name": "WorkExecutionState",
+                "symbols": [
+                    "Preliminary",
+                    "Frozen",
+                    "Completed",
+                    "Aborted"
+                ]
+            }
+        },
+        {
+            "name": "workQueueState",
+            "type": "WorkExecutionState"
+        },
+        {
+            "name": "plannedStartTime",
+            "type": [
+                "null",
+                "long"
+            ],
+            "default": null
+        },
+        {
+            "name": "frozenEstimatedMoveTime",
+            "type": [
+                "null",
+                "long"
+            ],
+            "default": null
+        },
+        {
+            "name": "workInstructionQueueSequence",
+            "type": "int"
+        },
+        {
+            "name": "containerId",
+            "type": "string"
+        },
+        {
+            "name": "vesselVisitId",
+            "type": "string"
+        },
+        {
+            "name": "terminalCode",
+            "type": "string"
+        },
+        {
+            "name": "eventSource",
+            "type": "string"
+        },
+        {
+            "name": "eventTime",
+            "type": "long"
+        }
+    ]
+}

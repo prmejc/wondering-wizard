@@ -1,0 +1,139 @@
+{
+    "type": "record",
+    "name": "FlowException",
+    "namespace": "apmt.terminaloperations.flowexception.topic.confidential.dedicated.v1",
+    "fields": [
+        {
+            "name": "exceptionEvent",
+            "type": "string"
+        },
+        {
+            "name": "exceptionId",
+            "type": "string"
+        },
+        {
+            "name": "exceptionType",
+            "type": "string"
+        },
+        {
+            "name": "exceptionCreator",
+            "type": "string"
+        },
+        {
+            "name": "exceptionSeverity",
+            "type": "string"
+        },
+        {
+            "name": "exceptionProtected",
+            "type": "boolean"
+        },
+        {
+            "name": "businessEntityType",
+            "type": "string"
+        },
+		{
+            "name": "businessEntityId",
+            "type": "string"
+        },
+		{
+			"name": "workQueueId",
+			"type": [
+				"null",
+				"long"
+			],
+			"default": null
+		},
+		{
+			"name": "vesselVisitId",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},		
+        {
+            "name": "reasons",
+            "type": {
+                "type": "array",
+                "items": {
+                    "type": "record",
+                    "name": "FlowExceptionReason",
+                    "fields": [
+						{
+							"name": "reasonType",
+							"type": "string"
+						},
+						{
+							"name": "reasonDetails",
+							"type": [
+								"null",
+								"string"
+							],
+							"default": null
+						},
+						{
+							"name": "field",
+							"type": [
+								"null",
+								"string"
+							],
+							"default": null
+						},
+						{
+							"name": "fieldValue",
+							"type": [
+								"null",
+								"string"
+							],
+							"default": null
+						},
+						{
+							"name": "description",
+							"type": [
+								"null",
+								"string"
+							],
+							"default": null
+						},
+						{
+							"name": "involvedWorkInstructions",
+							"type": {
+								"type": "array",
+								"items": {
+									"type": "record",
+									"name": "FlowExceptionWorkInstruction",
+									"fields": [
+										{
+											"name": "workInstructionId",
+											"type": "long"
+										},
+										{
+											"name": "workQueueId",
+											"type": "long"
+										},					
+										{
+											"name": "vesselVisitId",
+											"type": "string"
+										}
+									]
+								}
+							}
+						}
+                    ]
+                }
+            }
+        },
+        {
+            "name": "terminalCode",
+            "type": "string"
+        },
+        {
+            "name": "eventSource",
+            "type": "string"
+        },
+        {
+            "name": "SOURCE_TS_MS",
+            "type": "long"
+        }
+    ]
+}

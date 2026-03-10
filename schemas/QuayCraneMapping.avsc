@@ -1,0 +1,120 @@
+{
+  "name": "QuayCraneMapping",
+  "type": "record",
+  "namespace": "apmt.quaysideoperations.quaycraneflowposition.topic.internal.any.v2",
+  "doc": "Schema for quayside quaycrane mapping.",
+  "fields": [
+    {
+      "name": "quayCraneShortName",
+      "type": "string"
+    },
+    {
+      "name": "vesselName",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null
+    },
+    {
+      "name": "craneMode",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null
+    },
+    {
+      "name": "radioChannel",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null
+    },
+    {
+      "name": "lane",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null
+    },
+    {
+      "name": "standby",
+      "type": [
+        "null",
+        {
+          "type": "record",
+          "name": "StandbyPosition",
+          "fields": [
+            {
+              "name": "positionName",
+              "type": "string"
+            },
+            {
+              "name": "nodeId",
+              "type": "long"
+            },
+            {
+              "name": "nodeName",
+              "type": "string"
+            },
+            {
+              "name": "trafficDirection",
+              "type": "string"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "loadPinning",
+      "type": [
+        "null",
+        {
+          "type": "record",
+          "name": "PinningPosition",
+          "fields": [
+            {
+              "name": "positionName",
+              "type": "string"
+            },
+            {
+              "name": "nodeId",
+              "type": "long"
+            },
+            {
+              "name": "nodeName",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "dischargePinning",
+      "type": [
+        "null",
+        "PinningPosition"
+      ],
+      "default": null
+    },
+    {
+      "name": "eventSource",
+      "type": "string"
+    },
+    {
+      "name": "terminalCode",
+      "type": "string"
+    },
+    {
+      "name": "timeStamp",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    }
+  ]
+}

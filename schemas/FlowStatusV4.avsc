@@ -1,0 +1,342 @@
+{
+  "type": "record",
+  "name": "FlowStatus",
+  "namespace": "apmt.terminaloperations.flowstatus.topic.confidential.dedicated.v4",
+  "fields": [
+    {
+      "name": "workQueueName",
+      "type": "string"
+    },
+    {
+      "name": "workQueueId",
+      "type": [
+        "null",
+        "long"
+      ],
+      "default": null
+    },
+    {
+      "name": "workQueueState",
+      "type": {
+        "type": "enum",
+        "name": "WorkQueueState",
+        "namespace": "apmt.terminaloperations.workqueuestate.confidential.dedicated.v4",
+        "symbols": [
+          "UNKNOWN",
+          "PLANNED",
+          "IN_PROGRESS",
+          "DONE",
+          "CANCELLED",
+          "BLOCKED"
+        ],
+        "default": "UNKNOWN"
+      }
+    },
+    {
+      "name": "workQueueBlockedReasons",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "enum",
+          "name": "WorkQueueBlockedReasons",
+          "namespace": "apmt.terminaloperations.workqueueblockedreasons.confidential.dedicated.v1",
+          "symbols": [ "UNKNOWN", "MANUAL_WORK", "WI_BYPASS", "WRITEBACK_FAILURE", "INVALID_QCSTANDBY" ],
+          "default": "UNKNOWN"
+        }
+      },
+      "default": []
+    },
+    {
+      "name": "CheWritebackFailureDetails",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "CheWritebackFailureDetail",
+          "fields": [
+            {
+              "name": "cheShortName",
+              "type": "string"
+            },
+            {
+              "name": "cheKind",
+              "type": "string"
+            },
+            {
+              "name": "workInstructionId",
+              "type": "long"
+            }
+          ]
+        }
+      },
+      "default": []
+    },
+    {
+      "name": "qcShortName",
+      "type": "string"
+    },
+    {
+      "name": "qcNotReadyReasonsForNextTriggerState",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "enum",
+          "name": "CraneNotReadyReasons",
+          "namespace": "apmt.terminaloperations.nexttriggerstate.confidential.dedicated.v4",
+          "symbols": [
+            "AWAITING_QC_READY_TRIGGER_OPS2OPS",
+            "PENDING_WORK_PREVIOUS_WQ",
+            "ACTIVE_DELAY_CODE",
+            "WIP_LIMIT_REACHED",
+            "MANUAL_WORK"
+          ]
+        }
+      },
+      "default": []
+    },
+    {
+      "name": "isNextTriggerDependentOnQc",
+      "type": "boolean"
+    },
+    {
+      "name": "moveKind",
+      "type": {
+        "type": "enum",
+        "name": "MoveKind",
+        "namespace": "apmt.terminaloperations.movekind.confidential.dedicated.v2",
+        "symbols": [
+          "UNKNOWN",
+          "LOAD",
+          "DISCHARGE",
+          "DUAL_CYCLING"
+        ],
+        "default": "UNKNOWN"
+      }
+    },
+    {
+      "name": "lastTriggerType",
+      "type": [
+        "null",
+        {
+          "type": "enum",
+          "name": "TriggerType",
+          "namespace": "apmt.terminaloperations.triggertype.confidential.dedicated.v2",
+          "symbols": [
+            "UNKNOWN",
+            "PULSE",
+            "TAKT"
+          ],
+          "default": "UNKNOWN"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "lastTriggerSequenceNumber",
+      "type": [
+        "null",
+        "int"
+      ],
+      "default": null
+    },
+    {
+      "name": "expectedTriggerSequenceNumber",
+      "type": [
+        "null",
+        "int"
+      ],
+      "default": null
+    },
+    {
+      "name": "lastTriggerActualTimestamp",
+      "type": [
+        "null",
+        "long"
+      ],
+      "default": null
+    },
+    {
+      "name": "lastTriggerActualTimestamp_Long",
+      "type": [
+        "null",
+        {
+          "type": "long",
+          "logicalType": "timestamp-millis",
+          "connect.version": 1,
+          "connect.name": "org.apache.kafka.connect.data.Timestamp"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "lastTriggerPlannedTimestamp",
+      "type": [
+        "null",
+        "long"
+      ],
+      "default": null
+    },
+    {
+      "name": "lastTriggerPlannedTimestamp_Long",
+      "type": [
+        "null",
+        {
+          "type": "long",
+          "logicalType": "timestamp-millis",
+          "connect.version": 1,
+          "connect.name": "org.apache.kafka.connect.data.Timestamp"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "nextTriggerExpectedTimestamp",
+      "type": [
+        "null",
+        "long"
+      ],
+      "default": null
+    },
+    {
+      "name": "nextTriggerExpectedTimestamp_Long",
+      "type": [
+        "null",
+        {
+          "type": "long",
+          "logicalType": "timestamp-millis",
+          "connect.version": 1,
+          "connect.name": "org.apache.kafka.connect.data.Timestamp"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "nextTriggerPlannedTimestamp",
+      "type": [
+        "null",
+        "long"
+      ],
+      "default": null
+    },
+    {
+      "name": "nextTriggerPlannedTimestamp_Long",
+      "type": [
+        "null",
+        {
+          "type": "long",
+          "logicalType": "timestamp-millis",
+          "connect.version": 1,
+          "connect.name": "org.apache.kafka.connect.data.Timestamp"
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "currentTaktManagementTime",
+      "type": [
+        "null",
+        "long"
+      ],
+      "default": null
+    },
+    {
+      "name": "expectedLiftCount",
+      "type": "int"
+    },
+    {
+      "name": "actualLiftCount",
+      "type": "int"
+    },
+    {
+      "name": "nextTaktDependencies",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "TaktDependency",
+          "fields": [
+            {
+              "name": "cheShortName",
+              "type": "string"
+            },
+            {
+              "name": "cheKind",
+              "type": "string"
+            },
+            {
+              "name": "actionId",
+              "type": "string"
+            },
+            {
+              "name": "actionName",
+              "type": "string"
+            },
+            {
+              "name": "actionState",
+              "type": {
+                "type": "enum",
+                "name": "ActionState",
+                "namespace": "apmt.terminaloperations.actionstate.confidential.dedicated.v2",
+                "symbols": [
+                  "UNKNOWN",
+                  "PLANNED",
+                  "IN_PROGRESS",
+                  "DONE"
+                ],
+                "default": "UNKNOWN"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "activeChesForWQ",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "activeCheForWQ",
+          "fields": [
+            {
+              "name": "cheShortName",
+              "type": [
+                "null",
+                "string"
+              ],
+              "default": null
+            },
+            {
+              "name": "cheKind",
+              "type": "string"
+            },
+            {
+              "name": "actionId",
+              "type": "string"
+            },
+            {
+              "name": "actionName",
+              "type": "string"
+            },
+            {
+              "name": "actionState",
+              "type": "apmt.terminaloperations.actionstate.confidential.dedicated.v2.ActionState"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "terminalCode",
+      "type": [
+        "null",
+        "string"
+      ],
+      "default": null
+    },
+    {
+      "name": "SOURCE_TS_MS",
+      "type": "long"
+    }
+  ]
+}

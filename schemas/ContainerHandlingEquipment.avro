@@ -1,0 +1,95 @@
+{
+	"type": "record",
+	"name": "ContainerHandlingEquipment",
+	"namespace": "APMT.terminalOperations.containerHandlingEquipment.topic.confidential.dedicated.v1",
+	"fields": [
+		{
+			"name": "eventType",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "cheId",
+			"type": [
+				"null",
+				"long"
+			],
+			"default": null
+		},
+		{
+			"name": "opType",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "cdhTerminalCode",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "messageSequenceNumber",
+			"type": [
+				"null",
+				"long"
+			],
+			"default": null
+		},
+		{
+			"name": "cheShortName",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "cheStatus",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "cheKind",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "chePoolId",
+			"type": [
+				"null",
+				"long"
+			],
+			"default": null
+		},
+		{
+			"name": "cheJobStepState",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "SOURCE_TS_MS",
+			"type": [
+				"null",
+				"long"
+			],
+			"default": null
+		}
+	]
+}

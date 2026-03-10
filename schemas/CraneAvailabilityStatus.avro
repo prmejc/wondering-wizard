@@ -1,0 +1,27 @@
+{
+  "type": "record",
+  "name": "CraneAvailabilityStatus",
+  "namespace": "apmt.terminaloperations.craneavailabilitystatus.topic.confidential.dedicated.v1",
+  "fields": [
+    {
+      "name": "terminalCode",
+      "type": "string"
+    },
+    {
+      "name": "cheId",
+      "type": "string"
+    },
+    {
+      "name": "cheType",
+      "type": "string"
+    },
+    {
+      "name": "cheStatus",
+      "type": "string"
+    },
+    {
+      "name": "SOURCE_TS_MS",
+      "type": "long"
+    }
+  ]
+}

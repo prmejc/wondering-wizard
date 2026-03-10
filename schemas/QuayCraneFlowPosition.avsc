@@ -1,0 +1,78 @@
+{
+  "type": "record",
+  "name": "QuayCraneFlowPosition",
+  "namespace": "apmt.quaysideoperations.quaycraneflowposition.topic.internal.any.v1",
+  "fields": [
+    {
+      "name": "type",
+      "type": {
+        "type": "enum",
+        "name": "FlowPositionType",
+        "symbols": [
+          "STANDBY",
+          "PINNING",
+          "UNPINNING",
+          "UNKNOWN"
+        ],
+        "default": "UNKNOWN"
+      },
+      "default": "UNKNOWN"
+    },
+    {
+      "name": "terminalCode",
+      "type": "string"
+    },
+    {
+      "name": "positionName",
+      "type": "string"
+    },
+    {
+      "name": "nodeId",
+      "type": "long"
+    },
+    {
+      "name": "nodeName",
+      "type": "string"
+    },
+    {
+      "name": "quayCranes",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "QuayCrane",
+          "fields": [
+            {
+              "name": "quayCraneShortName",
+              "type": "string"
+            },
+            {
+              "name": "trafficDirection",
+              "type": "string"
+            },
+            {
+              "name": "lane",
+              "type": [
+                "null",
+                "string"
+              ],
+              "default": null
+            }
+          ]
+        }
+      },
+      "default": []
+    },
+    {
+      "name": "timeStamp",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      }
+    },
+    {
+      "name": "eventSource",
+      "type": "string"
+    }
+  ]
+}

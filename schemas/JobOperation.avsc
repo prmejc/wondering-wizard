@@ -1,0 +1,64 @@
+{
+    "type": "record",
+    "name": "JobOperation",
+    "namespace": "apmt.terminaloperations.joboperation.topic.confidential.dedicated.v1",
+    "fields": [
+        {
+            "name": "containerId",
+            "type": {
+                "type": "string",
+                "avro.java.string": "String"
+            }
+        },
+        {
+            "name": "workInstructionId",
+            "type": {
+                "type": "string",
+                "avro.java.string": "String"
+            }
+        },
+        {
+            "name": "action",
+            "type": {
+                "type": "string",
+                "avro.java.string": "String"
+            }
+        },
+        {
+            "name": "cheId",
+            "type": {
+                "type": "string",
+                "avro.java.string": "String"
+            }
+        },
+        {
+            "name": "cheType",
+            "type": {
+                "type": "string",
+                "avro.java.string": "String"
+            }
+        },
+        {
+            "name": "yardSlot",
+            "type": [
+                "null",
+                {
+                    "type": "string",
+                    "avro.java.string": "String"
+                }
+            ],
+            "default": null
+        },
+        {
+            "name": "containerTruckPosition",
+            "type": [
+                "null",
+                {
+                    "type": "string",
+                    "avro.java.string": "String"
+                }
+            ],
+            "default": null
+        }
+    ]
+}

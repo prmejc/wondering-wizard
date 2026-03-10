@@ -1,0 +1,71 @@
+{
+  "type": "record",
+  "name": "ResponseContainerMoveState",
+  "namespace": "apmt.terminaloperations.containermovestate.topic.confidential.status.v1",
+  "fields": [
+    {
+      "name": "containerMoveAction",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "containerMoveStateRequestStatus",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "responseContainerMoveState",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "carryCHEName",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "workInstructionId",
+      "type": "long"
+    },
+    {
+      "name": "moveKind",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "containerId",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "terminalCode",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "errorMessage",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "SOURCE_TS_MS",
+      "type": "long"
+    }
+  ]
+}

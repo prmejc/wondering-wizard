@@ -1,0 +1,90 @@
+{
+  "type": "record",
+  "name": "FlowTerminalTruckForecast",
+  "namespace": "apmt.terminaloperations.flowterminaltruckforecast.topic.internal.any.v1",
+  "fields": [
+    {
+      "name": "IntervalItems",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "IntervalItem",
+          "fields": [
+            {
+              "name": "startTime",
+              "type": {
+                "type": "long",
+                "logicalType": "timestamp-millis"
+              }
+            },
+            {
+              "name": "endTime",
+              "type": {
+                "type": "long",
+                "logicalType": "timestamp-millis"
+              }
+            },
+            {
+              "name": "ScheduledTrucks",
+              "type": {
+                "type": "array",
+                "items": {
+                  "type": "record",
+                  "name": "ScheduledTruck",
+                  "fields": [
+                    {
+                      "name": "quayCraneShortName",
+                      "type": {
+                        "type": "string",
+                        "avro.java.string": "String"
+                      }
+                    },
+                    {
+                      "name": "totalFrozen",
+                      "type": ["long", "null"],
+                      "default": null
+                    },
+                    {
+                      "name": "totalUnfrozen",
+                      "type": ["long", "null"],
+                      "default": null
+                    },
+                    {
+                      "name": "totalTrucksScheduled",
+                      "type": ["long", "null"],
+                      "default": null
+                    }
+                  ]
+                }
+              },
+              "default": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "currentTrucksAvailableInFESPool",
+      "type": "long"
+    },
+    {
+      "name": "terminalCode",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "eventSource",
+      "type": {
+        "type": "string",
+        "avro.java.string": "String"
+      }
+    },
+    {
+      "name": "SOURCE_TS_MS",
+      "type": "long"
+    }
+  ]
+}

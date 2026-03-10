@@ -51,6 +51,18 @@
             <version>${confluent.version}</version>
         </dependency>
 
+        <!-- SLF4J 2.x (JPMS-compatible, uses ServiceLoader instead of StaticLoggerBinder) -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>2.0.9</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-jdk14</artifactId>
+            <version>2.0.9</version>
+        </dependency>
+
         <!-- Testing -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
@@ -74,12 +86,32 @@
                 <version>3.11.0</version>
                 <configuration>
                     <release>21</release>
+                    <compilerArgs>
+                        <arg>--add-reads</arg>
+                        <arg>com.wonderingwizard=ALL-UNNAMED</arg>
+                    </compilerArgs>
                 </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.2</version>
+                <configuration>
+                    <argLine>--add-reads com.wonderingwizard=ALL-UNNAMED</argLine>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.1.0</version>
+                <configuration>
+                    <mainClass>com.wonderingwizard.Main</mainClass>
+                    <arguments/>
+                    <jvmArgs>
+                        <jvmArg>--add-reads</jvmArg>
+                        <jvmArg>com.wonderingwizard=ALL-UNNAMED</jvmArg>
+                    </jvmArgs>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -90,6 +122,9 @@
                         <manifest>
                             <mainClass>com.wonderingwizard.Main</mainClass>
                         </manifest>
+                        <manifestEntries>
+                            <Add-Reads>com.wonderingwizard=ALL-UNNAMED</Add-Reads>
+                        </manifestEntries>
                     </archive>
                 </configuration>
             </plugin>

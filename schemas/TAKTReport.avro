@@ -1,0 +1,223 @@
+{
+    "type": "record",
+    "name": "TAKTReport",
+    "namespace": "apmt.terminaloperations.flowanalytics.taktreport.topic.confidential.dedicated.v1",
+    "fields": [
+        {
+            "name": "vesselVisitId",
+            "type": "string"
+        },
+        {
+            "name": "workQueueId",
+            "type": "string"
+        },
+        {
+            "name": "taktId",
+            "type": "string"
+        },
+        {
+            "name": "previousTaktId",
+            "type": "string"
+        },
+        {
+            "name": "plannedStartTime",
+            "type": "long"
+        },
+        {
+            "name": "actualStartTime",
+            "type": "long"
+        },
+        {
+            "name": "plannedEndTime",
+            "type": "long"
+        },
+        {
+            "name": "expectedEndTime",
+            "type": "long"
+        },
+        {
+            "name": "actualEndTime",
+            "type": "long"
+        },
+        {
+            "name": "plannedDuration",
+            "type": "long"
+        },
+        {
+            "name": "actualDuration",
+            "type": "long"
+        },
+        {
+            "name": "deviation",
+            "type": "long"
+        },
+        {
+            "name": "delay",
+            "type": "long"
+        },
+        {
+            "name": "equipment",
+            "type": {
+                "type": "array",
+                "items": {
+                    "type": "record",
+                    "name": "TAKTReportEquipment",
+                    "fields": [
+					  {
+						"name": "cheShortName",
+						"type": "string"
+					  },
+					  {
+						"name": "cheKind",
+						"type": "string"
+					  },
+					  {
+						"name": "plannedStartTime",
+						"type": "long"
+					  },
+					  {
+						"name": "actualStartTime",
+						"type": "long"
+					  },
+					  {
+						"name": "plannedEndTime",
+						"type": "long"
+					  },
+					  {
+						"name": "actualEndTime",
+						"type": "long"
+					  },
+					  {
+						"name": "plannedDuration",
+						"type": "long"
+					  },
+					  {
+						"name": "actualDuration",
+						"type": "long"
+					  },
+					  {
+						"name": "plannedFloat",
+						"type": [
+							"null",
+							"long"
+						],
+						"default": null
+					  },
+					  {
+						"name": "actualFloat",
+						"type": [
+							"null",
+							"long"
+						],
+						"default": null
+					  },
+					  {
+						"name": "deviation",
+						"type": "long"
+					  },
+					  {
+						"name": "delay",
+						"type": [
+							"null",
+							"long"
+						],
+						"default": null
+					  },
+					  {
+						"name": "equipmentactivities",
+						"type": {
+							"type": "array",
+							"items": {
+								"type": "record",
+								"name": "TAKTReportEquipmentActivity",
+								"fields": [
+								  {
+									"name": "activity",
+									"type": "string"
+								  },
+								  {
+									"name": "workInstructionId1",
+									"type": "string"
+								  },
+								  {
+									"name": "workInstructionId2",
+									"type": [
+										"null",
+										"string"
+									],
+									"default": null
+								  },
+								  {
+									"name": "dependentTaktId",
+									"type": [
+										"null",
+										"string"
+									],
+									"default": null
+								  },								  
+								  {
+									"name": "plannedStartTime",
+									"type": "long"
+								  },
+								  {
+									"name": "actualStartTime",
+									"type": "long"
+								  },
+								  {
+									"name": "plannedEndTime",
+									"type": "long"
+								  },
+								  {
+									"name": "actualEndTime",
+									"type": "long"
+								  },
+								  {
+									"name": "cancellationTime",
+									"type": "long"
+								  },
+								  {
+									"name": "endState",
+									"type": [
+										"null",
+										"string"
+									],
+									"default": null
+                                  },
+								  {
+									"name": "plannedDuration",
+									"type": "long"
+								  },
+								  {
+									"name": "actualDuration",
+									"type": "long"
+								  },
+								  {
+									"name": "deviation",
+									"type": "long"
+								  }
+								]
+							}
+						}
+					  }
+                    ]
+                }
+            }
+        },
+        {
+            "name": "terminalCode",
+            "type": "string"
+        },
+		{
+			"name": "messageSequenceNumber",
+			"type": "long"
+        },
+        {
+            "name": "eventSource",
+            "type": "string"
+        },
+        {
+            "name": "SOURCE_TS_MS",
+            "type": "long"
+        }
+    ]
+}

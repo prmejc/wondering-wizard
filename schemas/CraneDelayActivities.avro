@@ -1,0 +1,154 @@
+{
+	"type": "record",
+	"name": "craneDelayActivities",
+	"namespace": "APMT.terminalOperations.craneDelayActivities.topic.confidential.dedicated.v1",
+	"fields": [
+		{
+			"name": "eventType",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "opType",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "cdhTerminalCode",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "messageSequenceNumber",
+			"type": [
+				"null",
+				"long"
+			],
+			"default": null
+		},
+		{
+			"name": "vesselVisitCraneDelayId",
+			"type": [
+				"null",
+				"long"
+			],
+			"default": null
+		},
+		{
+			"name": "vesselVisitId",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "delayStartTime",
+			"type": [
+				"null",
+				{
+					"type": "long",
+					"connect.version": 1,
+					"connect.name": "org.apache.kafka.connect.data.Timestamp",
+					"logicalType": "timestamp-millis"
+				}
+			],
+			"default": null
+		},
+		{
+			"name": "delayStopTime",
+			"type": [
+				"null",
+				{
+					"type": "long",
+					"connect.version": 1,
+					"connect.name": "org.apache.kafka.connect.data.Timestamp",
+					"logicalType": "timestamp-millis"
+				}
+			],
+			"default": null
+		},
+		{
+			"name": "cheShortName",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "delayRemarks",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "delayType",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "delayTypeDescription",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "positionEnum",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "delayStatus",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "delayTypeAction",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "delayTypeCategory",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "SOURCE_TS_MS",
+			"type": [
+				"null",
+				"long"
+			],
+			"default": null
+		}
+	],
+	"connect.name": "APMT.terminalOperations.craneDelayActivities.topic.confidential.dedicated.v1.craneDelayActivities"
+}
