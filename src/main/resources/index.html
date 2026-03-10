@@ -222,6 +222,15 @@ class EventPanel extends HTMLElement {
         <input id="wi-che" value="RTG-01">
       </div>
       <div class="form-group">
+        <label>Put CHE</label>
+        <input id="wi-put-che" value="">
+      </div>
+      <div class="form-group" style="display:flex;gap:12px;align-items:center;margin-top:8px">
+        <label style="display:flex;align-items:center;gap:4px;margin:0"><input id="wi-twin-fetch" type="checkbox"> Twin Fetch</label>
+        <label style="display:flex;align-items:center;gap:4px;margin:0"><input id="wi-twin-put" type="checkbox"> Twin Put</label>
+        <label style="display:flex;align-items:center;gap:4px;margin:0"><input id="wi-twin-carry" type="checkbox"> Twin Carry</label>
+      </div>
+      <div class="form-group">
         <label>Est. Move Time (ISO)</label>
         <input id="wi-emt" value="">
       </div>
@@ -272,6 +281,10 @@ class EventPanel extends HTMLElement {
       workInstructionId: this.querySelector('#wi-id').value,
       workQueueId: this.querySelector('#wi-queue').value,
       fetchChe: this.querySelector('#wi-che').value,
+      putChe: this.querySelector('#wi-put-che').value,
+      isTwinFetch: String(this.querySelector('#wi-twin-fetch').checked),
+      isTwinPut: String(this.querySelector('#wi-twin-put').checked),
+      isTwinCarry: String(this.querySelector('#wi-twin-carry').checked),
       estimatedMoveTime: this.querySelector('#wi-emt').value,
       estimatedCycleTimeSeconds: this.querySelector('#wi-ect').value,
       estimatedRtgCycleTimeSeconds: this.querySelector('#wi-rtg-ect').value,

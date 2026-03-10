@@ -17,6 +17,10 @@ import java.time.Instant;
  * @param estimatedMoveTime the estimated time when this work instruction should start
  * @param estimatedCycleTimeSeconds the estimated cycle time for this work instruction in seconds
  * @param estimatedRtgCycleTimeSeconds the estimated RTG cycle time in seconds (default 60)
+ * @param putChe the CHE (Container Handling Equipment) identifier for putting
+ * @param isTwinFetch whether this is a twin fetch operation
+ * @param isTwinPut whether this is a twin put operation
+ * @param isTwinCarry whether this is a twin carry operation
  */
 public record WorkInstructionEvent(
         String workInstructionId,
@@ -25,7 +29,11 @@ public record WorkInstructionEvent(
         WorkInstructionStatus status,
         Instant estimatedMoveTime,
         int estimatedCycleTimeSeconds,
-        int estimatedRtgCycleTimeSeconds
+        int estimatedRtgCycleTimeSeconds,
+        String putChe,
+        boolean isTwinFetch,
+        boolean isTwinPut,
+        boolean isTwinCarry
 ) implements Event {
 
     private static final int DEFAULT_RTG_CYCLE_TIME_SECONDS = 60;
@@ -36,9 +44,21 @@ public record WorkInstructionEvent(
             String fetchChe,
             WorkInstructionStatus status,
             Instant estimatedMoveTime,
+            int estimatedCycleTimeSeconds,
+            int estimatedRtgCycleTimeSeconds) {
+        this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
+                estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds, "", false, false, false);
+    }
+
+    public WorkInstructionEvent(
+            String workInstructionId,
+            String workQueueId,
+            String fetchChe,
+            WorkInstructionStatus status,
+            Instant estimatedMoveTime,
             int estimatedCycleTimeSeconds) {
         this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
-                estimatedCycleTimeSeconds, DEFAULT_RTG_CYCLE_TIME_SECONDS);
+                estimatedCycleTimeSeconds, DEFAULT_RTG_CYCLE_TIME_SECONDS, "", false, false, false);
     }
 
     @Override
@@ -46,9 +66,13 @@ public record WorkInstructionEvent(
         return "WorkInstructionEvent[workInstructionId=" + workInstructionId +
                 ", workQueueId=" + workQueueId +
                 ", fetchChe=" + fetchChe +
+                ", putChe=" + putChe +
                 ", status=" + status +
                 ", estimatedMoveTime=" + estimatedMoveTime +
                 ", estimatedCycleTimeSeconds=" + estimatedCycleTimeSeconds +
-                ", estimatedRtgCycleTimeSeconds=" + estimatedRtgCycleTimeSeconds + "]";
+                ", estimatedRtgCycleTimeSeconds=" + estimatedRtgCycleTimeSeconds +
+                ", isTwinFetch=" + isTwinFetch +
+                ", isTwinPut=" + isTwinPut +
+                ", isTwinCarry=" + isTwinCarry + "]";
     }
 }

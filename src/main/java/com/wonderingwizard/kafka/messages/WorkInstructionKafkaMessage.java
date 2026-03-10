@@ -45,6 +45,9 @@ public record WorkInstructionKafkaMessage(
         Double estimatedRTGCycleTime,
         Double estimatedEHCycleTime,
         String containerId,
-        Long sourceTsMs
+        Long sourceTsMs,
+        Boolean isTwinFetch,
+        Boolean isTwinPut,
+        Boolean isTwinCarry
 ) {
 }

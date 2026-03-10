@@ -680,9 +680,15 @@ public class DemoServer {
             String estimatedRtgCycleTimeStr = body.getOrDefault("estimatedRtgCycleTimeSeconds", "60");
             int estimatedRtgCycleTimeSeconds = Integer.parseInt(estimatedRtgCycleTimeStr);
 
+            String putChe = body.getOrDefault("putChe", "");
+            boolean isTwinFetch = Boolean.parseBoolean(body.getOrDefault("isTwinFetch", "false"));
+            boolean isTwinPut = Boolean.parseBoolean(body.getOrDefault("isTwinPut", "false"));
+            boolean isTwinCarry = Boolean.parseBoolean(body.getOrDefault("isTwinCarry", "false"));
+
             WorkInstructionEvent event = new WorkInstructionEvent(
                     workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
-                    estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds);
+                    estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
+                    putChe, isTwinFetch, isTwinPut, isTwinCarry);
             List<SideEffect> effects = processStep("WorkInstruction: " + workInstructionId, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(

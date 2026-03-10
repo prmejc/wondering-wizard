@@ -17,6 +17,10 @@ import java.time.Instant;
  * @param estimatedMoveTime the estimated time when this work instruction should start
  * @param estimatedCycleTimeSeconds the estimated cycle time for this work instruction in seconds
  * @param estimatedRtgCycleTimeSeconds the estimated RTG cycle time in seconds (default 60)
+ * @param putChe the CHE (Container Handling Equipment) identifier for putting
+ * @param isTwinFetch whether this is a twin fetch operation
+ * @param isTwinPut whether this is a twin put operation
+ * @param isTwinCarry whether this is a twin carry operation
  */
 public record WorkInstruction(
         String workInstructionId,
@@ -25,7 +29,11 @@ public record WorkInstruction(
         WorkInstructionStatus status,
         Instant estimatedMoveTime,
         int estimatedCycleTimeSeconds,
-        int estimatedRtgCycleTimeSeconds
+        int estimatedRtgCycleTimeSeconds,
+        String putChe,
+        boolean isTwinFetch,
+        boolean isTwinPut,
+        boolean isTwinCarry
 ) {
 
     @Override
@@ -33,9 +41,13 @@ public record WorkInstruction(
         return "WorkInstruction[workInstructionId=" + workInstructionId +
                 ", workQueueId=" + workQueueId +
                 ", fetchChe=" + fetchChe +
+                ", putChe=" + putChe +
                 ", status=" + status +
                 ", estimatedMoveTime=" + estimatedMoveTime +
                 ", estimatedCycleTimeSeconds=" + estimatedCycleTimeSeconds +
-                ", estimatedRtgCycleTimeSeconds=" + estimatedRtgCycleTimeSeconds + "]";
+                ", estimatedRtgCycleTimeSeconds=" + estimatedRtgCycleTimeSeconds +
+                ", isTwinFetch=" + isTwinFetch +
+                ", isTwinPut=" + isTwinPut +
+                ", isTwinCarry=" + isTwinCarry + "]";
     }
 }

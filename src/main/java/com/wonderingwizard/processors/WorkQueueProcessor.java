@@ -111,7 +111,11 @@ public class WorkQueueProcessor implements EventProcessor {
                 event.status(),
                 event.estimatedMoveTime(),
                 event.estimatedCycleTimeSeconds(),
-                event.estimatedRtgCycleTimeSeconds()
+                event.estimatedRtgCycleTimeSeconds(),
+                event.putChe(),
+                event.isTwinFetch(),
+                event.isTwinPut(),
+                event.isTwinCarry()
         );
 
         workInstructions

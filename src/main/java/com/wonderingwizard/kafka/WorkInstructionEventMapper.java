@@ -47,7 +47,10 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 getDoubleField(record, "estimatedRTGCycleTime"),
                 getDoubleField(record, "estimatedEHCycleTime"),
                 getStringField(record, "containerId"),
-                getLongField(record, "SOURCE_TS_MS")
+                getLongField(record, "SOURCE_TS_MS"),
+                getBooleanField(record, "isTwinFetch"),
+                getBooleanField(record, "isTwinPut"),
+                getBooleanField(record, "isTwinCarry")
         );
     }
 
@@ -81,13 +84,22 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 ? (int) Math.round(kafkaMessage.estimatedRTGCycleTime())
                 : DEFAULT_RTG_CYCLE_TIME_SECONDS;
 
+        String putChe = kafkaMessage.putCHEName() != null
+                ? kafkaMessage.putCHEName()
+                : "";
+
+        boolean isTwinFetch = Boolean.TRUE.equals(kafkaMessage.isTwinFetch());
+        boolean isTwinPut = Boolean.TRUE.equals(kafkaMessage.isTwinPut());
+        boolean isTwinCarry = Boolean.TRUE.equals(kafkaMessage.isTwinCarry());
+
         logger.fine("Mapped WorkInstruction Kafka message: workInstructionId=" + workInstructionId
                 + ", workQueueId=" + workQueueId + ", status=" + status
-                + ", fetchChe=" + fetchChe);
+                + ", fetchChe=" + fetchChe + ", putChe=" + putChe);
 
         return new WorkInstructionEvent(
                 workInstructionId, workQueueId, fetchChe, status,
-                estimatedMoveTime, estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds);
+                estimatedMoveTime, estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
+                putChe, isTwinFetch, isTwinPut, isTwinCarry);
     }
 
     private WorkInstructionStatus mapStatus(String moveStage) {
@@ -119,6 +131,14 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
         }
         if (value instanceof Number n) {
             return n.longValue();
+        }
+        return null;
+    }
+
+    private static Boolean getBooleanField(GenericRecord record, String fieldName) {
+        Object value = record.get(fieldName);
+        if (value instanceof Boolean b) {
+            return b;
         }
         return null;
     }

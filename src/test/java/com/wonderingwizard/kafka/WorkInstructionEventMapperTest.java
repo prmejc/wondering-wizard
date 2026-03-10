@@ -41,7 +41,10 @@ class WorkInstructionEventMapperTest {
                     {"name": "estimatedRTGCycleTime", "type": ["null", "double"], "default": null},
                     {"name": "estimatedEHCycleTime", "type": ["null", "double"], "default": null},
                     {"name": "containerId", "type": ["null", "string"], "default": null},
-                    {"name": "SOURCE_TS_MS", "type": ["null", "long"], "default": null}
+                    {"name": "SOURCE_TS_MS", "type": ["null", "long"], "default": null},
+                    {"name": "isTwinFetch", "type": ["null", "boolean"], "default": null},
+                    {"name": "isTwinPut", "type": ["null", "boolean"], "default": null},
+                    {"name": "isTwinCarry", "type": ["null", "boolean"], "default": null}
                 ]
             }
             """;
@@ -65,16 +68,24 @@ class WorkInstructionEventMapperTest {
         record.put("estimatedMoveTime", 1700000000000L);
         record.put("estimatedCycleTime", 120.0);
         record.put("estimatedRTGCycleTime", 45.0);
+        record.put("putCHEName", "QC-01");
+        record.put("isTwinFetch", true);
+        record.put("isTwinPut", false);
+        record.put("isTwinCarry", true);
 
         WorkInstructionEvent event = mapper.map(record);
 
         assertEquals("101", event.workInstructionId());
         assertEquals("42", event.workQueueId());
         assertEquals("RTG-01", event.fetchChe());
+        assertEquals("QC-01", event.putChe());
         assertEquals(WorkInstructionStatus.PENDING, event.status());
         assertEquals(Instant.ofEpochMilli(1700000000000L), event.estimatedMoveTime());
         assertEquals(120, event.estimatedCycleTimeSeconds());
         assertEquals(45, event.estimatedRtgCycleTimeSeconds());
+        assertTrue(event.isTwinFetch());
+        assertFalse(event.isTwinPut());
+        assertTrue(event.isTwinCarry());
     }
 
     @Test
@@ -112,6 +123,31 @@ class WorkInstructionEventMapperTest {
         WorkInstructionEvent event = mapper.map(record);
 
         assertEquals(0, event.estimatedCycleTimeSeconds());
+    }
+
+    @Test
+    void shouldHandleNullPutCHEName() {
+        GenericRecord record = new GenericData.Record(schema);
+        record.put("workInstructionId", 1L);
+        record.put("workQueueId", 1L);
+        record.put("putCHEName", null);
+
+        WorkInstructionEvent event = mapper.map(record);
+
+        assertEquals("", event.putChe());
+    }
+
+    @Test
+    void shouldHandleNullTwinFields() {
+        GenericRecord record = new GenericData.Record(schema);
+        record.put("workInstructionId", 1L);
+        record.put("workQueueId", 1L);
+
+        WorkInstructionEvent event = mapper.map(record);
+
+        assertFalse(event.isTwinFetch());
+        assertFalse(event.isTwinPut());
+        assertFalse(event.isTwinCarry());
     }
 
     @Test
@@ -206,6 +242,9 @@ class WorkInstructionEventMapperTest {
         record.put("estimatedEHCycleTime", 30.0);
         record.put("containerId", "MAEU1234567");
         record.put("SOURCE_TS_MS", 1700000000000L);
+        record.put("isTwinFetch", true);
+        record.put("isTwinPut", false);
+        record.put("isTwinCarry", true);
 
         WorkInstructionKafkaMessage kafkaMessage = mapper.fromAvro(record);
 
@@ -228,5 +267,8 @@ class WorkInstructionEventMapperTest {
         assertEquals(30.0, kafkaMessage.estimatedEHCycleTime());
         assertEquals("MAEU1234567", kafkaMessage.containerId());
         assertEquals(1700000000000L, kafkaMessage.sourceTsMs());
+        assertEquals(true, kafkaMessage.isTwinFetch());
+        assertEquals(false, kafkaMessage.isTwinPut());
+        assertEquals(true, kafkaMessage.isTwinCarry());
     }
 }

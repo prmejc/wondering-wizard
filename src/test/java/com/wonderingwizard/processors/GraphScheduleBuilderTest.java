@@ -106,7 +106,7 @@ class GraphScheduleBuilderTest {
     }
 
     private static WorkInstruction wi(String id) {
-        return new WorkInstruction(id, "queue-1", "CHE-001", PENDING, EMT, 120, 60);
+        return new WorkInstruction(id, "queue-1", "CHE-001", PENDING, EMT, 120, 60, "", false, false, false);
     }
 
     private static List<Takt> schedule(List<ActionTemplate> template, int containerCount) {
