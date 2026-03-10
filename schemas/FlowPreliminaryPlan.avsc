@@ -1,0 +1,72 @@
+{
+  "type": "record",
+  "name": "FlowPreliminaryPlan",
+  "namespace": "apmt.terminaloperations.flowpreliminaryplan.topic.internal.any.v1",
+  "fields": [
+    {
+      "name": "pointOfWorkName",
+      "type": "string"
+    },
+    {
+      "name": "schedules",
+      "type": {
+        "type": "array",
+        "items": {
+          "type": "record",
+          "name": "PreliminaryPlanItem",
+          "fields": [
+            {
+              "name": "workQueueName",
+              "type": "string"
+            },
+            {
+              "name": "workQueueId",
+              "type": "long"
+            },
+            {
+              "name": "isFrozen",
+              "type": "boolean"
+            },
+            {
+              "name": "warmupPulsesStartTimeUtc",
+              "type": {
+                "type": "array",
+                "items": [
+                  "null",
+                  {
+                    "type": "long",
+                    "logicalType": "timestamp-millis"
+                  }
+                ]
+              },
+              "default": []
+            },
+            {
+              "name": "firstTaktMoveTime",
+              "type": [
+                "null",
+                {
+                  "type": "long",
+                  "logicalType": "timestamp-millis"
+                }
+              ],
+              "default": null
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "terminalCode",
+      "type": "string"
+    },
+    {
+      "name": "eventSource",
+      "type": "string"
+    },
+    {
+      "name": "SOURCE_TS_MS",
+      "type": "long"
+    }
+  ]
+}

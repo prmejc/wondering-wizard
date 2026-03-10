@@ -1,0 +1,30 @@
+{
+	"namespace": "apmt.terminaloperations.digitalmap.confidential.dedicated.v1",
+	"type": "record",
+	"name": "TerminalLayout",
+	"fields": [
+		{
+			"name": "terminalCode",
+			"type": "string"
+		},
+		{
+			"name": "terminalLayoutVersion",
+			"type": "string"
+		},
+		{
+			"name": "terminalLayout",
+			"type": "string"
+		},
+		{
+			"name": "timeStamp",
+			"type": {
+				"type": "long",
+				"logicalType": "timestamp-millis"
+			}
+		},
+		{
+			"name": "eventSource",
+			"type": "string"
+		}
+	]
+}

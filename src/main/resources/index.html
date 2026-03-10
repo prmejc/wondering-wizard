@@ -76,6 +76,45 @@ async function refreshState() {
   document.querySelectorAll('[data-refresh]').forEach(el => el.refresh(state));
 }
 
+// --- SSE live connection ---
+let _sseStatus = 'disconnected'; // 'connected' | 'disconnected' | 'reconnecting'
+function updateConnectionIndicator() {
+  const dot = document.getElementById('live-dot');
+  const label = document.getElementById('live-label');
+  if (!dot || !label) return;
+  if (_sseStatus === 'connected') {
+    dot.style.background = '#22c55e';
+    label.textContent = 'Live';
+  } else if (_sseStatus === 'reconnecting') {
+    dot.style.background = '#f59e0b';
+    label.textContent = 'Reconnecting';
+  } else {
+    dot.style.background = '#ef4444';
+    label.textContent = 'Disconnected';
+  }
+}
+
+function connectSSE() {
+  const es = new EventSource(API + '/api/events');
+  es.onopen = () => {
+    _sseStatus = 'connected';
+    updateConnectionIndicator();
+  };
+  es.addEventListener('state', (e) => {
+    try {
+      const state = JSON.parse(e.data);
+      window._lastState = state;
+      document.querySelectorAll('[data-refresh]').forEach(el => el.refresh(state));
+    } catch (err) { /* ignore parse errors */ }
+  });
+  es.onerror = () => {
+    _sseStatus = 'reconnecting';
+    updateConnectionIndicator();
+  };
+  return es;
+}
+connectSSE();
+
 // --- Header Component ---
 class ScheduleHeader extends HTMLElement {
   connectedCallback() {
@@ -84,6 +123,10 @@ class ScheduleHeader extends HTMLElement {
       <div style="display:flex;align-items:center;gap:16px">
         <strong style="font-size:18px">Wondering Wizard</strong>
         <span style="color:var(--text-muted);font-size:13px">Schedule Viewer</span>
+        <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted)">
+          <span id="live-dot" style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block"></span>
+          <span id="live-label">Disconnected</span>
+        </span>
       </div>
       <div style="display:flex;align-items:center;gap:12px">
         <span id="clock" style="font-family:monospace;font-size:20px;color:var(--qc-color)">00:00:00</span>

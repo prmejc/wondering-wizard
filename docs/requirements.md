@@ -714,3 +714,128 @@ mvn test -Dtest=DelayProcessorTest
 - `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — serialize delay fields)
 - `src/main/resources/index.html` (modified — delay badges and per-takt delay display)
 - `src/test/java/com/wonderingwizard/processors/DelayProcessorTest.java`
+
+---
+
+### F-11: Kafka Event Consumer Infrastructure
+
+**Status:** Implemented
+
+**Description:**
+Introduce Kafka as an event source for the engine. The architecture provides a generic consumer infrastructure that makes it easy to add consumers for any Kafka topic. Each message type has its own topic and mapper. The first implemented consumer is for the WorkQueue topic.
+
+1. Generic `KafkaEventConsumer` that polls a Kafka topic, deserializes Avro messages, maps them to engine events, and feeds them into the engine
+2. `KafkaConsumerManager` that manages the lifecycle (start/stop) of all registered consumers
+3. `WorkQueueEventMapper` that maps the WorkQueue Avro schema to the existing `WorkQueueMessage` engine event
+4. Configuration records (`KafkaConfiguration`, `ConsumerConfiguration`) for connection and per-topic settings
+5. Consumers run on virtual threads for efficient resource usage
+
+**Kafka WorkQueue Topic:**
+
+| Setting | Value |
+|---------|-------|
+| Topic | `APMT.terminalOperations.workQueue.topic.confidential.dedicated.v1` |
+| Group ID | `apmt.tc1.sit.terminal-operations.flow-tone-work-queue.consumergroup.v1` |
+| Avro Message | `APMT.terminalOperations.workQueue.topic.confidential.dedicated.v1.WorkQueue` |
+
+**Architecture:**
+
+```
+Kafka Topic ──► KafkaEventConsumer (virtual thread)
+                    │
+                    ├── Avro Deserializer (Confluent Schema Registry)
+                    │
+                    ├── EventMapper<E> (e.g., WorkQueueEventMapper)
+                    │       │
+                    │       └── GenericRecord → WorkQueueMessage (engine event)
+                    │
+                    └── Engine.processEvent(event)
+```
+
+**Adding a New Topic Consumer:**
+
+```java
+// 1. Create a mapper implementing EventMapper<YourEvent>
+public class YourEventMapper implements EventMapper<YourEvent> {
+    @Override
+    public YourEvent map(GenericRecord record) {
+        // Extract fields from Avro record and return engine event
+    }
+}
+
+// 2. Register with KafkaConsumerManager
+manager.register(
+    new ConsumerConfiguration("your.topic.v1", "your-group-v1", "YourAvroType", null, false),
+    new YourEventMapper()
+);
+```
+
+**Requested Behavior:**
+
+```java
+// Create Kafka configuration
+var kafkaConfig = new KafkaConfiguration(
+    "kafka-broker-service:9094", "fes",
+    "http://kafka-schema-registry-service:8081",
+    "Plain", "admin", "admin-secret", "SaslPlaintext"
+);
+
+// Create consumer manager
+var manager = new KafkaConsumerManager(kafkaConfig, engine);
+
+// Register WorkQueue consumer
+var workQueueConfig = new ConsumerConfiguration(
+    "APMT.terminalOperations.workQueue.topic.confidential.dedicated.v1",
+    "apmt.tc1.sit.terminal-operations.flow-tone-work-queue.consumergroup.v1",
+    "APMT.terminalOperations.workQueue.topic.confidential.dedicated.v1.WorkQueue",
+    null, false
+);
+manager.register(workQueueConfig, new WorkQueueEventMapper());
+
+// Start all consumers
+manager.startAll();
+```
+
+**Status Mapping (Kafka → Engine):**
+
+| Kafka Status | Engine Status |
+|-------------|---------------|
+| ACTIVE | ACTIVE |
+| WORKING | ACTIVE |
+| CREATED | ACTIVE |
+| INACTIVE | INACTIVE |
+| COMPLETE | INACTIVE |
+| CANCELLED | INACTIVE |
+| DELETED | INACTIVE |
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Create KafkaConfiguration with broker details | Configuration created |
+| 2 | Create ConsumerConfiguration for WorkQueue topic | Configuration with topic, group, Avro type |
+| 3 | Register WorkQueueEventMapper with consumer manager | Consumer registered |
+| 4 | Map an Avro GenericRecord with ACTIVE status | Returns WorkQueueMessage(id, ACTIVE, mudaSeconds) |
+| 5 | Map an Avro GenericRecord with COMPLETE status | Returns WorkQueueMessage(id, INACTIVE, 0) |
+| 6 | Map an Avro GenericRecord with null muda time | Returns WorkQueueMessage with qcMudaSeconds=0 |
+| 7 | Consumer properties include SASL config | Properties contain security.protocol, sasl.mechanism |
+
+**Test Execution:**
+```bash
+# Run tests
+mvn test -Dtest="WorkQueueEventMapperTest,KafkaEventConsumerTest,ConsumerConfigurationTest,KafkaConsumerManagerTest"
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/kafka/KafkaConfiguration.java`
+- `src/main/java/com/wonderingwizard/kafka/ConsumerConfiguration.java`
+- `src/main/java/com/wonderingwizard/kafka/EventMapper.java`
+- `src/main/java/com/wonderingwizard/kafka/KafkaEventConsumer.java`
+- `src/main/java/com/wonderingwizard/kafka/KafkaConsumerManager.java`
+- `src/main/java/com/wonderingwizard/kafka/WorkQueueEventMapper.java`
+- `src/main/java/com/wonderingwizard/kafka/messages/WorkQueueKafkaMessage.java`
+- `src/test/java/com/wonderingwizard/kafka/WorkQueueEventMapperTest.java`
+- `src/test/java/com/wonderingwizard/kafka/KafkaEventConsumerTest.java`
+- `src/test/java/com/wonderingwizard/kafka/ConsumerConfigurationTest.java`
+- `src/test/java/com/wonderingwizard/kafka/KafkaConsumerManagerTest.java`
+- `pom.xml` (modified — added Kafka, Avro, Confluent dependencies)

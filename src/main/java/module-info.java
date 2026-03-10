@@ -10,4 +10,5 @@ module com.wonderingwizard {
     exports com.wonderingwizard.processors;
     exports com.wonderingwizard.server;
     exports com.wonderingwizard.domain.takt;
+    exports com.wonderingwizard.kafka;
 }

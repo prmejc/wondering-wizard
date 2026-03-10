@@ -1,0 +1,63 @@
+{
+	"type": "record",
+	"name": "CycleTime",
+	"namespace": "APMT.terminalOperations.cycleTime.topic.confidential.dedicated.v1",
+	"fields": [
+		{
+			"name": "block",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "row",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+		{
+			"name": "tier",
+			"type": [
+				"null",
+				"string"
+			],
+			"default": null
+		},
+        {
+            "name": "ctLiftFromYard",
+            "type": [
+                "null",
+                "long"
+            ],
+            "default": null
+        },   
+        {
+            "name": "ctPlaceInYard",
+            "type": [
+                "null",
+                "long"
+            ],
+            "default": null
+        },
+        {
+            "name": "ctLiftFromTT",
+            "type": [
+                "null",
+                "long"
+            ],
+            "default": null
+        },        
+        {
+            "name": "ctPlaceOnTT",
+            "type": [
+                "null",
+                "long"
+            ],
+            "default": null
+        }                         		
+	]
+}

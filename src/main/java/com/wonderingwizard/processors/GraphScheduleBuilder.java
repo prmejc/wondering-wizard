@@ -100,7 +100,7 @@ public class GraphScheduleBuilder {
         int qcLiftDuration = 20;
         int rtgPlaceDuration = 20;
         int driveToUnderRtg = 30;
-        int driveToRtgPull = 170;//driveTimeSupplier.getAsInt();
+        int driveToRtgPull = 30;//driveTimeSupplier.getAsInt();
         int driveToQcPull = 170;Math.clamp(
                 driveToRtgPull + qcDriveTimeOffsetSupplier.getAsInt(),
                 DRIVE_TIME_MIN_SECONDS, DRIVE_TIME_MAX_SECONDS);
@@ -113,7 +113,7 @@ public class GraphScheduleBuilder {
 
                 // ── TT chain (backward from sync point) ──
                 ActionTemplate.of("drive to RTG pull", TT, driveToRtgPull),
-                ActionTemplate.of("drive to RTG standby", TT, 30),
+                ActionTemplate.of("drive to RTG standby", TT, 240),
                 ActionTemplate.of("drive to RTG under", TT, driveToUnderRtg)
                         .withFirstInTakt().withOnlyOnePerTakt(),
                 ActionTemplate.of("handover from RTG", TT, rtgPlaceDuration)
@@ -153,6 +153,7 @@ public class GraphScheduleBuilder {
         wireDependencies(allPlacedActions);
 
         return takts.values().stream()
+                .filter(t -> !t.actions().isEmpty())
                 .sorted(Comparator.comparingInt(Takt::sequence))
                 .toList();
     }
@@ -229,22 +230,19 @@ public class GraphScheduleBuilder {
                     progress = true;
 
                     // Place backward segments for this device.
-                    // Each segment is placed far enough back that its actions complete
-                    // before the next segment's takt starts. A segment with 340s of actions
-                    // in 120s takts needs ceil(340/120) = 3 takts to complete.
+                    // Each chain stays together in one takt but is pushed back to an
+                    // earlier pulse if its duration overflows the target takt's time window.
                     var deviceSegs = segmentsByDevice.getOrDefault(seg.deviceType(), List.of());
                     int syncIdx = deviceSegs.indexOf(seg);
                     int backwardTakt = targetTakt;
                     for (int i = syncIdx - 1; i >= 0; i--) {
                         var backSeg = deviceSegs.get(i);
                         if (!remaining.contains(backSeg)) continue;
-                        int segDuration = segmentDuration(backSeg);
-                        int taktDuration = taktDurationAt(backwardTakt, takts);
-                        int taktsBack = Math.max(1, (int) Math.ceil((double) segDuration / taktDuration));
-                        backwardTakt -= taktsBack;
+                        backwardTakt--;
                         ensureTaktExists(takts, backwardTakt,
                                 computeTaktStartTime(backwardTakt, takts), DEFAULT_TAKT_DURATION);
                         backwardTakt = resolveOverflow(backSeg, backwardTakt, takts);
+                        backwardTakt = pushBackUntilFits(backwardTakt, segmentDuration(backSeg), takts);
                         placeSegment(backSeg, backwardTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder);
                         deviceTaktCursor.put(backSeg.deviceType(), backwardTakt);
                         remaining.remove(backSeg);
@@ -258,7 +256,8 @@ public class GraphScheduleBuilder {
     }
 
     /**
-     * Places a segment's actions into a takt WITHOUT wiring dependencies.
+     * Places a segment's actions into a single takt WITHOUT wiring dependencies.
+     * The entire chain stays together in one takt.
      * Dependencies are wired later in execution order.
      */
     private void placeSegment(
@@ -414,6 +413,28 @@ public class GraphScheduleBuilder {
         return targetTakt;
     }
 
+    /**
+     * Pushes a chain to an earlier takt if its duration overflows the target takt's time window.
+     * The chain (placed at PULSEx) must finish before the original target takt ends:
+     * {@code PULSEx.start + chainDuration <= target.start + target.duration}.
+     */
+    private int pushBackUntilFits(int targetTakt, int chainDuration, Map<Integer, Takt> takts) {
+        Takt target = takts.get(targetTakt);
+        Instant deadline = target.plannedStartTime().plusSeconds(target.durationSeconds());
+
+        int placeTakt = targetTakt;
+        for (int shifts = 0; shifts < 50; shifts++) {
+            Takt place = takts.get(placeTakt);
+            Instant chainEnd = place.plannedStartTime().plusSeconds(chainDuration);
+            if (!chainEnd.isAfter(deadline)) {
+                return placeTakt;
+            }
+            placeTakt--;
+            ensureTaktExists(takts, placeTakt, computeTaktStartTime(placeTakt, takts), DEFAULT_TAKT_DURATION);
+        }
+        return placeTakt;
+    }
+
     private static int segmentDuration(Segment segment) {
         return segment.templates().stream().mapToInt(ActionTemplate::durationSeconds).sum();
     }
@@ -466,4 +487,5 @@ public class GraphScheduleBuilder {
         takts.computeIfAbsent(taktIndex,
                 idx -> new Takt(idx, new ArrayList<>(), startTime, startTime, duration));
     }
+
 }

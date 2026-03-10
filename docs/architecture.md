@@ -211,6 +211,15 @@ com.wonderingwizard
 │   ├── ResourceAction.java          # Legacy action template for imperative takt generation
 │   ├── ScheduleRunnerProcessor.java # Schedule execution and action state management
 │   └── DelayProcessor.java         # Schedule delay tracking and calculation
+├── kafka/
+│   ├── KafkaConfiguration.java      # Top-level Kafka connection config (broker, SASL, schema registry)
+│   ├── ConsumerConfiguration.java   # Per-topic consumer config (topic, group, message type)
+│   ├── EventMapper.java             # Functional interface: GenericRecord → Event
+│   ├── KafkaEventConsumer.java      # Generic consumer: poll → map → engine (virtual thread)
+│   ├── KafkaConsumerManager.java    # Lifecycle manager for all Kafka consumers
+│   ├── WorkQueueEventMapper.java    # Maps WorkQueue Avro → WorkQueueMessage event
+│   └── messages/
+│       └── WorkQueueKafkaMessage.java # WorkQueue Avro schema as Java record
 ├── server/
 │   ├── DemoServer.java              # HTTP demo server with REST API (JDK HttpServer)
 │   ├── JsonSerializer.java          # Hand-rolled JSON serializer (no external libs)
@@ -244,6 +253,54 @@ A single `index.html` file using Web Components (extending `HTMLElement`) with v
 - `<timeline-panel>` — Clickable event history for time travel
 - `<side-effects-log>` — Color-coded side effects log
 
+## Kafka Event Consumer Infrastructure (F-11)
+
+The `kafka` package provides a generic framework for consuming messages from Kafka topics and feeding them into the event processing engine.
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     KafkaConsumerManager                          │
+│                                                                   │
+│  ┌─────────────────────┐  ┌─────────────────────┐               │
+│  │ KafkaEventConsumer   │  │ KafkaEventConsumer   │  ...         │
+│  │ (WorkQueue topic)    │  │ (future topic)       │              │
+│  │                      │  │                      │              │
+│  │  ┌───────────────┐  │  │  ┌───────────────┐  │              │
+│  │  │ Avro Deser.   │  │  │  │ Avro Deser.   │  │              │
+│  │  └───────┬───────┘  │  │  └───────┬───────┘  │              │
+│  │          ▼           │  │          ▼           │              │
+│  │  ┌───────────────┐  │  │  ┌───────────────┐  │              │
+│  │  │ EventMapper   │  │  │  │ EventMapper   │  │              │
+│  │  │ (WorkQueue)   │  │  │  │ (YourType)    │  │              │
+│  │  └───────┬───────┘  │  │  └───────┬───────┘  │              │
+│  │          ▼           │  │          ▼           │              │
+│  │  Engine.processEvent │  │  Engine.processEvent │              │
+│  └─────────────────────┘  └─────────────────────┘               │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Key Concepts
+
+- **KafkaConfiguration**: Shared connection settings (broker, SASL, schema registry)
+- **ConsumerConfiguration**: Per-topic settings (topic name, group ID, Avro/JSON type, offset reset)
+- **EventMapper<E>**: Functional interface that transforms an Avro `GenericRecord` to an engine `Event`
+- **KafkaEventConsumer<E>**: Generic consumer running on a virtual thread — polls, deserializes, maps, and processes
+- **KafkaConsumerManager**: Registers and manages the lifecycle of all consumers
+
+### Adding a New Kafka Topic Consumer
+
+1. Create a message record in `kafka/messages/` matching the Avro schema
+2. Create a mapper class implementing `EventMapper<YourEvent>`
+3. Register with `KafkaConsumerManager` using the topic's `ConsumerConfiguration`
+
+### Dependencies
+
+- `org.apache.kafka:kafka-clients` — Kafka consumer client
+- `org.apache.avro:avro` — Avro record types
+- `io.confluent:kafka-avro-serializer` — Schema Registry–aware Avro deserializer
+
 ## Adding New Features
 
 ### Adding a New Event Type
@@ -258,3 +315,9 @@ A single `index.html` file using Web Components (extending `HTMLElement`) with v
 ### Adding a New Processor
 1. Create a class in `com.wonderingwizard.processors` implementing `EventProcessor`
 2. Register it with the engine: `engine.register(new MyProcessor())`
+
+### Adding a New Kafka Topic Consumer
+1. Create a message record in `com.wonderingwizard.kafka.messages` matching the Avro schema
+2. Create a mapper class in `com.wonderingwizard.kafka` implementing `EventMapper<YourEvent>`
+3. Create a `ConsumerConfiguration` with the topic name, group ID, and Avro message type
+4. Register with `KafkaConsumerManager`: `manager.register(config, new YourEventMapper())`

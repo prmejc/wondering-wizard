@@ -1,0 +1,67 @@
+{
+	"type": "record",
+	"name": "CheTargetPositionConfirmation",
+	"namespace": "apmt.terminaloperations.chetargetposition.confidential.dedicated.v1",
+	"fields": [
+		{
+			"name": "terminalCode",
+			"type": "string"
+		},
+		{
+			"name": "cheShortName",
+			"type": "string"
+		},
+		{
+			"name": "equipmentInstructionId",
+			"type": "string"
+		},
+		{
+			"name": "destinationNodeId",
+			"type": "long"
+		},
+		{
+			"name": "destinationNodeName",
+			"type": "string"
+		},
+		{
+			"name": "confirmedMapNodeId",
+			"type": "long"
+		},
+		{
+			"name": "confirmedMapNodeName",
+			"type": "string"
+		},
+		{
+			"name": "coordinates",
+			"type": {
+				"type": "record",
+				"name": "GpsPosition",
+				"fields": [
+					{
+						"name": "latitude",
+						"type": "double"
+					},
+					{
+						"name": "longitude",
+						"type": "double"
+					},
+					{
+						"name": "hdop",
+						"type": "double"
+					}
+				]
+			}
+		},
+		{
+			"name": "timeStamp",
+			"type": {
+				"type": "long",
+				"logicalType": "timestamp-millis"
+			}
+		},
+		{
+			"name": "eventSource",
+			"type": "string"
+		}
+	]
+}

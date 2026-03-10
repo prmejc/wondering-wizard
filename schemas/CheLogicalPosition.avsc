@@ -1,0 +1,58 @@
+{
+    "type": "record",
+    "name": "CheLogicalPosition",
+    "namespace": "apmt.terminaloperations.chelogicalposition.confidential.dedicated.v1",
+    "fields": [
+        {
+            "name": "terminalCode",
+            "type": "string"
+        },
+        {
+            "name": "cheShortName",
+            "type": "string"
+        },
+        {
+            "name": "currentMapNodeID",
+            "type": "long"
+        },
+        {
+            "name": "currentMapNodeName",
+            "type": [
+                "null",
+                "string"
+            ]
+        },
+        {
+            "name": "timeStamp",
+            "type": {
+                "type": "long",
+                "logicalType": "timestamp-millis"
+            }
+        },
+        {
+            "name": "coordinates",
+            "type": {
+                "type": "record",
+                "name": "GpsPosition",
+                "fields": [
+                    {
+                        "name": "latitude",
+                        "type": "double"
+                    },
+                    {
+                        "name": "longitude",
+                        "type": "double"
+                    },
+                    {
+                        "name": "hdop",
+                        "type": "double"
+                    }
+                ]
+            }
+        },
+        {
+            "name": "eventSource",
+            "type": "string"
+        }
+    ]
+}

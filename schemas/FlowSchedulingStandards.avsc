@@ -1,0 +1,60 @@
+{
+  "type": "record",
+  "name": "FlowSchedulingStandards",
+  "namespace": "com.apmterminals.terminaloperations",
+  "fields": [
+    {
+      "name": "planningLockWindow", // in minutes
+      "type": "int" 
+    },
+    {
+      "name": "dischargeWipLimit",
+      "type": "int"
+    },
+    {
+      "name": "truckSelectionParameters",
+      "type": {
+        "type": "record",
+        "name": "TruckSelectionParameters",
+        "fields": [
+          {
+            "name": "proximityScore",
+            "type": "float"
+          },
+          {
+            "name": "jobUrgencyScore",
+            "type": "float"
+          }
+        ]
+      }
+    },
+    {
+      "name": "containerTransferDuration",
+      "type": {
+        "type": "record",
+        "name": "ContainerTransferDuration",
+        "fields": [
+          {
+            "name": "truckAndQc",
+            "type": "int",
+            "doc": "Time for container transfer between TT & QC in Seconds"
+          },
+          {
+            "name": "truckAndRtg",
+            "type": "int",
+            "doc": "Time for container transfer between TT & RTG in Seconds"
+          },
+          {
+            "name": "truckAndEh",
+            "type": "int",
+            "doc": "Time for container transfer between TT & EH in Seconds"
+          }
+        ]
+      }
+    },
+    {
+      "name": "terminal",
+      "type": "string"
+    }
+  ]
+}

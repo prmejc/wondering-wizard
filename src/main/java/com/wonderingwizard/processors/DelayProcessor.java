@@ -184,7 +184,11 @@ public class DelayProcessor implements EventProcessor {
             Instant plannedEnd = lastActiveTakt.plannedStartTime
                     .plusSeconds(lastActiveTakt.durationSeconds);
             long delaySeconds = Duration.between(plannedEnd, currentTime).getSeconds();
-            return Math.max(0, delaySeconds);
+            // Only report delay when takt has reached or passed its planned end
+            if (delaySeconds < 0) {
+                return -1;
+            }
+            return delaySeconds;
         }
 
         // If no active takt but there are completed takts, calculate delay from last completed
@@ -195,7 +199,8 @@ public class DelayProcessor implements EventProcessor {
             return Math.max(0, delaySeconds);
         }
 
-        return 0;
+        // No takt has been activated or completed yet — no delay to report
+        return -1;
     }
 
     @Override

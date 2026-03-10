@@ -14,8 +14,12 @@ import com.wonderingwizard.domain.takt.TimeCondition;
 import com.wonderingwizard.engine.Engine;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessingEngine;
+import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.EventPropagatingEngine;
 import com.wonderingwizard.engine.SideEffect;
+import com.wonderingwizard.kafka.KafkaConsumerManager;
+import com.wonderingwizard.kafka.WorkInstructionEventMapper;
+import com.wonderingwizard.kafka.WorkQueueEventMapper;
 import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
@@ -69,10 +73,13 @@ public class DemoServer {
     private static final Logger logger = Logger.getLogger(DemoServer.class.getName());
 
     private final Engine engine;
+    private final Settings settings;
     private final List<Step> steps = new ArrayList<>();
     private final Instant initialTime = Instant.now().truncatedTo(ChronoUnit.SECONDS);
     private Instant currentTime = initialTime;
     private HttpServer httpServer;
+    private KafkaConsumerManager kafkaConsumerManager;
+    private final SseConnectionManager sseManager = new SseConnectionManager();
 
     /**
      * A numbered step representing a user-initiated event and its resulting side effects.
@@ -117,6 +124,11 @@ public class DemoServer {
                               int durationSeconds, List<ConditionView> conditions) {}
 
     public DemoServer() {
+        this(Settings.load());
+    }
+
+    public DemoServer(Settings settings) {
+        this.settings = settings;
         EventProcessingEngine baseEngine = new EventProcessingEngine();
         this.engine = new EventPropagatingEngine(baseEngine);
         engine.register(new TimeAlarmProcessor());
@@ -126,6 +138,7 @@ public class DemoServer {
     }
 
     DemoServer(Engine engine) {
+        this.settings = Settings.load();
         this.engine = engine;
     }
 
@@ -146,18 +159,71 @@ public class DemoServer {
         httpServer.createContext("/api/override-condition", this::handleOverrideCondition);
         httpServer.createContext("/api/override-action-condition", this::handleOverrideActionCondition);
         httpServer.createContext("/api/step-back-to", this::handleStepBackTo);
+        httpServer.createContext("/api/events", this::handleSseConnection);
         httpServer.start();
+        sseManager.startKeepalive();
         logger.info("Demo server started on port " + port);
+
+        if (settings.kafkaEnabled()) {
+            startKafkaConsumers();
+        } else {
+            logger.info("Kafka consumers disabled (kafka.enabled=false)");
+        }
     }
 
     /**
      * Stops the HTTP server.
      */
     public void stop() {
+        sseManager.stop();
+        if (kafkaConsumerManager != null) {
+            kafkaConsumerManager.stopAll();
+        }
         if (httpServer != null) {
             httpServer.stop(0);
             logger.info("Demo server stopped");
         }
+    }
+
+    private void startKafkaConsumers() {
+        // Wrap the engine so Kafka events are recorded as steps in the viewer
+        Engine stepRecordingEngine = new Engine() {
+            @Override
+            public void register(EventProcessor processor) {
+                engine.register(processor);
+            }
+
+            @Override
+            public List<SideEffect> processEvent(Event event) {
+                return processStep("Kafka: " + event.getClass().getSimpleName(), event);
+            }
+
+            @Override
+            public boolean stepBack() {
+                return engine.stepBack();
+            }
+
+            @Override
+            public int getHistorySize() {
+                return engine.getHistorySize();
+            }
+
+            @Override
+            public void clearHistory() {
+                engine.clearHistory();
+            }
+        };
+
+        kafkaConsumerManager = new KafkaConsumerManager(settings.kafkaConfiguration(), stepRecordingEngine);
+        kafkaConsumerManager.register(
+                settings.workQueueConsumerConfiguration(),
+                new WorkQueueEventMapper()
+        );
+        kafkaConsumerManager.register(
+                settings.workInstructionConsumerConfiguration(),
+                new WorkInstructionEventMapper()
+        );
+        kafkaConsumerManager.startAll();
     }
 
     /**
@@ -175,7 +241,13 @@ public class DemoServer {
         int stepNumber = steps.size() + 1;
         steps.add(new Step(stepNumber, description, event, sideEffects, historyDelta));
 
+        broadcastState();
+
         return sideEffects;
+    }
+
+    private void broadcastState() {
+        sseManager.broadcast("state", JsonSerializer.serialize(getState()));
     }
 
     /**
@@ -545,6 +617,18 @@ public class DemoServer {
 
     // --- HTTP Handlers ---
 
+    private void handleSseConnection(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        sseManager.addConnection(exchange);
+
+        // Send current state immediately so the client is up to date
+        sseManager.broadcast("state", JsonSerializer.serialize(getState()));
+    }
+
     private void handleRoot(HttpExchange exchange) throws IOException {
         if (!"GET".equals(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
@@ -747,6 +831,7 @@ public class DemoServer {
                         currentTime = te.timestamp();
                     }
                 }
+                broadcastState();
                 sendJsonResponse(exchange, 200, JsonSerializer.serialize(getState()));
             } else {
                 sendJsonResponse(exchange, 400, "{\"error\":\"Invalid target step\"}");
