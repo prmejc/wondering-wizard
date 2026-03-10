@@ -145,7 +145,34 @@ public class GraphScheduleBuilder {
     }
 
     private List<ActionTemplate> getDischargeLiftSinglesDropTwin(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return null;
+        return List.of(
+                // ── QC chain (forward from anchor) ──
+                ActionTemplate.of("QC Lift1", QC, qcLiftDuration),
+                ActionTemplate.of("QC Place1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration).withFirstInTakt().withAnchor(),
+                ActionTemplate.of("QC Lift2", QC, qcLiftDuration),
+                ActionTemplate.of("QC Place2", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration).withFirstInTakt(),
+
+
+                // ── TT chain (backward from sync point) ──
+                ActionTemplate.of("drive to QC pull", TT, driveToQcPull),
+                ActionTemplate.of("drive to QC standby", TT, 30),
+                ActionTemplate.of("drive under QC", TT, 30),
+                ActionTemplate.of("handover from QC1", TT, qcLiftDuration)
+                        .withFirstInTakt().withSyncWith(QC, "QC Place1"),
+                ActionTemplate.of("handover from QC2", TT, qcLiftDuration)
+                        .withFirstInTakt().withSyncWith(QC, "QC Place2"),
+
+                ActionTemplate.of("drive to RTG pull", TT, driveToRtgPull),
+                ActionTemplate.of("drive to RTG standby", TT, 240),
+                ActionTemplate.of("drive to RTG under", TT, driveToUnderRtg),
+                ActionTemplate.of("handover to RTG", TT, rtgPlaceDuration).withFirstInTakt(),
+                ActionTemplate.of("drive to buffer", TT, 30),
+
+                // ── RTG chain (backward from sync point) ──
+                ActionTemplate.of("lift from tt", RTG,
+                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, "handover to RTG"),
+                ActionTemplate.of("place on yard", RTG, driveToUnderRtg + rtgPlaceDuration)
+        );
     }
 
     private List<ActionTemplate> getDischargeLiftSinglesDropSinglesDifferentBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
@@ -170,6 +197,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of("drive to RTG standby", TT, 240),
                 ActionTemplate.of("drive to RTG under", TT, driveToUnderRtg),
                 ActionTemplate.of("handover to RTG1", TT, rtgPlaceDuration).withFirstInTakt(),
+                ActionTemplate.of("drive to different bay", TT, 30),
                 ActionTemplate.of("handover to RTG2", TT, rtgPlaceDuration).withFirstInTakt(),
                 ActionTemplate.of("drive to buffer", TT, 30),
 
@@ -184,15 +212,104 @@ public class GraphScheduleBuilder {
     }
 
     private List<ActionTemplate> getDischargeLiftSinglesDropSinglesSameBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return null;
+        return List.of(
+                // ── QC chain (forward from anchor) ──
+                ActionTemplate.of("QC Lift1", QC, qcLiftDuration),
+                ActionTemplate.of("QC Place1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration).withFirstInTakt().withAnchor(),
+                ActionTemplate.of("QC Lift2", QC, qcLiftDuration),
+                ActionTemplate.of("QC Place2", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration).withFirstInTakt(),
+
+
+                // ── TT chain (backward from sync point) ──
+                ActionTemplate.of("drive to QC pull", TT, driveToQcPull),
+                ActionTemplate.of("drive to QC standby", TT, 30),
+                ActionTemplate.of("drive under QC", TT, 30),
+                ActionTemplate.of("handover from QC1", TT, qcLiftDuration)
+                        .withFirstInTakt().withSyncWith(QC, "QC Place1"),
+                ActionTemplate.of("handover from QC2", TT, qcLiftDuration)
+                        .withFirstInTakt().withSyncWith(QC, "QC Place2"),
+
+                ActionTemplate.of("drive to RTG pull", TT, driveToRtgPull),
+                ActionTemplate.of("drive to RTG standby", TT, 240),
+                ActionTemplate.of("drive to RTG under", TT, driveToUnderRtg)
+                        .withFirstInTakt().withOnlyOnePerTakt(),
+                ActionTemplate.of("handover to RTG1", TT, rtgPlaceDuration).withFirstInTakt(),
+                ActionTemplate.of("handover to RTG2", TT, rtgPlaceDuration).withFirstInTakt(),
+                ActionTemplate.of("drive to buffer", TT, 30),
+
+                // ── RTG chain (backward from sync point) ──
+                ActionTemplate.of("lift from tt1", RTG,
+                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, "handover to RTG1"),
+                ActionTemplate.of("place on yard1", RTG, driveToUnderRtg + rtgPlaceDuration),
+                ActionTemplate.of("lift from tt2", RTG,
+                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, "handover to RTG2"),
+                ActionTemplate.of("place on yard2", RTG, driveToUnderRtg + rtgPlaceDuration)
+        );
     }
 
     private List<ActionTemplate> getDischargeLiftTwinsDropSinglesDifferentBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return null;
+        return List.of(
+                // ── QC chain (forward from anchor) ──
+                ActionTemplate.of("QC Lift", QC, qcLiftDuration)
+                        .withFirstInTakt().withAnchor(),
+                ActionTemplate.of("QC Place", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+
+                // ── TT chain (backward from sync point) ──
+                ActionTemplate.of("drive to QC pull", TT, driveToQcPull),
+                ActionTemplate.of("drive to QC standby", TT, 30),
+                ActionTemplate.of("drive under QC", TT, 30),
+                ActionTemplate.of("handover from QC", TT, qcLiftDuration)
+                        .withFirstInTakt().withSyncWith(QC, "QC Place"),
+
+                ActionTemplate.of("drive to RTG pull", TT, driveToRtgPull),
+                ActionTemplate.of("drive to RTG standby", TT, 240),
+                ActionTemplate.of("drive to RTG under", TT, driveToUnderRtg)
+                        .withFirstInTakt().withOnlyOnePerTakt(),
+                ActionTemplate.of("handover to RTG1", TT, rtgPlaceDuration).withFirstInTakt(),
+                ActionTemplate.of("drive to next bay", TT, 20),
+                ActionTemplate.of("handover to RTG2", TT, rtgPlaceDuration).withFirstInTakt(),
+                ActionTemplate.of("drive to buffer", TT, 30),
+
+                // ── RTG chain (backward from sync point) ──
+                ActionTemplate.of("lift from tt1", RTG,
+                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, "handover to RTG1"),
+                ActionTemplate.of("place on yard1", RTG, driveToUnderRtg + rtgPlaceDuration),
+                ActionTemplate.of("lift from tt2", RTG,
+                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, "handover to RTG2"),
+                ActionTemplate.of("place on yard2", RTG, driveToUnderRtg + rtgPlaceDuration)
+        );
     }
 
     private List<ActionTemplate> getDischargeLiftTwinsDropSinglesSameBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return null;
+        return List.of(
+                // ── QC chain (forward from anchor) ──
+                ActionTemplate.of("QC Lift", QC, qcLiftDuration)
+                        .withFirstInTakt().withAnchor(),
+                ActionTemplate.of("QC Place", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+
+                // ── TT chain (backward from sync point) ──
+                ActionTemplate.of("drive to QC pull", TT, driveToQcPull),
+                ActionTemplate.of("drive to QC standby", TT, 30),
+                ActionTemplate.of("drive under QC", TT, 30),
+                ActionTemplate.of("handover from QC", TT, qcLiftDuration)
+                        .withFirstInTakt().withSyncWith(QC, "QC Place"),
+
+                ActionTemplate.of("drive to RTG pull", TT, driveToRtgPull),
+                ActionTemplate.of("drive to RTG standby", TT, 240),
+                ActionTemplate.of("drive to RTG under", TT, driveToUnderRtg)
+                        .withFirstInTakt().withOnlyOnePerTakt(),
+                ActionTemplate.of("handover to RTG1", TT, rtgPlaceDuration).withFirstInTakt(),
+                ActionTemplate.of("handover to RTG2", TT, rtgPlaceDuration).withFirstInTakt(),
+                ActionTemplate.of("drive to buffer", TT, 30),
+
+                // ── RTG chain (backward from sync point) ──
+                ActionTemplate.of("lift from tt1", RTG,
+                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, "handover to RTG1"),
+                ActionTemplate.of("place on yard1", RTG, driveToUnderRtg + rtgPlaceDuration),
+                ActionTemplate.of("lift from tt2", RTG,
+                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, "handover to RTG2"),
+                ActionTemplate.of("place on yard2", RTG, driveToUnderRtg + rtgPlaceDuration)
+        );
     }
 
     private boolean isDifferentBay(WorkInstruction wi, HashMap<Long, WorkInstruction> workInstructionHashMap) {
