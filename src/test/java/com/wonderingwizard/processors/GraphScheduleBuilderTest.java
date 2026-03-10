@@ -99,14 +99,14 @@ class GraphScheduleBuilderTest {
     private static GraphScheduleBuilder builderWith(List<ActionTemplate> template) {
         return new GraphScheduleBuilder(() -> DEFAULT_DURATION_SECONDS, () -> 0) {
             @Override
-            List<ActionTemplate> buildContainerBlueprint(WorkInstruction wi, int qcMudaSeconds, LoadMode loadMode) {
+            List<ActionTemplate> buildContainerBlueprint(WorkInstruction wi, HashMap<Long, WorkInstruction> workInstructionHashMap, int qcMudaSeconds, LoadMode loadMode) {
                 return template;
             }
         };
     }
 
     private static WorkInstruction wi(long id) {
-        return new WorkInstruction(id, 1L, "CHE-001", PENDING, EMT, 120, 60, "", false, false, false, 0L);
+        return new WorkInstruction(id, 1L, "CHE-001", PENDING, EMT, 120, 60, "", false, false, false, 0L, "");
     }
 
     private static List<Takt> schedule(List<ActionTemplate> template, int containerCount) {

@@ -22,6 +22,7 @@ import java.time.Instant;
  * @param isTwinPut whether this is a twin put operation
  * @param isTwinCarry whether this is a twin carry operation
  * @param twinCompanionWorkInstruction the twin companion work instruction ID
+ * @param toPosition the target position for this work instruction
  */
 public record WorkInstructionEvent(
         long workInstructionId,
@@ -35,7 +36,8 @@ public record WorkInstructionEvent(
         boolean isTwinFetch,
         boolean isTwinPut,
         boolean isTwinCarry,
-        long twinCompanionWorkInstruction
+        long twinCompanionWorkInstruction,
+        String toPosition
 ) implements Event {
 
     private static final int DEFAULT_RTG_CYCLE_TIME_SECONDS = 60;
@@ -54,7 +56,7 @@ public record WorkInstructionEvent(
             boolean isTwinCarry) {
         this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
                 estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
-                putChe, isTwinFetch, isTwinPut, isTwinCarry, 0);
+                putChe, isTwinFetch, isTwinPut, isTwinCarry, 0, "");
     }
 
     public WorkInstructionEvent(
@@ -67,7 +69,7 @@ public record WorkInstructionEvent(
             int estimatedRtgCycleTimeSeconds) {
         this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
                 estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
-                "", false, false, false, 0);
+                "", false, false, false, 0, "");
     }
 
     public WorkInstructionEvent(
@@ -79,7 +81,7 @@ public record WorkInstructionEvent(
             int estimatedCycleTimeSeconds) {
         this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
                 estimatedCycleTimeSeconds, DEFAULT_RTG_CYCLE_TIME_SECONDS,
-                "", false, false, false, 0);
+                "", false, false, false, 0, "");
     }
 
     @Override
@@ -95,6 +97,7 @@ public record WorkInstructionEvent(
                 ", isTwinFetch=" + isTwinFetch +
                 ", isTwinPut=" + isTwinPut +
                 ", isTwinCarry=" + isTwinCarry +
-                ", twinCompanionWorkInstruction=" + twinCompanionWorkInstruction + "]";
+                ", twinCompanionWorkInstruction=" + twinCompanionWorkInstruction +
+                ", toPosition=" + toPosition + "]";
     }
 }

@@ -25,6 +25,7 @@ package com.wonderingwizard.kafka.messages;
  * @param estimatedEHCycleTime the estimated EH cycle time in seconds
  * @param containerId the container identifier
  * @param sourceTsMs the source timestamp in milliseconds
+ * @param toPosition the target position for this work instruction
  */
 public record WorkInstructionKafkaMessage(
         String eventType,
@@ -49,6 +50,7 @@ public record WorkInstructionKafkaMessage(
         Boolean isTwinFetch,
         Boolean isTwinPut,
         Boolean isTwinCarry,
-        Long twinCompanionWorkInstruction
+        Long twinCompanionWorkInstruction,
+        String toPosition
 ) {
 }

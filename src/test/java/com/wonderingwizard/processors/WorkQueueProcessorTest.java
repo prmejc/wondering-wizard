@@ -1207,11 +1207,11 @@ class WorkQueueProcessorTest {
             var processor = new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS);
             var instructions = List.of(
                     new WorkInstruction(1L, 1L, "CHE-001", PENDING,
-                            Instant.parse("2024-01-01T10:00:00Z"), 120, 60, "", false, false, false, 0L),
+                            Instant.parse("2024-01-01T10:00:00Z"), 120, 60, "", false, false, false, 0L, ""),
                     new WorkInstruction(2L, 1L, "CHE-002", PENDING,
-                            Instant.parse("2024-01-01T10:00:00Z"), 120, 60, "", false, false, false, 0L),
+                            Instant.parse("2024-01-01T10:00:00Z"), 120, 60, "", false, false, false, 0L, ""),
                     new WorkInstruction(3L, 1L, "CHE-003", PENDING,
-                            Instant.parse("2024-01-01T10:00:00Z"), 120, 60, "", false, false, false, 0L)
+                            Instant.parse("2024-01-01T10:00:00Z"), 120, 60, "", false, false, false, 0L, "")
             );
 
             var takts = processor.createTaktsFromWorkInstructionsPrimvs(

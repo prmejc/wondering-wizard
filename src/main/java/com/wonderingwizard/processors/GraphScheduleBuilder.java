@@ -1,5 +1,6 @@
 package com.wonderingwizard.processors;
 
+import com.wonderingwizard.domain.YardLocation;
 import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
@@ -97,7 +98,7 @@ public class GraphScheduleBuilder {
 
     // ── Blueprint ──────────────────────────────────────────────────────
 
-    List<ActionTemplate> buildContainerBlueprint(WorkInstruction wi, int qcMudaSeconds, LoadMode loadMode) {
+    List<ActionTemplate> buildContainerBlueprint(WorkInstruction wi, HashMap<Long, WorkInstruction> workInstructionHashMap, int qcMudaSeconds, LoadMode loadMode) {
         int qcLiftDuration = 20;
         int rtgPlaceDuration = 20;
         int driveToUnderRtg = 30;
@@ -112,13 +113,100 @@ public class GraphScheduleBuilder {
                 if (!wi.isTwinCarry()){
                     yield getDischargeSingleTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
                 }
+                //pick as twin, drop as singles in the same bay
+                else if (wi.isTwinFetch() && !wi.isTwinPut() && !isDifferentBay(wi, workInstructionHashMap)) {
+                    yield getDischargeLiftTwinsDropSinglesSameBay(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+                }
+                //pick as twin, drop as singles in different bay
+                else if (wi.isTwinFetch() && !wi.isTwinPut() && isDifferentBay(wi, workInstructionHashMap)) {
+                    yield getDischargeLiftTwinsDropSinglesDifferentBay(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+                }
+                //pick as twin, drop as twin
                 else if (wi.isTwinFetch() && wi.isTwinPut()) {
                     yield getDischargeTwinTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
-                } else {
-                    yield getDischargeTwinAsSingleTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+                }
+                //pick as singles, drop as singles in the same bay
+                else if (!wi.isTwinFetch() && !wi.isTwinPut() && !isDifferentBay(wi, workInstructionHashMap)) {
+                    yield getDischargeLiftSinglesDropSinglesSameBay(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+                }
+                //pick as singles, drop as singles in a different bay
+                else if (!wi.isTwinFetch() && !wi.isTwinPut() && isDifferentBay(wi, workInstructionHashMap)) {
+                    yield getDischargeLiftSinglesDropSinglesDifferentBay(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+                }
+                //pick as singles, drop as twin
+                else if (!wi.isTwinFetch() && wi.isTwinPut()) {
+                    yield getDischargeLiftSinglesDropTwin(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+                }
+                else {
+                    throw new RuntimeException("Unsupported twin fetch");
                 }
             }
         };
+    }
+
+    private List<ActionTemplate> getDischargeLiftSinglesDropTwin(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+        return null;
+    }
+
+    private List<ActionTemplate> getDischargeLiftSinglesDropSinglesDifferentBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+        return List.of(
+                // ── QC chain (forward from anchor) ──
+                ActionTemplate.of("QC Lift1", QC, qcLiftDuration),
+                ActionTemplate.of("QC Place1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration).withFirstInTakt().withAnchor(),
+                ActionTemplate.of("QC Lift2", QC, qcLiftDuration),
+                ActionTemplate.of("QC Place2", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration).withFirstInTakt(),
+
+
+                // ── TT chain (backward from sync point) ──
+                ActionTemplate.of("drive to QC pull", TT, driveToQcPull),
+                ActionTemplate.of("drive to QC standby", TT, 30),
+                ActionTemplate.of("drive under QC", TT, 30),
+                ActionTemplate.of("handover from QC1", TT, qcLiftDuration)
+                        .withFirstInTakt().withSyncWith(QC, "QC Place1"),
+                ActionTemplate.of("handover from QC2", TT, qcLiftDuration)
+                        .withFirstInTakt().withSyncWith(QC, "QC Place2"),
+
+                ActionTemplate.of("drive to RTG pull", TT, driveToRtgPull),
+                ActionTemplate.of("drive to RTG standby", TT, 240),
+                ActionTemplate.of("drive to RTG under", TT, driveToUnderRtg),
+                ActionTemplate.of("handover to RTG1", TT, rtgPlaceDuration).withFirstInTakt(),
+                ActionTemplate.of("handover to RTG2", TT, rtgPlaceDuration).withFirstInTakt(),
+                ActionTemplate.of("drive to buffer", TT, 30),
+
+                // ── RTG chain (backward from sync point) ──
+                ActionTemplate.of("lift from tt1", RTG,
+                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, "handover to RTG1"),
+                ActionTemplate.of("place on yard1", RTG, driveToUnderRtg + rtgPlaceDuration),
+                ActionTemplate.of("lift from tt2", RTG,
+                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, "handover to RTG2"),
+                ActionTemplate.of("place on yard2", RTG, driveToUnderRtg + rtgPlaceDuration)
+        );
+    }
+
+    private List<ActionTemplate> getDischargeLiftSinglesDropSinglesSameBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+        return null;
+    }
+
+    private List<ActionTemplate> getDischargeLiftTwinsDropSinglesDifferentBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+        return null;
+    }
+
+    private List<ActionTemplate> getDischargeLiftTwinsDropSinglesSameBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+        return null;
+    }
+
+    private boolean isDifferentBay(WorkInstruction wi, HashMap<Long, WorkInstruction> workInstructionHashMap) {
+        if (wi.twinCompanionWorkInstruction() < 1) return false;
+
+        WorkInstruction companion = workInstructionHashMap.get(wi.twinCompanionWorkInstruction());
+        if (companion == null) return false;
+
+        YardLocation yardLocation = YardLocation.parse(wi.toPosition());
+        YardLocation companionYardLocation = YardLocation.parse(companion.toPosition());
+
+        if (yardLocation == null || companionYardLocation == null) return false;
+
+        return !yardLocation.bay().equals(companionYardLocation.bay());
     }
 
     private static List<ActionTemplate> getDischargeTwinTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
@@ -279,7 +367,7 @@ public class GraphScheduleBuilder {
                 actionWis = List.of(wi);
             }
 
-            var blueprint = buildContainerBlueprint(wi, qcMudaSeconds, loadMode);
+            var blueprint = buildContainerBlueprint(wi, wiById, qcMudaSeconds, loadMode);
             var placed = placeContainerActions(blueprint, containerIdx, actionWis, qcMudaSeconds, takts);
             allPlacedActions.addAll(placed);
 
@@ -290,7 +378,6 @@ public class GraphScheduleBuilder {
         wireDependencies(allPlacedActions);
 
         return takts.values().stream()
-                .filter(t -> !t.actions().isEmpty())
                 .sorted(Comparator.comparingInt(Takt::sequence))
                 .toList();
     }
@@ -320,10 +407,18 @@ public class GraphScheduleBuilder {
         }
 
         // Step 1: Place anchor segment
-        int anchorTaktIndex = containerIndex;
         Segment anchorSegment = findAnchorSegment(segmentsByDevice);
+        var anchorDeviceSegments = segmentsByDevice.getOrDefault(anchorSegment.deviceType(), List.of());
+        int anchorTaktIndex;
+        if (containerIndex == 0) {
+            anchorTaktIndex = 0;
+        } else {
+            int maxAnchorDeviceTakt = findMaxTaktForDevice(takts, anchorSegment.deviceType());
+            int numBackwardSegments = anchorDeviceSegments.indexOf(anchorSegment);
+            anchorTaktIndex = maxAnchorDeviceTakt + Math.max(numBackwardSegments, 1);
+        }
 
-        Instant anchorStartTime = computeAnchorStartTime(containerIndex, wi, takts);
+        Instant anchorStartTime = computeAnchorStartTime(anchorTaktIndex, wi, takts);
         int anchorTaktDuration = wi.estimatedCycleTimeSeconds() + qcMudaSeconds;
 
         ensureTaktExists(takts, anchorTaktIndex, anchorStartTime, anchorTaktDuration);
@@ -339,20 +434,37 @@ public class GraphScheduleBuilder {
         deviceTaktCursor.put(anchorSegment.deviceType(), anchorTaktIndex);
 
         // Forward segments of anchor device
-        var anchorDeviceSegments = segmentsByDevice.getOrDefault(anchorSegment.deviceType(), List.of());
         boolean foundAnchor = false;
         int forwardTakt = anchorTaktIndex;
+        int prevAnchorSegDuration = segmentDuration(anchorSegment);
         for (var seg : anchorDeviceSegments) {
             if (seg.isAnchor()) { foundAnchor = true; continue; }
             if (foundAnchor && seg.syncRef() == null) {
+                int prevTaktIdx = forwardTakt;
                 forwardTakt++;
                 ensureTaktExists(takts, forwardTakt,
                         computeTaktStartTime(forwardTakt, takts),
                         wi.estimatedCycleTimeSeconds() + qcMudaSeconds);
+                forwardTakt = pushForwardUntilFits(forwardTakt, prevAnchorSegDuration,
+                        takts.get(prevTaktIdx), takts);
                 placeSegment(seg, forwardTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
                 deviceTaktCursor.put(anchorSegment.deviceType(), forwardTakt);
                 remaining.remove(seg);
+                prevAnchorSegDuration = segmentDuration(seg);
             }
+        }
+
+        // Step 2b: Place backward segments of the anchor device (before the anchor)
+        int anchorIdx = anchorDeviceSegments.indexOf(anchorSegment);
+        int backTakt = anchorTaktIndex;
+        for (int i = anchorIdx - 1; i >= 0; i--) {
+            var backSeg = anchorDeviceSegments.get(i);
+            backTakt--;
+            ensureTaktExists(takts, backTakt,
+                    computeTaktStartTime(backTakt, takts), DEFAULT_TAKT_DURATION);
+            placeSegment(backSeg, backTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
+            deviceTaktCursor.put(anchorSegment.deviceType(), backTakt);
+            remaining.remove(backSeg);
         }
 
         // Step 3: Resolve sync-based segments and their backward chains
@@ -392,10 +504,12 @@ public class GraphScheduleBuilder {
 
                     // Place forward segments for this device (after the sync point).
                     // Each forward segment must start after the previous segment's chain has finished.
+                    // Stop at segments that have their own syncRef — they will be placed by their own sync resolution.
                     int prevFwdTaktIdx = targetTakt;
                     int prevSegDuration = segmentDuration(seg);
                     for (int i = syncIdx + 1; i < deviceSegs.size(); i++) {
                         var fwdSeg = deviceSegs.get(i);
+                        if (fwdSeg.syncRef() != null) break;
                         if (!remaining.contains(fwdSeg)) continue;
                         int forwardTaktIdx = prevFwdTaktIdx + 1;
                         ensureTaktExists(takts, forwardTaktIdx,
@@ -532,6 +646,23 @@ public class GraphScheduleBuilder {
         return result;
     }
 
+    /**
+     * Finds the highest takt index that contains an action of the given device type.
+     * Returns -1 if no such takt exists.
+     */
+    private int findMaxTaktForDevice(Map<Integer, Takt> takts, DeviceType deviceType) {
+        int max = -1;
+        for (var entry : takts.entrySet()) {
+            for (var action : entry.getValue().actions()) {
+                if (action.deviceType() == deviceType) {
+                    max = Math.max(max, entry.getKey());
+                    break;
+                }
+            }
+        }
+        return max;
+    }
+
     private Segment findAnchorSegment(Map<DeviceType, List<Segment>> segmentsByDevice) {
         return segmentsByDevice.values().stream()
                 .flatMap(List::stream)
@@ -635,12 +766,10 @@ public class GraphScheduleBuilder {
 
     // ── Takt management helpers ────────────────────────────────────────
 
-    private Instant computeAnchorStartTime(int containerIndex, WorkInstruction wi, Map<Integer, Takt> takts) {
-        if (containerIndex > 0) {
-            var prevTakt = takts.get(containerIndex - 1);
-            if (prevTakt != null) {
-                return prevTakt.plannedStartTime().plusSeconds(prevTakt.durationSeconds());
-            }
+    private Instant computeAnchorStartTime(int anchorTaktIndex, WorkInstruction wi, Map<Integer, Takt> takts) {
+        var prevTakt = takts.get(anchorTaktIndex - 1);
+        if (prevTakt != null) {
+            return prevTakt.plannedStartTime().plusSeconds(prevTakt.durationSeconds());
         }
         return wi.estimatedMoveTime();
     }

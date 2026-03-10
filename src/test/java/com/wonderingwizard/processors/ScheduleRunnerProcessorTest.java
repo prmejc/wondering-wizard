@@ -260,8 +260,8 @@ class ScheduleRunnerProcessorTest {
         }
 
         @Test
-        @DisplayName("Empty takt should be activated and completed immediately on first TimeEvent")
-        void emptyTakt_completesImmediately() {
+        @DisplayName("Empty takt should not complete until previous takt is completed")
+        void emptyTakt_completesAfterPreviousTakt() {
             // Create 3 takts: first with actions, second empty, third with action depending on first
             Action a1 = Action.create(DeviceType.QC, "action 1");
             Action a2 = Action.create(DeviceType.QC, "action 2");
@@ -280,17 +280,26 @@ class ScheduleRunnerProcessorTest {
                             se instanceof TaktActivated ta && ta.taktName().equals("TAKT100")),
                     "TAKT100 should be activated");
 
-            // TimeEvent at t1+1 triggers empty takt1 activation and immediate completion
+            // TimeEvent at t1+1 triggers empty takt1 activation but NOT completion
+            // (previous takt TAKT100 is still active)
             List<SideEffect> tick2Effects = processor.process(new TimeEvent(t1.plusSeconds(1)));
             assertTrue(tick2Effects.stream().anyMatch(se ->
                             se instanceof TaktActivated ta && ta.taktName().equals("TAKT101")),
                     "Empty takt TAKT101 should be activated");
-            assertTrue(tick2Effects.stream().anyMatch(se ->
+            assertFalse(tick2Effects.stream().anyMatch(se ->
                             se instanceof TaktCompleted tc && tc.taktName().equals("TAKT101")),
-                    "Empty takt TAKT101 should be completed immediately");
+                    "Empty takt TAKT101 should NOT be completed while TAKT100 is active");
 
-            // Complete a1, then advance time to t2 — takt2 should activate and a2 should activate
-            processor.process(new ActionCompletedEvent(a1.id(), 1L));
+            // Complete a1 — TAKT100 completes, then TAKT101 cascades to completed
+            List<SideEffect> completeEffects = processor.process(new ActionCompletedEvent(a1.id(), 1L));
+            assertTrue(completeEffects.stream().anyMatch(se ->
+                            se instanceof TaktCompleted tc && tc.taktName().equals("TAKT100")),
+                    "TAKT100 should be completed");
+            assertTrue(completeEffects.stream().anyMatch(se ->
+                            se instanceof TaktCompleted tc && tc.taktName().equals("TAKT101")),
+                    "Empty takt TAKT101 should cascade to completed after TAKT100 completes");
+
+            // Advance time to t2 — takt2 should activate and a2 should activate
             List<SideEffect> tick3Effects = processor.process(new TimeEvent(t2.plusSeconds(1)));
 
             assertTrue(tick3Effects.stream().anyMatch(se ->

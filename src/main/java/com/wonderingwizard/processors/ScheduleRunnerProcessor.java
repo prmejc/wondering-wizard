@@ -451,9 +451,11 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             sideEffects.add(new TaktActivated(workQueueId, takt.name(), this.currentTime));
 
             if (takt.actions().isEmpty()) {
-                // Empty takt completes immediately
-                state.taktStates.put(takt.name(), TaktState.COMPLETED);
-                sideEffects.add(new TaktCompleted(workQueueId, takt.name(), this.currentTime));
+                // Empty takt completes immediately if previous takt is completed
+                if (isPreviousTaktCompleted(state, takt.name())) {
+                    state.taktStates.put(takt.name(), TaktState.COMPLETED);
+                    sideEffects.add(new TaktCompleted(workQueueId, takt.name(), this.currentTime));
+                }
                 continue;
             }
 
@@ -461,6 +463,42 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             sideEffects.addAll(activateEligibleActions(workQueueId, state, takt.name()));
         }
 
+        return sideEffects;
+    }
+
+    /**
+     * Checks whether the takt immediately before the given takt (in list order) is completed.
+     * Returns {@code true} if there is no previous takt (i.e. this is the first takt).
+     */
+    private boolean isPreviousTaktCompleted(ScheduleState state, String taktName) {
+        Takt previousTakt = null;
+        for (Takt t : state.takts) {
+            if (t.name().equals(taktName)) {
+                break;
+            }
+            previousTakt = t;
+        }
+        if (previousTakt == null) {
+            return true;
+        }
+        return state.taktStates.get(previousTakt.name()) == TaktState.COMPLETED;
+    }
+
+    /**
+     * Cascades takt completion: checks all active takts whose actions are fully completed
+     * and whose previous takt is now completed.
+     */
+    private List<SideEffect> tryCompletePendingTakts(long workQueueId, ScheduleState state) {
+        List<SideEffect> sideEffects = new ArrayList<>();
+        for (Takt takt : state.takts) {
+            TaktState taktState = state.taktStates.get(takt.name());
+            if (taktState == TaktState.ACTIVE
+                    && state.isTaktFullyCompleted(takt.name())
+                    && isPreviousTaktCompleted(state, takt.name())) {
+                state.taktStates.put(takt.name(), TaktState.COMPLETED);
+                sideEffects.add(new TaktCompleted(workQueueId, takt.name(), this.currentTime));
+            }
+        }
         return sideEffects;
     }
 
@@ -556,9 +594,13 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
         // Check if the completed action's takt is now fully completed
         String completedTaktName = completedActionInfo.taktName();
-        if (state.isTaktFullyCompleted(completedTaktName)) {
+        if (state.isTaktFullyCompleted(completedTaktName)
+                && isPreviousTaktCompleted(state, completedTaktName)) {
             state.taktStates.put(completedTaktName, TaktState.COMPLETED);
             sideEffects.add(new TaktCompleted(workQueueId, completedTaktName, currentTime));
+
+            // Cascade: completing this takt may unblock subsequent takts
+            sideEffects.addAll(tryCompletePendingTakts(workQueueId, state));
         }
 
         // Try to activate takts whose first action dependencies are now met

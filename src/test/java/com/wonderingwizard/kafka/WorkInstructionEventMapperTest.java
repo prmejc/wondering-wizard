@@ -45,7 +45,8 @@ class WorkInstructionEventMapperTest {
                     {"name": "isTwinFetch", "type": ["null", "boolean"], "default": null},
                     {"name": "isTwinPut", "type": ["null", "boolean"], "default": null},
                     {"name": "isTwinCarry", "type": ["null", "boolean"], "default": null},
-                    {"name": "twinCompanionWorkInstruction", "type": ["null", "long"], "default": null}
+                    {"name": "twinCompanionWorkInstruction", "type": ["null", "long"], "default": null},
+                    {"name": "toPosition", "type": ["null", "string"], "default": null}
                 ]
             }
             """;
@@ -74,6 +75,7 @@ class WorkInstructionEventMapperTest {
         record.put("isTwinPut", false);
         record.put("isTwinCarry", true);
         record.put("twinCompanionWorkInstruction", 202L);
+        record.put("toPosition", "Y-01-02-03");
 
         WorkInstructionEvent event = mapper.map(record);
 
@@ -89,6 +91,7 @@ class WorkInstructionEventMapperTest {
         assertFalse(event.isTwinPut());
         assertTrue(event.isTwinCarry());
         assertEquals(202L, event.twinCompanionWorkInstruction());
+        assertEquals("Y-01-02-03", event.toPosition());
     }
 
     @Test
@@ -152,6 +155,7 @@ class WorkInstructionEventMapperTest {
         assertFalse(event.isTwinPut());
         assertFalse(event.isTwinCarry());
         assertEquals(0L, event.twinCompanionWorkInstruction());
+        assertEquals("", event.toPosition());
     }
 
     @Test
@@ -250,6 +254,7 @@ class WorkInstructionEventMapperTest {
         record.put("isTwinPut", false);
         record.put("isTwinCarry", true);
         record.put("twinCompanionWorkInstruction", 999L);
+        record.put("toPosition", "Y-05-10-15");
 
         WorkInstructionKafkaMessage kafkaMessage = mapper.fromAvro(record);
 
@@ -276,5 +281,6 @@ class WorkInstructionEventMapperTest {
         assertEquals(false, kafkaMessage.isTwinPut());
         assertEquals(true, kafkaMessage.isTwinCarry());
         assertEquals(999L, kafkaMessage.twinCompanionWorkInstruction());
+        assertEquals("Y-05-10-15", kafkaMessage.toPosition());
     }
 }

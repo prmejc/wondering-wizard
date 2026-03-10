@@ -116,7 +116,8 @@ public class WorkQueueProcessor implements EventProcessor {
                 event.isTwinFetch(),
                 event.isTwinPut(),
                 event.isTwinCarry(),
-                event.twinCompanionWorkInstruction()
+                event.twinCompanionWorkInstruction(),
+                event.toPosition()
         );
 
         workInstructions

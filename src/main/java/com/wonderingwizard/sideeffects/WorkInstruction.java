@@ -22,6 +22,7 @@ import java.time.Instant;
  * @param isTwinPut whether this is a twin put operation
  * @param isTwinCarry whether this is a twin carry operation
  * @param twinCompanionWorkInstruction the twin companion work instruction ID
+ * @param toPosition the target position for this work instruction
  */
 public record WorkInstruction(
         long workInstructionId,
@@ -35,7 +36,8 @@ public record WorkInstruction(
         boolean isTwinFetch,
         boolean isTwinPut,
         boolean isTwinCarry,
-        long twinCompanionWorkInstruction
+        long twinCompanionWorkInstruction,
+        String toPosition
 ) {
 
     @Override
@@ -51,6 +53,7 @@ public record WorkInstruction(
                 ", isTwinFetch=" + isTwinFetch +
                 ", isTwinPut=" + isTwinPut +
                 ", isTwinCarry=" + isTwinCarry +
-                ", twinCompanionWorkInstruction=" + twinCompanionWorkInstruction + "]";
+                ", twinCompanionWorkInstruction=" + twinCompanionWorkInstruction +
+                ", toPosition=" + toPosition + "]";
     }
 }

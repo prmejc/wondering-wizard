@@ -51,7 +51,8 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 getBooleanField(record, "isTwinFetch"),
                 getBooleanField(record, "isTwinPut"),
                 getBooleanField(record, "isTwinCarry"),
-                getLongField(record, "twinCompanionWorkInstruction")
+                getLongField(record, "twinCompanionWorkInstruction"),
+                getStringField(record, "toPosition")
         );
     }
 
@@ -97,6 +98,10 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 ? kafkaMessage.twinCompanionWorkInstruction()
                 : 0;
 
+        String toPosition = kafkaMessage.toPosition() != null
+                ? kafkaMessage.toPosition()
+                : "";
+
         logger.fine("Mapped WorkInstruction Kafka message: workInstructionId=" + workInstructionId
                 + ", workQueueId=" + workQueueId + ", status=" + status
                 + ", fetchChe=" + fetchChe + ", putChe=" + putChe);
@@ -104,7 +109,8 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
         return new WorkInstructionEvent(
                 workInstructionId, workQueueId, fetchChe, status,
                 estimatedMoveTime, estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
-                putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction);
+                putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
+                toPosition);
     }
 
     private WorkInstructionStatus mapStatus(String moveStage) {
