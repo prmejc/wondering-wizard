@@ -260,6 +260,19 @@ class ScheduleView extends HTMLElement {
       this.querySelector('#scale-val').textContent = this._pxPerSec;
       this.refresh(window._lastState || {});
     });
+    // Delegated click handler for complete buttons — survives DOM rebuilds during playback
+    this.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.complete-btn');
+      if (!btn) return;
+      e.stopPropagation();
+      await apiCall('/api/action-completed', {
+        actionId: btn.dataset.actionId,
+        workQueueId: btn.dataset.wq
+      });
+      const popup = btn.closest('.action-popup');
+      if (popup) popup.remove();
+      refreshState();
+    });
   }
   refresh(state) {
     const container = this.querySelector('#schedule-content');
@@ -426,17 +439,6 @@ class ScheduleView extends HTMLElement {
     }
     container.innerHTML = html;
 
-    // Bind complete buttons
-    container.querySelectorAll('.complete-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        await apiCall('/api/action-completed', {
-          actionId: btn.dataset.actionId,
-          workQueueId: btn.dataset.wq
-        });
-        refreshState();
-      });
-    });
-
     // Bind click popups for narrow actions
     const self = this;
     container.querySelectorAll('[data-popup-html]').forEach(el => {
@@ -462,15 +464,6 @@ class ScheduleView extends HTMLElement {
         popup.style.cssText = 'position:absolute;z-index:100;background:' + el.dataset.popupBg + ';border:1px solid ' + el.dataset.popupBorder + ';border-top:3px solid ' + el.dataset.popupContainer + ';border-radius:4px;padding:3px 5px;font-size:11px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.25);left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 2) + 'px';
         popup.innerHTML = '<div style="display:flex;justify-content:flex-end"><span style="cursor:pointer;font-size:13px;line-height:1;color:var(--text-muted)" onclick="this.closest(\'.action-popup\').remove()">&#10005;</span></div>' + el.dataset.popupHtml;
         self.appendChild(popup);
-        // Bind complete buttons inside popup
-        popup.querySelectorAll('.complete-btn').forEach(btn => {
-          btn.addEventListener('click', async (ev) => {
-            ev.stopPropagation();
-            await apiCall('/api/action-completed', { actionId: btn.dataset.actionId, workQueueId: btn.dataset.wq });
-            popup.remove();
-            refreshState();
-          });
-        });
       });
     });
 
