@@ -142,6 +142,10 @@ class ScheduleHeader extends HTMLElement {
         <label style="font-size:12px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
           <input id="play-resolution" type="number" min="1" max="900" step="1" value="1" style="width:50px;text-align:center;font-size:12px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)">s/tick
         </label>
+        <span style="border-left:1px solid var(--border);height:24px;margin:0 4px"></span>
+        <button class="secondary" onclick="this.closest('schedule-header').exportLog()" title="Export event log">&#8615; Export</button>
+        <button class="secondary" onclick="this.closest('schedule-header').importLog()" title="Import event log">&#8613; Import</button>
+        <input id="import-file" type="file" accept=".json" style="display:none">
       </div>`;
     this.setAttribute('data-refresh', '');
   }
@@ -160,6 +164,32 @@ class ScheduleHeader extends HTMLElement {
     const resolution = parseInt(this.querySelector('#play-resolution').value) || 1;
     await apiCall('/api/tick', { seconds: resolution });
     await refreshState();
+  }
+  async exportLog() {
+    const res = await fetch(API + '/api/event-log/export');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'event-log.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  importLog() {
+    const fileInput = this.querySelector('#import-file');
+    fileInput.value = '';
+    fileInput.onchange = async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const text = await file.text();
+      await fetch(API + '/api/event-log/import', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: text
+      });
+      refreshState();
+    };
+    fileInput.click();
   }
   togglePlay() {
     if (this._playTimer) {
@@ -691,7 +721,7 @@ class TimelinePanel extends HTMLElement {
     let html = '';
     for (let i = steps.length - 1; i >= 0; i--) {
       const step = steps[i];
-      if (hideTicks && step.description && step.description.startsWith('Tick ')) continue;
+      if (hideTicks && step.description && (step.description.startsWith('Tick ') || step.description === 'System time set')) continue;
       const effectCount = (step.sideEffects || []).length;
       html += '<div class="timeline-entry" data-step="' + step.stepNumber + '" ';
       html += 'style="padding:8px 10px;margin-bottom:4px;border-radius:4px;cursor:pointer;border:1px solid var(--border);font-size:13px;transition:background .15s"';

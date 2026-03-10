@@ -9,6 +9,7 @@ import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.SetTimeAlarm;
+import com.wonderingwizard.events.SystemTimeSet;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
@@ -145,6 +146,12 @@ public final class JsonSerializer {
                 writeField(sb, "timestamp", e.timestamp(), false);
                 sb.append('}');
             }
+            case SystemTimeSet e -> {
+                sb.append('{');
+                writeField(sb, "type", "SystemTimeSet", true);
+                writeField(sb, "timestamp", e.timestamp(), false);
+                sb.append('}');
+            }
             case SetTimeAlarm e -> {
                 sb.append('{');
                 writeField(sb, "type", "SetTimeAlarm", true);
@@ -158,6 +165,7 @@ public final class JsonSerializer {
                 writeField(sb, "workQueueId", e.workQueueId(), false);
                 writeField(sb, "status", e.status(), false);
                 writeField(sb, "qcMudaSeconds", e.qcMudaSeconds(), false);
+                writeField(sb, "loadMode", e.loadMode(), false);
                 sb.append('}');
             }
             case WorkInstructionEvent e -> {
@@ -170,6 +178,12 @@ public final class JsonSerializer {
                 writeField(sb, "estimatedMoveTime", e.estimatedMoveTime(), false);
                 writeField(sb, "estimatedCycleTimeSeconds", e.estimatedCycleTimeSeconds(), false);
                 writeField(sb, "estimatedRtgCycleTimeSeconds", e.estimatedRtgCycleTimeSeconds(), false);
+                writeField(sb, "putChe", e.putChe(), false);
+                writeField(sb, "isTwinFetch", e.isTwinFetch(), false);
+                writeField(sb, "isTwinPut", e.isTwinPut(), false);
+                writeField(sb, "isTwinCarry", e.isTwinCarry(), false);
+                writeField(sb, "twinCompanionWorkInstruction", e.twinCompanionWorkInstruction(), false);
+                writeField(sb, "toPosition", e.toPosition(), false);
                 sb.append('}');
             }
             case ActionCompletedEvent e -> {

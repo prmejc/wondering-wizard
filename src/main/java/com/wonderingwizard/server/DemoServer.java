@@ -23,12 +23,14 @@ import com.wonderingwizard.kafka.WorkQueueEventMapper;
 import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
+import com.wonderingwizard.events.SystemTimeSet;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkInstructionStatus;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.processors.DelayProcessor;
+import com.wonderingwizard.processors.EventLogProcessor;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
 import com.wonderingwizard.processors.WorkQueueProcessor;
@@ -75,7 +77,7 @@ public class DemoServer {
     private final Engine engine;
     private final Settings settings;
     private final List<Step> steps = new ArrayList<>();
-    private final Instant initialTime = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+    private final Instant initialTime = Instant.EPOCH;
     private Instant currentTime = initialTime;
     private HttpServer httpServer;
     private KafkaConsumerManager kafkaConsumerManager;
@@ -131,6 +133,7 @@ public class DemoServer {
         this.settings = settings;
         EventProcessingEngine baseEngine = new EventProcessingEngine();
         this.engine = new EventPropagatingEngine(baseEngine);
+        engine.register(new EventLogProcessor());
         engine.register(new TimeAlarmProcessor());
         engine.register(new WorkQueueProcessor());
         engine.register(new ScheduleRunnerProcessor());
@@ -159,10 +162,15 @@ public class DemoServer {
         httpServer.createContext("/api/override-condition", this::handleOverrideCondition);
         httpServer.createContext("/api/override-action-condition", this::handleOverrideActionCondition);
         httpServer.createContext("/api/step-back-to", this::handleStepBackTo);
+        httpServer.createContext("/api/event-log/export", this::handleExportEventLog);
+        httpServer.createContext("/api/event-log/import", this::handleImportEventLog);
         httpServer.createContext("/api/events", this::handleSseConnection);
         httpServer.start();
         sseManager.startKeepalive();
         logger.info("Demo server started on port " + port);
+
+        // Set system time to current computer time
+        sendSystemTimeSet(Instant.now().truncatedTo(ChronoUnit.SECONDS));
 
         if (settings.kafkaEnabled()) {
             startKafkaConsumers();
@@ -227,6 +235,16 @@ public class DemoServer {
     }
 
     /**
+     * Sends a SystemTimeSet event, updating the system clock.
+     *
+     * @param timestamp the time to set
+     */
+    public void sendSystemTimeSet(Instant timestamp) {
+        currentTime = timestamp;
+        processStep("System time set", new SystemTimeSet(timestamp));
+    }
+
+    /**
      * Processes an event and records it as a numbered step.
      *
      * @param description short description of the event
@@ -234,6 +252,11 @@ public class DemoServer {
      * @return the list of side effects produced
      */
     public List<SideEffect> processStep(String description, Event event) {
+        // Handle SystemTimeSet: update currentTime
+        if (event instanceof SystemTimeSet sts) {
+            currentTime = sts.timestamp();
+        }
+
         int historyBefore = engine.getHistorySize();
         List<SideEffect> sideEffects = engine.processEvent(event);
         int historyDelta = engine.getHistorySize() - historyBefore;
@@ -838,10 +861,12 @@ public class DemoServer {
             boolean success = stepBackTo(targetStep);
 
             if (success) {
-                // Recalculate current time from remaining tick steps
+                // Recalculate current time from remaining steps
                 currentTime = initialTime;
                 for (Step step : steps) {
-                    if (step.event() instanceof TimeEvent te) {
+                    if (step.event() instanceof SystemTimeSet sts) {
+                        currentTime = sts.timestamp();
+                    } else if (step.event() instanceof TimeEvent te) {
                         currentTime = te.timestamp();
                     }
                 }
@@ -853,6 +878,208 @@ public class DemoServer {
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }
+    }
+
+    private void handleExportEventLog(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        sb.append('[');
+        boolean first = true;
+        for (Step step : steps) {
+            if (!first) sb.append(',');
+            sb.append("{\"description\":");
+            appendJsonString(sb, step.description());
+            sb.append(",\"event\":");
+            sb.append(JsonSerializer.serialize(step.event()));
+            sb.append('}');
+            first = false;
+        }
+        sb.append(']');
+
+        byte[] bytes = sb.toString().getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
+        exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"event-log.json\"");
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        exchange.sendResponseHeaders(200, bytes.length);
+        try (OutputStream os = exchange.getResponseBody()) {
+            os.write(bytes);
+        }
+    }
+
+    private void handleImportEventLog(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            List<Map<String, String>> entries = parseImportArray(body);
+
+            // Reset engine to initial state
+            stepBackTo(0);
+            currentTime = initialTime;
+            engine.clearHistory();
+
+            // Replay events
+            for (Map<String, String> entry : entries) {
+                String description = entry.get("description");
+                Event event = EventDeserializer.deserialize(entry);
+
+                // For TimeEvents, update currentTime before processStep
+                // (SystemTimeSet is handled inside processStep)
+                if (event instanceof TimeEvent te) {
+                    currentTime = te.timestamp();
+                }
+
+                processStep(description != null ? description : "Imported", event);
+            }
+
+            broadcastState();
+            sendJsonResponse(exchange, 200, JsonSerializer.serialize(getState()));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    /**
+     * Parses a JSON array of objects where each object has a "description" field
+     * and an "event" sub-object. Flattens the event fields into the returned maps.
+     */
+    private List<Map<String, String>> parseImportArray(String json) {
+        List<Map<String, String>> result = new ArrayList<>();
+        String trimmed = json.strip();
+        if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) {
+            throw new IllegalArgumentException("Expected JSON array");
+        }
+
+        // Parse the array elements by finding matching braces at the top level
+        int depth = 0;
+        int start = -1;
+        for (int i = 1; i < trimmed.length() - 1; i++) {
+            char c = trimmed.charAt(i);
+            if (c == '"') {
+                // Skip string content
+                i++;
+                while (i < trimmed.length() && trimmed.charAt(i) != '"') {
+                    if (trimmed.charAt(i) == '\\') i++;
+                    i++;
+                }
+            } else if (c == '{') {
+                if (depth == 0) start = i;
+                depth++;
+            } else if (c == '}') {
+                depth--;
+                if (depth == 0 && start >= 0) {
+                    String element = trimmed.substring(start, i + 1);
+                    result.add(parseImportEntry(element));
+                    start = -1;
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Parses a single import entry: {"description":"...", "event":{...}}.
+     * Extracts the description and flattens the event fields into a single map.
+     */
+    private Map<String, String> parseImportEntry(String json) {
+        // Find the "event" sub-object and "description" field
+        Map<String, String> result = new HashMap<>();
+
+        // Extract description
+        int descIdx = json.indexOf("\"description\"");
+        if (descIdx >= 0) {
+            int colonIdx = json.indexOf(':', descIdx + 13);
+            int valStart = json.indexOf('"', colonIdx + 1);
+            int valEnd = findClosingQuote(json, valStart);
+            result.put("description", unescape(json.substring(valStart + 1, valEnd)));
+        }
+
+        // Extract the event sub-object
+        int eventIdx = json.indexOf("\"event\"");
+        if (eventIdx >= 0) {
+            int colonIdx = json.indexOf(':', eventIdx + 7);
+            int braceStart = json.indexOf('{', colonIdx);
+            int depth = 0;
+            int braceEnd = braceStart;
+            for (int i = braceStart; i < json.length(); i++) {
+                char c = json.charAt(i);
+                if (c == '"') {
+                    i++;
+                    while (i < json.length() && json.charAt(i) != '"') {
+                        if (json.charAt(i) == '\\') i++;
+                        i++;
+                    }
+                } else if (c == '{') {
+                    depth++;
+                } else if (c == '}') {
+                    depth--;
+                    if (depth == 0) { braceEnd = i; break; }
+                }
+            }
+            String eventJson = json.substring(braceStart, braceEnd + 1);
+            result.putAll(JsonParser.parseObject(eventJson));
+        }
+
+        return result;
+    }
+
+    private static int findClosingQuote(String s, int openPos) {
+        int pos = openPos + 1;
+        while (pos < s.length()) {
+            if (s.charAt(pos) == '\\') {
+                pos += 2;
+            } else if (s.charAt(pos) == '"') {
+                return pos;
+            } else {
+                pos++;
+            }
+        }
+        return s.length() - 1;
+    }
+
+    private static String unescape(String s) {
+        if (!s.contains("\\")) return s;
+        StringBuilder sb = new StringBuilder(s.length());
+        for (int i = 0; i < s.length(); i++) {
+            if (s.charAt(i) == '\\' && i + 1 < s.length()) {
+                char next = s.charAt(i + 1);
+                switch (next) {
+                    case '"' -> sb.append('"');
+                    case '\\' -> sb.append('\\');
+                    case 'n' -> sb.append('\n');
+                    case 'r' -> sb.append('\r');
+                    case 't' -> sb.append('\t');
+                    default -> { sb.append('\\'); sb.append(next); }
+                }
+                i++;
+            } else {
+                sb.append(s.charAt(i));
+            }
+        }
+        return sb.toString();
+    }
+
+    private static void appendJsonString(StringBuilder sb, String s) {
+        sb.append('"');
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> sb.append(c);
+            }
+        }
+        sb.append('"');
     }
 
     // --- Utility methods ---

@@ -329,9 +329,8 @@ public class GraphScheduleBuilder {
     private static List<ActionTemplate> getDischargeTwinTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return List.of(
                 // ── QC chain (forward from anchor) ──
-                ActionTemplate.of("QC Lift", QC, qcLiftDuration)
-                        .withFirstInTakt().withAnchor(),
-                ActionTemplate.of("QC Place", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+                ActionTemplate.of("QC Lift", QC, qcLiftDuration),
+                ActionTemplate.of("QC Place", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration).withFirstInTakt().withAnchor(),
 
                 // ── TT chain (backward from sync point) ──
                 ActionTemplate.of("drive to QC pull", TT, driveToQcPull),

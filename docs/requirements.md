@@ -841,3 +841,69 @@ mvn test -Dtest="WorkQueueEventMapperTest,KafkaEventConsumerTest,ConsumerConfigu
 - `src/test/java/com/wonderingwizard/kafka/ConsumerConfigurationTest.java`
 - `src/test/java/com/wonderingwizard/kafka/KafkaConsumerManagerTest.java`
 - `pom.xml` (modified — added Kafka, Avro, Confluent dependencies)
+
+---
+
+### F-12: Event Log Export/Import
+
+**Status:** Implemented
+
+**Description:**
+Implement an EventLogProcessor that records every event passing through the system. The web viewer provides Export and Import buttons that allow users to download the full event log as a JSON file and later import it to restore the system to that exact state.
+
+1. An `EventLogProcessor` is registered with the engine and records every event in order
+2. A `GET /api/event-log/export` endpoint returns all user-initiated steps as a downloadable JSON file
+3. A `POST /api/event-log/import` endpoint accepts an exported JSON file, resets the engine, and replays all events to restore state
+4. The web viewer header has Export and Import buttons
+5. Export downloads an `event-log.json` file via the browser
+6. Import opens a file picker, reads the selected JSON file, and sends it to the import endpoint
+
+**Export Format:**
+
+```json
+[
+  {"description":"WI 1","event":{"type":"WorkInstructionEvent","workInstructionId":1,...}},
+  {"description":"Activate WQ","event":{"type":"WorkQueueMessage","workQueueId":1,"status":"ACTIVE",...}},
+  {"description":"Tick +60s","event":{"type":"TimeEvent","timestamp":"2024-01-01T00:06:00Z"}}
+]
+```
+
+**Import Behavior:**
+1. Reset engine to initial state (step back to 0, clear history)
+2. For each entry in the JSON array, reconstruct the event from the `event` sub-object
+3. Replay each event through `processStep()` with the original description
+4. Broadcast updated state via SSE to all connected clients
+
+**REST API:**
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/event-log/export` | Download event log as JSON file |
+| `POST` | `/api/event-log/import` | Import event log JSON, reset and replay |
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Register EventLogProcessor with engine | Processor records all events, produces no side effects |
+| 2 | Process several events | Event log grows with each event |
+| 3 | Export via GET /api/event-log/export | JSON array of steps with descriptions and events |
+| 4 | Import the exported JSON into a fresh server | All steps replayed, schedules and state restored |
+| 5 | Click Export button in web viewer | Browser downloads event-log.json |
+| 6 | Click Import button and select file | System resets and replays events from file |
+
+**Test Execution:**
+```bash
+# Run tests
+mvn test -Dtest="EventLogProcessorTest,EventDeserializerTest,EventLogExportImportTest"
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/processors/EventLogProcessor.java`
+- `src/main/java/com/wonderingwizard/server/EventDeserializer.java`
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — export/import endpoints)
+- `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — full WorkInstructionEvent and WorkQueueMessage serialization)
+- `src/main/resources/index.html` (modified — Export and Import buttons)
+- `src/test/java/com/wonderingwizard/processors/EventLogProcessorTest.java`
+- `src/test/java/com/wonderingwizard/server/EventDeserializerTest.java`
+- `src/test/java/com/wonderingwizard/server/EventLogExportImportTest.java`

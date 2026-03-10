@@ -211,7 +211,8 @@ com.wonderingwizard
 │   ├── GraphScheduleBuilder.java    # Graph-based takt generation (feature-flagged alternative)
 │   ├── ResourceAction.java          # Legacy action template for imperative takt generation
 │   ├── ScheduleRunnerProcessor.java # Schedule execution and action state management
-│   └── DelayProcessor.java         # Schedule delay tracking and calculation
+│   ├── DelayProcessor.java         # Schedule delay tracking and calculation
+│   └── EventLogProcessor.java      # Records all events for export/import
 ├── kafka/
 │   ├── KafkaConfiguration.java      # Top-level Kafka connection config (broker, SASL, schema registry)
 │   ├── ConsumerConfiguration.java   # Per-topic consumer config (topic, group, message type)
@@ -224,7 +225,8 @@ com.wonderingwizard
 ├── server/
 │   ├── DemoServer.java              # HTTP demo server with REST API (JDK HttpServer)
 │   ├── JsonSerializer.java          # Hand-rolled JSON serializer (no external libs)
-│   └── JsonParser.java              # Minimal JSON parser for request bodies
+│   ├── JsonParser.java              # Minimal JSON parser for request bodies
+│   └── EventDeserializer.java       # Event deserialization from JSON (for import)
 ├── Main.java                        # Entry point (starts DemoServer or runs demo)
 └── resources/
     └── index.html                   # Schedule Viewer UI (Web Components, vanilla JS)
@@ -301,6 +303,35 @@ The `kafka` package provides a generic framework for consuming messages from Kaf
 - `org.apache.kafka:kafka-clients` — Kafka consumer client
 - `org.apache.avro:avro` — Avro record types
 - `io.confluent:kafka-avro-serializer` — Schema Registry–aware Avro deserializer
+
+## Event Log Export/Import (F-12)
+
+The `EventLogProcessor` records every event passing through the engine. Combined with export/import API endpoints, this enables saving and restoring system state.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       DemoServer                              │
+│                                                               │
+│  GET /api/event-log/export                                    │
+│    Steps → JSON array [{description, event}, ...]             │
+│    → Browser downloads event-log.json                         │
+│                                                               │
+│  POST /api/event-log/import                                   │
+│    JSON array → Reset engine → Replay each step               │
+│    EventDeserializer: JSON → Event record                     │
+│    processStep(description, event) for each entry             │
+│    → State fully restored, SSE broadcast to clients           │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Key Concepts
+
+- **EventLogProcessor**: Passive processor that records all events, produces no side effects. Supports state capture/restore for step-back.
+- **EventDeserializer**: Reconstructs typed `Event` records from flat JSON maps using the `type` discriminator field.
+- **Export Format**: JSON array where each element has `description` (string) and `event` (serialized event object with `type` field).
+- **Import**: Resets engine to initial state, then replays events in order via `processStep()`. Deterministic replay produces identical side effects and schedules.
 
 ## Adding New Features
 
