@@ -44,7 +44,8 @@ class WorkInstructionEventMapperTest {
                     {"name": "SOURCE_TS_MS", "type": ["null", "long"], "default": null},
                     {"name": "isTwinFetch", "type": ["null", "boolean"], "default": null},
                     {"name": "isTwinPut", "type": ["null", "boolean"], "default": null},
-                    {"name": "isTwinCarry", "type": ["null", "boolean"], "default": null}
+                    {"name": "isTwinCarry", "type": ["null", "boolean"], "default": null},
+                    {"name": "twinCompanionWorkInstruction", "type": ["null", "long"], "default": null}
                 ]
             }
             """;
@@ -72,11 +73,12 @@ class WorkInstructionEventMapperTest {
         record.put("isTwinFetch", true);
         record.put("isTwinPut", false);
         record.put("isTwinCarry", true);
+        record.put("twinCompanionWorkInstruction", 202L);
 
         WorkInstructionEvent event = mapper.map(record);
 
-        assertEquals("101", event.workInstructionId());
-        assertEquals("42", event.workQueueId());
+        assertEquals(101L, event.workInstructionId());
+        assertEquals(42L, event.workQueueId());
         assertEquals("RTG-01", event.fetchChe());
         assertEquals("QC-01", event.putChe());
         assertEquals(WorkInstructionStatus.PENDING, event.status());
@@ -86,6 +88,7 @@ class WorkInstructionEventMapperTest {
         assertTrue(event.isTwinFetch());
         assertFalse(event.isTwinPut());
         assertTrue(event.isTwinCarry());
+        assertEquals(202L, event.twinCompanionWorkInstruction());
     }
 
     @Test
@@ -148,6 +151,7 @@ class WorkInstructionEventMapperTest {
         assertFalse(event.isTwinFetch());
         assertFalse(event.isTwinPut());
         assertFalse(event.isTwinCarry());
+        assertEquals(0L, event.twinCompanionWorkInstruction());
     }
 
     @Test
@@ -169,8 +173,8 @@ class WorkInstructionEventMapperTest {
 
         WorkInstructionEvent event = mapper.map(record);
 
-        assertEquals("", event.workInstructionId());
-        assertEquals("", event.workQueueId());
+        assertEquals(0L, event.workInstructionId());
+        assertEquals(0L, event.workQueueId());
     }
 
     @ParameterizedTest
@@ -245,6 +249,7 @@ class WorkInstructionEventMapperTest {
         record.put("isTwinFetch", true);
         record.put("isTwinPut", false);
         record.put("isTwinCarry", true);
+        record.put("twinCompanionWorkInstruction", 999L);
 
         WorkInstructionKafkaMessage kafkaMessage = mapper.fromAvro(record);
 
@@ -270,5 +275,6 @@ class WorkInstructionEventMapperTest {
         assertEquals(true, kafkaMessage.isTwinFetch());
         assertEquals(false, kafkaMessage.isTwinPut());
         assertEquals(true, kafkaMessage.isTwinCarry());
+        assertEquals(999L, kafkaMessage.twinCompanionWorkInstruction());
     }
 }

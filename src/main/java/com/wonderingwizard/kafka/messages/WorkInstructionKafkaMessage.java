@@ -48,6 +48,7 @@ public record WorkInstructionKafkaMessage(
         Long sourceTsMs,
         Boolean isTwinFetch,
         Boolean isTwinPut,
-        Boolean isTwinCarry
+        Boolean isTwinCarry,
+        Long twinCompanionWorkInstruction
 ) {
 }

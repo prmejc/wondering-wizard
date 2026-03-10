@@ -126,10 +126,10 @@ class JsonSerializerTest {
         @Test
         @DisplayName("Should serialize WorkQueueMessage")
         void serializesWorkQueueMessage() {
-            WorkQueueMessage event = new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0, null);
+            WorkQueueMessage event = new WorkQueueMessage(1L, WorkQueueStatus.ACTIVE, 0, null);
             String json = JsonSerializer.serialize(event);
             assertTrue(json.contains("\"type\":\"WorkQueueMessage\""));
-            assertTrue(json.contains("\"workQueueId\":\"WQ-001\""));
+            assertTrue(json.contains("\"workQueueId\":1"));
             assertTrue(json.contains("\"status\":\"ACTIVE\""));
         }
 
@@ -137,11 +137,11 @@ class JsonSerializerTest {
         @DisplayName("Should serialize WorkInstructionEvent")
         void serializesWorkInstructionEvent() {
             WorkInstructionEvent event = new WorkInstructionEvent(
-                    "WI-001", "WQ-001", "RTG-01", WorkInstructionStatus.PENDING,
+                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING,
                     Instant.parse("2024-01-01T10:00:00Z"), 120);
             String json = JsonSerializer.serialize(event);
             assertTrue(json.contains("\"type\":\"WorkInstructionEvent\""));
-            assertTrue(json.contains("\"workInstructionId\":\"WI-001\""));
+            assertTrue(json.contains("\"workInstructionId\":1"));
             assertTrue(json.contains("\"estimatedMoveTime\":\"2024-01-01T10:00:00Z\""));
         }
 
@@ -149,7 +149,7 @@ class JsonSerializerTest {
         @DisplayName("Should serialize ActionCompletedEvent")
         void serializesActionCompletedEvent() {
             UUID id = UUID.randomUUID();
-            ActionCompletedEvent event = new ActionCompletedEvent(id, "WQ-001");
+            ActionCompletedEvent event = new ActionCompletedEvent(id, 1L);
             String json = JsonSerializer.serialize(event);
             assertTrue(json.contains("\"type\":\"ActionCompletedEvent\""));
             assertTrue(json.contains("\"actionId\":\"" + id + "\""));
@@ -180,28 +180,28 @@ class JsonSerializerTest {
         @Test
         @DisplayName("Should serialize ScheduleCreated")
         void serializesScheduleCreated() {
-            ScheduleCreated se = new ScheduleCreated("WQ-001", List.of(),
+            ScheduleCreated se = new ScheduleCreated(1L, List.of(),
                     Instant.parse("2024-01-01T10:00:00Z"));
             String json = JsonSerializer.serialize(se);
             assertTrue(json.contains("\"type\":\"ScheduleCreated\""));
-            assertTrue(json.contains("\"workQueueId\":\"WQ-001\""));
+            assertTrue(json.contains("\"workQueueId\":1"));
             assertTrue(json.contains("\"takts\":[]"));
         }
 
         @Test
         @DisplayName("Should serialize ScheduleAborted")
         void serializesScheduleAborted() {
-            ScheduleAborted se = new ScheduleAborted("WQ-001");
+            ScheduleAborted se = new ScheduleAborted(1L);
             String json = JsonSerializer.serialize(se);
             assertTrue(json.contains("\"type\":\"ScheduleAborted\""));
-            assertTrue(json.contains("\"workQueueId\":\"WQ-001\""));
+            assertTrue(json.contains("\"workQueueId\":1"));
         }
 
         @Test
         @DisplayName("Should serialize ActionActivated")
         void serializesActionActivated() {
             UUID id = UUID.randomUUID();
-            ActionActivated se = new ActionActivated(id, "WQ-001", "TAKT100",
+            ActionActivated se = new ActionActivated(id, 1L, "TAKT100",
                     "lift container", Instant.parse("2024-01-01T10:00:00Z"));
             String json = JsonSerializer.serialize(se);
             assertTrue(json.contains("\"type\":\"ActionActivated\""));
@@ -213,7 +213,7 @@ class JsonSerializerTest {
         @DisplayName("Should serialize ActionCompleted")
         void serializesActionCompleted() {
             UUID id = UUID.randomUUID();
-            ActionCompleted se = new ActionCompleted(id, "WQ-001", "TAKT100",
+            ActionCompleted se = new ActionCompleted(id, 1L, "TAKT100",
                     "lift container", Instant.parse("2024-01-01T10:00:00Z"));
             String json = JsonSerializer.serialize(se);
             assertTrue(json.contains("\"type\":\"ActionCompleted\""));
@@ -258,7 +258,7 @@ class JsonSerializerTest {
             Action a2 = new Action(UUID.randomUUID(), DeviceType.QC, "action2", Set.of(a1.id()));
             Instant time = Instant.parse("2024-01-01T10:00:00Z");
             Takt takt = new Takt(0, List.of(a1, a2), time, time, 120);
-            ScheduleCreated se = new ScheduleCreated("WQ-001", List.of(takt),
+            ScheduleCreated se = new ScheduleCreated(1L, List.of(takt),
                     Instant.parse("2024-01-01T10:00:00Z"));
             String json = JsonSerializer.serialize(se);
             assertTrue(json.contains("\"name\":\"TAKT100\""));

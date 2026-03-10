@@ -122,12 +122,12 @@ public class Main {
         Instant now = Instant.now();
         Instant estimatedMoveTime = now.plusSeconds(10);
 
-        String workQueueId = "WQ-001";
+        long workQueueId = 1L;
 
         // Step 1: Register two work instructions
         logger.info("--- Registering Work Instruction 1 ---");
         List<SideEffect> sideEffects1 = engine.processEvent(new WorkInstructionEvent(
-                "WI-001",
+                1L,
                 workQueueId,
                 "RTG-01",
                 WorkInstructionStatus.PENDING,
@@ -138,7 +138,7 @@ public class Main {
 
         logger.info("--- Registering Work Instruction 2 ---");
         List<SideEffect> sideEffects2 = engine.processEvent(new WorkInstructionEvent(
-                "WI-002",
+                2L,
                 workQueueId,
                 "RTG-02",
                 WorkInstructionStatus.PENDING,

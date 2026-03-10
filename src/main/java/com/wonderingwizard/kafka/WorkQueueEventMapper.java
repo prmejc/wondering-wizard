@@ -60,9 +60,9 @@ public class WorkQueueEventMapper implements EventMapper<WorkQueueMessage> {
      * Convert a typed WorkQueueKafkaMessage to the engine's WorkQueueMessage event.
      */
     WorkQueueMessage toEngineEvent(WorkQueueKafkaMessage kafkaMessage) {
-        String workQueueId = kafkaMessage.workQueueId() != null
-                ? String.valueOf(kafkaMessage.workQueueId())
-                : kafkaMessage.workQueueName();
+        long workQueueId = kafkaMessage.workQueueId() != null
+                ? kafkaMessage.workQueueId()
+                : 0;
 
         WorkQueueStatus status = mapStatus(kafkaMessage.workQueueStatus());
 

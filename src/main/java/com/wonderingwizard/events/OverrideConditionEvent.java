@@ -11,7 +11,7 @@ import com.wonderingwizard.engine.Event;
  * @param conditionId the condition identifier to override (e.g., "time" or "dependencies")
  */
 public record OverrideConditionEvent(
-        String workQueueId,
+        long workQueueId,
         String taktName,
         String conditionId
 ) implements Event {

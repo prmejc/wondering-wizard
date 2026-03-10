@@ -161,8 +161,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
     private record ActionInfo(String taktName, Action action) {}
 
-    private final Map<String, ScheduleState> scheduleStates = new HashMap<>();
-    private final Map<String, Instant> workInstructionEstimatedMoveTime = new HashMap<>();
+    private final Map<Long, ScheduleState> scheduleStates = new HashMap<>();
+    private final Map<Long, Instant> workInstructionEstimatedMoveTime = new HashMap<>();
     private Instant currentTime = Instant.EPOCH;
 
     @Override
@@ -192,7 +192,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     }
 
     private List<SideEffect> handleScheduleCreated(ScheduleCreated scheduleCreated) {
-        String workQueueId = scheduleCreated.workQueueId();
+        long workQueueId = scheduleCreated.workQueueId();
         List<Takt> takts = scheduleCreated.takts();
         Instant estimatedMoveTime = scheduleCreated.estimatedMoveTime();
 
@@ -282,7 +282,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     }
 
     private List<SideEffect> handleWorkQueueMessage(WorkQueueMessage message) {
-        String workQueueId = message.workQueueId();
+        long workQueueId = message.workQueueId();
 
         return switch (message.status()) {
             case ACTIVE -> handleScheduleActivation(workQueueId);
@@ -291,7 +291,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         };
     }
 
-    private List<SideEffect> handleScheduleActivation(String workQueueId) {
+    private List<SideEffect> handleScheduleActivation(long workQueueId) {
         if (scheduleStates.containsKey(workQueueId)) {
             return List.of();
         }
@@ -299,7 +299,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         return List.of();
     }
 
-    private List<SideEffect> handleScheduleDeactivation(String workQueueId) {
+    private List<SideEffect> handleScheduleDeactivation(long workQueueId) {
         scheduleStates.remove(workQueueId);
         return List.of();
     }
@@ -308,8 +308,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         List<SideEffect> sideEffects = new ArrayList<>();
         this.currentTime = timeEvent.timestamp();
 
-        for (Map.Entry<String, ScheduleState> entry : scheduleStates.entrySet()) {
-            String workQueueId = entry.getKey();
+        for (Map.Entry<Long, ScheduleState> entry : scheduleStates.entrySet()) {
+            long workQueueId = entry.getKey();
             ScheduleState state = entry.getValue();
 
             sideEffects.addAll(tryActivateTakts(workQueueId, state));
@@ -370,7 +370,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
      * Checks if all conditions for an action are satisfied or overridden,
      * and activates the action even if its takt is still WAITING.
      */
-    private List<SideEffect> tryForceActivateAction(String workQueueId, ScheduleState state,
+    private List<SideEffect> tryForceActivateAction(long workQueueId, ScheduleState state,
                                                       UUID actionId, ActionInfo actionInfo) {
         if (state.activeActionIds.contains(actionId) || state.completedActionIds.contains(actionId)) {
             return List.of();
@@ -416,7 +416,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
      * Tries to activate takts whose conditions are all satisfied (or overridden).
      * When a takt becomes Active, eligible actions within it are also activated.
      */
-    private List<SideEffect> tryActivateTakts(String workQueueId, ScheduleState state) {
+    private List<SideEffect> tryActivateTakts(long workQueueId, ScheduleState state) {
         List<SideEffect> sideEffects = new ArrayList<>();
 
         ConditionContext context = new ConditionContext(this.currentTime, state.completedActionIds);
@@ -482,7 +482,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     /**
      * Activates all actions in the given takt that have their dependencies satisfied.
      */
-    private List<SideEffect> activateEligibleActions(String workQueueId, ScheduleState state, String taktName) {
+    private List<SideEffect> activateEligibleActions(long workQueueId, ScheduleState state, String taktName) {
         List<SideEffect> sideEffects = new ArrayList<>();
 
         List<UUID> actionsToActivate = state.getActivatableActionsInTakt(taktName);
@@ -503,7 +503,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     }
 
     private List<SideEffect> handleActionCompleted(ActionCompletedEvent event) {
-        String workQueueId = event.workQueueId();
+        long workQueueId = event.workQueueId();
         UUID completedActionId = event.actionId();
 
         ScheduleState state = scheduleStates.get(workQueueId);
@@ -571,8 +571,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     public Object captureState() {
         Map<String, Object> state = new HashMap<>();
 
-        Map<String, ScheduleState> statesCopy = new HashMap<>();
-        for (Map.Entry<String, ScheduleState> entry : scheduleStates.entrySet()) {
+        Map<Long, ScheduleState> statesCopy = new HashMap<>();
+        for (Map.Entry<Long, ScheduleState> entry : scheduleStates.entrySet()) {
             statesCopy.put(entry.getKey(), entry.getValue().copy());
         }
         state.put("scheduleStates", statesCopy);
@@ -594,8 +594,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         scheduleStates.clear();
         Object schedulesState = stateMap.get("scheduleStates");
         if (schedulesState instanceof Map) {
-            Map<String, ScheduleState> schedulesMap = (Map<String, ScheduleState>) schedulesState;
-            for (Map.Entry<String, ScheduleState> entry : schedulesMap.entrySet()) {
+            Map<Long, ScheduleState> schedulesMap = (Map<Long, ScheduleState>) schedulesState;
+            for (Map.Entry<Long, ScheduleState> entry : schedulesMap.entrySet()) {
                 scheduleStates.put(entry.getKey(), entry.getValue().copy());
             }
         }
@@ -603,7 +603,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         workInstructionEstimatedMoveTime.clear();
         Object estimatedMoveTimeState = stateMap.get("workInstructionEstimatedMoveTime");
         if (estimatedMoveTimeState instanceof Map) {
-            workInstructionEstimatedMoveTime.putAll((Map<String, Instant>) estimatedMoveTimeState);
+            workInstructionEstimatedMoveTime.putAll((Map<Long, Instant>) estimatedMoveTimeState);
         }
 
         Object currentTimeState = stateMap.get("currentTime");

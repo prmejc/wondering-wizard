@@ -104,7 +104,7 @@ public class DemoServer {
     }
 
     /** Schedule view for the API state response. */
-    public record ScheduleView(String workQueueId, boolean active, Instant estimatedMoveTime,
+    public record ScheduleView(long workQueueId, boolean active, Instant estimatedMoveTime,
                                 long totalDelaySeconds, List<TaktView> takts) {}
 
     /** Condition evaluation result for the API. */
@@ -297,7 +297,7 @@ public class DemoServer {
 
     private List<ScheduleView> buildScheduleViews() {
         // Derive schedule state from accumulated side effects
-        Map<String, ScheduleViewBuilder> builders = new LinkedHashMap<>();
+        Map<Long, ScheduleViewBuilder> builders = new LinkedHashMap<>();
 
         for (Step step : steps) {
             for (SideEffect se : step.sideEffects()) {
@@ -378,7 +378,7 @@ public class DemoServer {
     }
 
     private static class ScheduleViewBuilder {
-        final String workQueueId;
+        final long workQueueId;
         final boolean active;
         final Instant estimatedMoveTime;
         final List<TaktView> takts = new ArrayList<>();
@@ -394,7 +394,7 @@ public class DemoServer {
         /** Overridden action conditions per action UUID. */
         final Map<UUID, Set<String>> overriddenActionConditions = new HashMap<>();
 
-        ScheduleViewBuilder(String workQueueId, boolean active, Instant estimatedMoveTime) {
+        ScheduleViewBuilder(long workQueueId, boolean active, Instant estimatedMoveTime) {
             this.workQueueId = workQueueId;
             this.active = active;
             this.estimatedMoveTime = estimatedMoveTime;
@@ -665,8 +665,8 @@ public class DemoServer {
 
         try {
             Map<String, String> body = readJsonBody(exchange);
-            String workInstructionId = requireField(body, "workInstructionId");
-            String workQueueId = requireField(body, "workQueueId");
+            long workInstructionId = Long.parseLong(requireField(body, "workInstructionId"));
+            long workQueueId = Long.parseLong(requireField(body, "workQueueId"));
             String fetchChe = body.getOrDefault("fetchChe", "");
             String statusStr = body.getOrDefault("status", "PENDING");
             WorkInstructionStatus status = WorkInstructionStatus.valueOf(statusStr);
@@ -684,11 +684,12 @@ public class DemoServer {
             boolean isTwinFetch = Boolean.parseBoolean(body.getOrDefault("isTwinFetch", "false"));
             boolean isTwinPut = Boolean.parseBoolean(body.getOrDefault("isTwinPut", "false"));
             boolean isTwinCarry = Boolean.parseBoolean(body.getOrDefault("isTwinCarry", "false"));
+            long twinCompanionWorkInstruction = Long.parseLong(body.getOrDefault("twinCompanionWorkInstruction", "0"));
 
             WorkInstructionEvent event = new WorkInstructionEvent(
                     workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
                     estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
-                    putChe, isTwinFetch, isTwinPut, isTwinCarry);
+                    putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction);
             List<SideEffect> effects = processStep("WorkInstruction: " + workInstructionId, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
@@ -706,7 +707,7 @@ public class DemoServer {
 
         try {
             Map<String, String> body = readJsonBody(exchange);
-            String workQueueId = requireField(body, "workQueueId");
+            long workQueueId = Long.parseLong(requireField(body, "workQueueId"));
             String statusStr = requireField(body, "status");
             WorkQueueStatus status = WorkQueueStatus.valueOf(statusStr);
 
@@ -759,7 +760,7 @@ public class DemoServer {
         try {
             Map<String, String> body = readJsonBody(exchange);
             String actionIdStr = requireField(body, "actionId");
-            String workQueueId = requireField(body, "workQueueId");
+            long workQueueId = Long.parseLong(requireField(body, "workQueueId"));
             UUID actionId = UUID.fromString(actionIdStr);
 
             ActionCompletedEvent event = new ActionCompletedEvent(actionId, workQueueId);
@@ -780,7 +781,7 @@ public class DemoServer {
 
         try {
             Map<String, String> body = readJsonBody(exchange);
-            String workQueueId = requireField(body, "workQueueId");
+            long workQueueId = Long.parseLong(requireField(body, "workQueueId"));
             String taktName = requireField(body, "taktName");
             String conditionId = requireField(body, "conditionId");
 
@@ -803,7 +804,7 @@ public class DemoServer {
 
         try {
             Map<String, String> body = readJsonBody(exchange);
-            String workQueueId = requireField(body, "workQueueId");
+            long workQueueId = Long.parseLong(requireField(body, "workQueueId"));
             String actionIdStr = requireField(body, "actionId");
             String conditionId = requireField(body, "conditionId");
             UUID actionId = UUID.fromString(actionIdStr);

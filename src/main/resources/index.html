@@ -211,11 +211,11 @@ class EventPanel extends HTMLElement {
       <h3>Work Instruction</h3>
       <div class="form-group">
         <label>Instruction ID</label>
-        <input id="wi-id" value="WI-001">
+        <input id="wi-id" type="number" value="1">
       </div>
       <div class="form-group">
         <label>Work Queue ID</label>
-        <input id="wi-queue" value="WQ-001">
+        <input id="wi-queue" type="number" value="1">
       </div>
       <div class="form-group">
         <label>Fetch CHE</label>
@@ -229,6 +229,10 @@ class EventPanel extends HTMLElement {
         <label style="display:flex;align-items:center;gap:4px;margin:0"><input id="wi-twin-fetch" type="checkbox"> Twin Fetch</label>
         <label style="display:flex;align-items:center;gap:4px;margin:0"><input id="wi-twin-put" type="checkbox"> Twin Put</label>
         <label style="display:flex;align-items:center;gap:4px;margin:0"><input id="wi-twin-carry" type="checkbox"> Twin Carry</label>
+      </div>
+      <div class="form-group">
+        <label>Twin Companion WI</label>
+        <input id="wi-twin-companion" type="number" value="0">
       </div>
       <div class="form-group">
         <label>Est. Move Time (ISO)</label>
@@ -247,7 +251,7 @@ class EventPanel extends HTMLElement {
       <h3 style="margin-top:20px">Work Queue</h3>
       <div class="form-group">
         <label>Work Queue ID</label>
-        <input id="wq-id" value="WQ-001">
+        <input id="wq-id" type="number" value="1">
       </div>
       <div class="form-group">
         <label>Status</label>
@@ -285,6 +289,7 @@ class EventPanel extends HTMLElement {
       isTwinFetch: String(this.querySelector('#wi-twin-fetch').checked),
       isTwinPut: String(this.querySelector('#wi-twin-put').checked),
       isTwinCarry: String(this.querySelector('#wi-twin-carry').checked),
+      twinCompanionWorkInstruction: this.querySelector('#wi-twin-companion').value,
       estimatedMoveTime: this.querySelector('#wi-emt').value,
       estimatedCycleTimeSeconds: this.querySelector('#wi-ect').value,
       estimatedRtgCycleTimeSeconds: this.querySelector('#wi-rtg-ect').value,
@@ -293,8 +298,7 @@ class EventPanel extends HTMLElement {
     await apiCall('/api/work-instruction', data);
     // Auto-increment WI ID
     const idInput = this.querySelector('#wi-id');
-    const match = idInput.value.match(/^(.*?)(\d+)$/);
-    if (match) idInput.value = match[1] + (parseInt(match[2]) + 1);
+    idInput.value = parseInt(idInput.value) + 1;
     this._emtDirty = false;
     this._emtOffsetMin += 2;
     refreshState();

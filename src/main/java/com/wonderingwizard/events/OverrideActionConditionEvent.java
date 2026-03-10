@@ -13,7 +13,7 @@ import java.util.UUID;
  * @param conditionId the condition identifier to override (e.g., "action-dependencies")
  */
 public record OverrideActionConditionEvent(
-        String workQueueId,
+        long workQueueId,
         UUID actionId,
         String conditionId
 ) implements Event {}

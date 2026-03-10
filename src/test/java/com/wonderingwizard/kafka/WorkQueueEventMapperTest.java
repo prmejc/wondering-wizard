@@ -69,7 +69,7 @@ class WorkQueueEventMapperTest {
 
         WorkQueueMessage event = mapper.map(record);
 
-        assertEquals("42", event.workQueueId());
+        assertEquals(42L, event.workQueueId());
         assertEquals(WorkQueueStatus.ACTIVE, event.status());
         assertEquals(15, event.qcMudaSeconds());
     }
@@ -83,13 +83,13 @@ class WorkQueueEventMapperTest {
 
         WorkQueueMessage event = mapper.map(record);
 
-        assertEquals("99", event.workQueueId());
+        assertEquals(99L, event.workQueueId());
         assertEquals(WorkQueueStatus.INACTIVE, event.status());
         assertEquals(0, event.qcMudaSeconds());
     }
 
     @Test
-    void shouldUseWorkQueueNameWhenIdIsNull() {
+    void shouldUseZeroWhenIdIsNull() {
         GenericRecord record = new GenericData.Record(schema);
         record.put("workQueueId", null);
         record.put("workQueueName", "WQ-FALLBACK");
@@ -97,7 +97,7 @@ class WorkQueueEventMapperTest {
 
         WorkQueueMessage event = mapper.map(record);
 
-        assertEquals("WQ-FALLBACK", event.workQueueId());
+        assertEquals(0L, event.workQueueId());
     }
 
     @Test

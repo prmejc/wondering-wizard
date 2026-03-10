@@ -21,7 +21,7 @@ import java.util.List;
  * @param takts the list of takts in this schedule
  * @param estimatedMoveTime the estimated time when the first action should start
  */
-public record ScheduleCreated(String workQueueId, List<Takt> takts, Instant estimatedMoveTime) implements SideEffect, Event {
+public record ScheduleCreated(long workQueueId, List<Takt> takts, Instant estimatedMoveTime) implements SideEffect, Event {
 
     @Override
     public String toString() {

@@ -21,10 +21,11 @@ import java.time.Instant;
  * @param isTwinFetch whether this is a twin fetch operation
  * @param isTwinPut whether this is a twin put operation
  * @param isTwinCarry whether this is a twin carry operation
+ * @param twinCompanionWorkInstruction the twin companion work instruction ID
  */
 public record WorkInstructionEvent(
-        String workInstructionId,
-        String workQueueId,
+        long workInstructionId,
+        long workQueueId,
         String fetchChe,
         WorkInstructionStatus status,
         Instant estimatedMoveTime,
@@ -33,32 +34,52 @@ public record WorkInstructionEvent(
         String putChe,
         boolean isTwinFetch,
         boolean isTwinPut,
-        boolean isTwinCarry
+        boolean isTwinCarry,
+        long twinCompanionWorkInstruction
 ) implements Event {
 
     private static final int DEFAULT_RTG_CYCLE_TIME_SECONDS = 60;
 
     public WorkInstructionEvent(
-            String workInstructionId,
-            String workQueueId,
+            long workInstructionId,
+            long workQueueId,
+            String fetchChe,
+            WorkInstructionStatus status,
+            Instant estimatedMoveTime,
+            int estimatedCycleTimeSeconds,
+            int estimatedRtgCycleTimeSeconds,
+            String putChe,
+            boolean isTwinFetch,
+            boolean isTwinPut,
+            boolean isTwinCarry) {
+        this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
+                estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
+                putChe, isTwinFetch, isTwinPut, isTwinCarry, 0);
+    }
+
+    public WorkInstructionEvent(
+            long workInstructionId,
+            long workQueueId,
             String fetchChe,
             WorkInstructionStatus status,
             Instant estimatedMoveTime,
             int estimatedCycleTimeSeconds,
             int estimatedRtgCycleTimeSeconds) {
         this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
-                estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds, "", false, false, false);
+                estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
+                "", false, false, false, 0);
     }
 
     public WorkInstructionEvent(
-            String workInstructionId,
-            String workQueueId,
+            long workInstructionId,
+            long workQueueId,
             String fetchChe,
             WorkInstructionStatus status,
             Instant estimatedMoveTime,
             int estimatedCycleTimeSeconds) {
         this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
-                estimatedCycleTimeSeconds, DEFAULT_RTG_CYCLE_TIME_SECONDS, "", false, false, false);
+                estimatedCycleTimeSeconds, DEFAULT_RTG_CYCLE_TIME_SECONDS,
+                "", false, false, false, 0);
     }
 
     @Override
@@ -73,6 +94,7 @@ public record WorkInstructionEvent(
                 ", estimatedRtgCycleTimeSeconds=" + estimatedRtgCycleTimeSeconds +
                 ", isTwinFetch=" + isTwinFetch +
                 ", isTwinPut=" + isTwinPut +
-                ", isTwinCarry=" + isTwinCarry + "]";
+                ", isTwinCarry=" + isTwinCarry +
+                ", twinCompanionWorkInstruction=" + twinCompanionWorkInstruction + "]";
     }
 }

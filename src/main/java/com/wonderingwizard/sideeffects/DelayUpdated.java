@@ -16,7 +16,7 @@ import com.wonderingwizard.engine.SideEffect;
  * @param totalDelaySeconds the current total delay in seconds (0 or positive)
  */
 public record DelayUpdated(
-        String workQueueId,
+        long workQueueId,
         long totalDelaySeconds
 ) implements SideEffect {
 

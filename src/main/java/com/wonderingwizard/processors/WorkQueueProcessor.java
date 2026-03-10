@@ -53,10 +53,10 @@ public class WorkQueueProcessor implements EventProcessor {
     private static final int DRIVE_TIME_MAX_SECONDS = 300;
     private static final int QC_DRIVE_TIME_OFFSET_RANGE = 30;
 
-    private final Map<String, Boolean> activeSchedules = new HashMap<>();
-    private final Map<String, List<WorkInstruction>> workInstructions = new HashMap<>();
-    private final Map<String, Integer> qcMudaByQueue = new HashMap<>();
-    private final Map<String, LoadMode> loadModeByQueue = new HashMap<>();
+    private final Map<Long, Boolean> activeSchedules = new HashMap<>();
+    private final Map<Long, List<WorkInstruction>> workInstructions = new HashMap<>();
+    private final Map<Long, Integer> qcMudaByQueue = new HashMap<>();
+    private final Map<Long, LoadMode> loadModeByQueue = new HashMap<>();
     private final IntSupplier driveTimeSupplier;
     private final IntSupplier qcDriveTimeOffsetSupplier;
     private final boolean useGraphScheduleBuilder;
@@ -95,12 +95,12 @@ public class WorkQueueProcessor implements EventProcessor {
     }
 
     private List<SideEffect> handleWorkInstructionEvent(WorkInstructionEvent event) {
-        String workInstructionId = event.workInstructionId();
-        String workQueueId = event.workQueueId();
+        long workInstructionId = event.workInstructionId();
+        long workQueueId = event.workQueueId();
 
         // Remove existing instruction with same ID from all queues (handles moves and updates)
         for (List<WorkInstruction> instructions : workInstructions.values()) {
-            instructions.removeIf(wi -> wi.workInstructionId().equals(workInstructionId));
+            instructions.removeIf(wi -> wi.workInstructionId() == workInstructionId);
         }
 
         // Add the instruction to the target queue
@@ -115,7 +115,8 @@ public class WorkQueueProcessor implements EventProcessor {
                 event.putChe(),
                 event.isTwinFetch(),
                 event.isTwinPut(),
-                event.isTwinCarry()
+                event.isTwinCarry(),
+                event.twinCompanionWorkInstruction()
         );
 
         workInstructions
@@ -126,7 +127,7 @@ public class WorkQueueProcessor implements EventProcessor {
     }
 
     private List<SideEffect> handleWorkQueueMessage(WorkQueueMessage message) {
-        String workQueueId = message.workQueueId();
+        long workQueueId = message.workQueueId();
         WorkQueueStatus status = message.status();
         qcMudaByQueue.put(workQueueId, message.qcMudaSeconds());
         if (message.loadMode() != null) {
@@ -140,7 +141,7 @@ public class WorkQueueProcessor implements EventProcessor {
         };
     }
 
-    private List<SideEffect> handleActiveStatus(String workQueueId) {
+    private List<SideEffect> handleActiveStatus(long workQueueId) {
         if (activeSchedules.containsKey(workQueueId)) {
             // Schedule already exists, idempotent - no side effect
             return List.of();
@@ -403,7 +404,7 @@ public class WorkQueueProcessor implements EventProcessor {
         return null;
     }
 
-    private List<SideEffect> handleInactiveStatus(String workQueueId) {
+    private List<SideEffect> handleInactiveStatus(long workQueueId) {
         if (!activeSchedules.containsKey(workQueueId)) {
             // No schedule exists, nothing to abort
             return List.of();
@@ -420,8 +421,8 @@ public class WorkQueueProcessor implements EventProcessor {
         state.put("activeSchedules", new HashMap<>(activeSchedules));
 
         // Deep copy of work instructions
-        Map<String, List<WorkInstruction>> instructionsCopy = new HashMap<>();
-        for (Map.Entry<String, List<WorkInstruction>> entry : workInstructions.entrySet()) {
+        Map<Long, List<WorkInstruction>> instructionsCopy = new HashMap<>();
+        for (Map.Entry<Long, List<WorkInstruction>> entry : workInstructions.entrySet()) {
             instructionsCopy.put(entry.getKey(), new ArrayList<>(entry.getValue()));
         }
         state.put("workInstructions", instructionsCopy);
@@ -443,14 +444,14 @@ public class WorkQueueProcessor implements EventProcessor {
         activeSchedules.clear();
         Object activeSchedulesState = stateMap.get("activeSchedules");
         if (activeSchedulesState instanceof Map) {
-            activeSchedules.putAll((Map<String, Boolean>) activeSchedulesState);
+            activeSchedules.putAll((Map<Long, Boolean>) activeSchedulesState);
         }
 
         workInstructions.clear();
         Object instructionsState = stateMap.get("workInstructions");
         if (instructionsState instanceof Map) {
-            Map<String, List<WorkInstruction>> instructionsMap = (Map<String, List<WorkInstruction>>) instructionsState;
-            for (Map.Entry<String, List<WorkInstruction>> entry : instructionsMap.entrySet()) {
+            Map<Long, List<WorkInstruction>> instructionsMap = (Map<Long, List<WorkInstruction>>) instructionsState;
+            for (Map.Entry<Long, List<WorkInstruction>> entry : instructionsMap.entrySet()) {
                 workInstructions.put(entry.getKey(), new ArrayList<>(entry.getValue()));
             }
         }
@@ -458,13 +459,13 @@ public class WorkQueueProcessor implements EventProcessor {
         qcMudaByQueue.clear();
         Object qcMudaState = stateMap.get("qcMudaByQueue");
         if (qcMudaState instanceof Map) {
-            qcMudaByQueue.putAll((Map<String, Integer>) qcMudaState);
+            qcMudaByQueue.putAll((Map<Long, Integer>) qcMudaState);
         }
 
         loadModeByQueue.clear();
         Object loadModeState = stateMap.get("loadModeByQueue");
         if (loadModeState instanceof Map) {
-            loadModeByQueue.putAll((Map<String, LoadMode>) loadModeState);
+            loadModeByQueue.putAll((Map<Long, LoadMode>) loadModeState);
         }
     }
 }

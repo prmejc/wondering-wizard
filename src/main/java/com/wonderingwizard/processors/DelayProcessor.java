@@ -80,7 +80,7 @@ public class DelayProcessor implements EventProcessor {
         }
     }
 
-    private final Map<String, ScheduleDelayState> scheduleStates = new HashMap<>();
+    private final Map<Long, ScheduleDelayState> scheduleStates = new HashMap<>();
     private Instant currentTime = Instant.EPOCH;
 
     @Override
@@ -144,8 +144,8 @@ public class DelayProcessor implements EventProcessor {
         this.currentTime = timeEvent.timestamp();
         List<SideEffect> sideEffects = new ArrayList<>();
 
-        for (Map.Entry<String, ScheduleDelayState> entry : scheduleStates.entrySet()) {
-            String workQueueId = entry.getKey();
+        for (Map.Entry<Long, ScheduleDelayState> entry : scheduleStates.entrySet()) {
+            long workQueueId = entry.getKey();
             ScheduleDelayState state = entry.getValue();
 
             long totalDelay = calculateTotalDelay(state);
@@ -207,8 +207,8 @@ public class DelayProcessor implements EventProcessor {
     public Object captureState() {
         Map<String, Object> snapshot = new HashMap<>();
 
-        Map<String, ScheduleDelayState> statesCopy = new HashMap<>();
-        for (Map.Entry<String, ScheduleDelayState> entry : scheduleStates.entrySet()) {
+        Map<Long, ScheduleDelayState> statesCopy = new HashMap<>();
+        for (Map.Entry<Long, ScheduleDelayState> entry : scheduleStates.entrySet()) {
             statesCopy.put(entry.getKey(), entry.getValue().copy());
         }
         snapshot.put("scheduleStates", statesCopy);
@@ -229,8 +229,8 @@ public class DelayProcessor implements EventProcessor {
         scheduleStates.clear();
         Object schedulesState = stateMap.get("scheduleStates");
         if (schedulesState instanceof Map) {
-            Map<String, ScheduleDelayState> schedulesMap = (Map<String, ScheduleDelayState>) schedulesState;
-            for (Map.Entry<String, ScheduleDelayState> entry : schedulesMap.entrySet()) {
+            Map<Long, ScheduleDelayState> schedulesMap = (Map<Long, ScheduleDelayState>) schedulesState;
+            for (Map.Entry<Long, ScheduleDelayState> entry : schedulesMap.entrySet()) {
                 scheduleStates.put(entry.getKey(), entry.getValue().copy());
             }
         }

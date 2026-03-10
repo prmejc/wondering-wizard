@@ -50,7 +50,8 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 getLongField(record, "SOURCE_TS_MS"),
                 getBooleanField(record, "isTwinFetch"),
                 getBooleanField(record, "isTwinPut"),
-                getBooleanField(record, "isTwinCarry")
+                getBooleanField(record, "isTwinCarry"),
+                getLongField(record, "twinCompanionWorkInstruction")
         );
     }
 
@@ -58,13 +59,13 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
      * Convert a typed WorkInstructionKafkaMessage to the engine's WorkInstructionEvent.
      */
     WorkInstructionEvent toEngineEvent(WorkInstructionKafkaMessage kafkaMessage) {
-        String workInstructionId = kafkaMessage.workInstructionId() != null
-                ? String.valueOf(kafkaMessage.workInstructionId())
-                : "";
+        long workInstructionId = kafkaMessage.workInstructionId() != null
+                ? kafkaMessage.workInstructionId()
+                : 0;
 
-        String workQueueId = kafkaMessage.workQueueId() != null
-                ? String.valueOf(kafkaMessage.workQueueId())
-                : "";
+        long workQueueId = kafkaMessage.workQueueId() != null
+                ? kafkaMessage.workQueueId()
+                : 0;
 
         String fetchChe = kafkaMessage.fetchCHEName() != null
                 ? kafkaMessage.fetchCHEName()
@@ -92,6 +93,10 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
         boolean isTwinPut = Boolean.TRUE.equals(kafkaMessage.isTwinPut());
         boolean isTwinCarry = Boolean.TRUE.equals(kafkaMessage.isTwinCarry());
 
+        long twinCompanionWorkInstruction = kafkaMessage.twinCompanionWorkInstruction() != null
+                ? kafkaMessage.twinCompanionWorkInstruction()
+                : 0;
+
         logger.fine("Mapped WorkInstruction Kafka message: workInstructionId=" + workInstructionId
                 + ", workQueueId=" + workQueueId + ", status=" + status
                 + ", fetchChe=" + fetchChe + ", putChe=" + putChe);
@@ -99,7 +104,7 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
         return new WorkInstructionEvent(
                 workInstructionId, workQueueId, fetchChe, status,
                 estimatedMoveTime, estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
-                putChe, isTwinFetch, isTwinPut, isTwinCarry);
+                putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction);
     }
 
     private WorkInstructionStatus mapStatus(String moveStage) {

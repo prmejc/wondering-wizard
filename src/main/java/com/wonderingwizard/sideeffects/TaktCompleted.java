@@ -18,7 +18,7 @@ import java.time.Instant;
  * @param completedAt the timestamp when the takt was completed
  */
 public record TaktCompleted(
-        String workQueueId,
+        long workQueueId,
         String taktName,
         Instant completedAt
 ) implements SideEffect, Event {

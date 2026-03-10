@@ -16,7 +16,7 @@ import java.util.UUID;
  */
 public record ActionCompletedEvent(
         UUID actionId,
-        String workQueueId
+        long workQueueId
 ) implements Event {
 
     @Override

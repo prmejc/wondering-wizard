@@ -20,7 +20,7 @@ import java.time.Instant;
  * @param activatedAt the timestamp when the takt was activated
  */
 public record TaktActivated(
-        String workQueueId,
+        long workQueueId,
         String taktName,
         Instant activatedAt
 ) implements SideEffect, Event {

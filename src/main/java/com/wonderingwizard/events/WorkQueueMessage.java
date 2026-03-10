@@ -14,7 +14,7 @@ import com.wonderingwizard.engine.Event;
  * @param qcMudaSeconds QC muda (waste) time in seconds, added to each takt's duration
  * @param loadMode the load mode determining which scheduling template to use (LOAD or DSCH)
  */
-public record WorkQueueMessage(String workQueueId, WorkQueueStatus status, int qcMudaSeconds, LoadMode loadMode) implements Event {
+public record WorkQueueMessage(long workQueueId, WorkQueueStatus status, int qcMudaSeconds, LoadMode loadMode) implements Event {
 
     @Override
     public String toString() {

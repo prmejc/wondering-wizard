@@ -105,14 +105,14 @@ class GraphScheduleBuilderTest {
         };
     }
 
-    private static WorkInstruction wi(String id) {
-        return new WorkInstruction(id, "queue-1", "CHE-001", PENDING, EMT, 120, 60, "", false, false, false);
+    private static WorkInstruction wi(long id) {
+        return new WorkInstruction(id, 1L, "CHE-001", PENDING, EMT, 120, 60, "", false, false, false, 0L);
     }
 
     private static List<Takt> schedule(List<ActionTemplate> template, int containerCount) {
         var instructions = new ArrayList<WorkInstruction>();
         for (int i = 0; i < containerCount; i++) {
-            instructions.add(wi("wi-" + (i + 1)));
+            instructions.add(wi(i + 1));
         }
         return builderWith(template).createTakts(instructions, EMT, 0, LoadMode.DSCH);
     }
@@ -477,7 +477,7 @@ class GraphScheduleBuilderTest {
         void qcMudaIncreasesTaktDuration() {
             int qcMuda = 15;
             var takts = builderWith(MINIMAL_TEMPLATE)
-                    .createTakts(List.of(wi("wi-1")), EMT, qcMuda, LoadMode.DSCH);
+                    .createTakts(List.of(wi(1)), EMT, qcMuda, LoadMode.DSCH);
             var anchorTakt = takts.stream().filter(t -> t.sequence() == 0).findFirst().orElseThrow();
             assertEquals(120 + qcMuda, anchorTakt.durationSeconds());
         }
@@ -718,12 +718,12 @@ class GraphScheduleBuilderTest {
             engine.register(new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS, () -> 0, true));
 
             engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
-                    "wi-1", "queue-1", "CHE-001", PENDING, EMT, 120, 60));
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60));
             engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
-                    "wi-2", "queue-1", "CHE-002", PENDING, EMT, 120, 60));
+                    2L, 1L, "CHE-002", PENDING, EMT, 120, 60));
 
             var effects = engine.processEvent(
-                    new com.wonderingwizard.events.WorkQueueMessage("queue-1",
+                    new com.wonderingwizard.events.WorkQueueMessage(1L,
                             com.wonderingwizard.events.WorkQueueStatus.ACTIVE, 0, null));
 
             assertEquals(1, effects.size());
@@ -739,10 +739,10 @@ class GraphScheduleBuilderTest {
             engine.register(new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS, () -> 0, true));
 
             engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
-                    "wi-1", "queue-1", "CHE-001", PENDING, EMT, 120, 60));
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60));
 
             var effects = engine.processEvent(
-                    new com.wonderingwizard.events.WorkQueueMessage("queue-1",
+                    new com.wonderingwizard.events.WorkQueueMessage(1L,
                             com.wonderingwizard.events.WorkQueueStatus.ACTIVE, 0,
                             com.wonderingwizard.events.LoadMode.DSCH));
 
@@ -763,10 +763,10 @@ class GraphScheduleBuilderTest {
             engine.register(new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS, () -> 0, true));
 
             engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
-                    "wi-1", "queue-1", "CHE-001", PENDING, EMT, 120, 60));
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60));
 
             var effects = engine.processEvent(
-                    new com.wonderingwizard.events.WorkQueueMessage("queue-1",
+                    new com.wonderingwizard.events.WorkQueueMessage(1L,
                             com.wonderingwizard.events.WorkQueueStatus.ACTIVE, 0,
                             com.wonderingwizard.events.LoadMode.LOAD));
 
@@ -787,10 +787,10 @@ class GraphScheduleBuilderTest {
             engine.register(new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS, () -> 0, false));
 
             engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
-                    "wi-1", "queue-1", "CHE-001", PENDING, EMT, 120, 60));
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60));
 
             var effects = engine.processEvent(
-                    new com.wonderingwizard.events.WorkQueueMessage("queue-1",
+                    new com.wonderingwizard.events.WorkQueueMessage(1L,
                             com.wonderingwizard.events.WorkQueueStatus.ACTIVE, 0, null));
 
             assertEquals(1, effects.size());

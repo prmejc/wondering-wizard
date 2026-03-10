@@ -7,7 +7,7 @@ import com.wonderingwizard.engine.SideEffect;
  *
  * @param workQueueId the identifier of the work queue for which the schedule was aborted
  */
-public record ScheduleAborted(String workQueueId) implements SideEffect {
+public record ScheduleAborted(long workQueueId) implements SideEffect {
 
     @Override
     public String toString() {

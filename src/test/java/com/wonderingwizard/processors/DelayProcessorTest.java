@@ -44,7 +44,7 @@ class DelayProcessorTest {
         processor = new DelayProcessor();
     }
 
-    private ScheduleCreated createSchedule(String workQueueId, int taktCount, int durationSeconds) {
+    private ScheduleCreated createSchedule(long workQueueId, int taktCount, int durationSeconds) {
         List<Takt> takts = new java.util.ArrayList<>();
         Instant startTime = BASE_TIME;
         for (int i = 0; i < taktCount; i++) {
@@ -70,7 +70,7 @@ class DelayProcessorTest {
         @Test
         @DisplayName("Should emit no delay when no takt has been activated")
         void noDelayBeforeActivation() {
-            processor.process(createSchedule("queue-1", 2, 120));
+            processor.process(createSchedule(1L, 2, 120));
 
             List<SideEffect> effects = processor.process(new TimeEvent(BASE_TIME.plusSeconds(60)));
             assertTrue(effects.isEmpty());
@@ -79,8 +79,8 @@ class DelayProcessorTest {
         @Test
         @DisplayName("Should emit zero delay when takt is active but within its planned duration")
         void noDelayWhenTaktOnTime() {
-            processor.process(createSchedule("queue-1", 2, 120));
-            processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
+            processor.process(createSchedule(1L, 2, 120));
+            processor.process(new TaktActivated(1, "TAKT100", BASE_TIME));
 
             // 60 seconds into a 120-second takt — no delay
             List<SideEffect> effects = processor.process(new TimeEvent(BASE_TIME.plusSeconds(60)));
@@ -90,8 +90,8 @@ class DelayProcessorTest {
         @Test
         @DisplayName("Should emit zero delay right at the planned end time")
         void noDelayExactlyAtPlannedEnd() {
-            processor.process(createSchedule("queue-1", 2, 120));
-            processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
+            processor.process(createSchedule(1L, 2, 120));
+            processor.process(new TaktActivated(1, "TAKT100", BASE_TIME));
 
             // Exactly at planned end — delay is 0, but lastEmittedDelay was -1 so it emits
             List<SideEffect> effects = processor.process(new TimeEvent(BASE_TIME.plusSeconds(120)));
@@ -108,23 +108,23 @@ class DelayProcessorTest {
         @Test
         @DisplayName("Should detect delay when active takt overruns its planned duration")
         void detectsDelayOnOverrun() {
-            processor.process(createSchedule("queue-1", 2, 120));
-            processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
+            processor.process(createSchedule(1L, 2, 120));
+            processor.process(new TaktActivated(1, "TAKT100", BASE_TIME));
 
             // 150 seconds into a 120-second takt — 30 seconds delayed
             List<SideEffect> effects = processor.process(new TimeEvent(BASE_TIME.plusSeconds(150)));
             assertEquals(1, effects.size());
 
             DelayUpdated updated = (DelayUpdated) effects.get(0);
-            assertEquals("queue-1", updated.workQueueId());
+            assertEquals(1, updated.workQueueId());
             assertEquals(30, updated.totalDelaySeconds());
         }
 
         @Test
         @DisplayName("Should increase delay as time progresses past planned end")
         void delayIncreasesOverTime() {
-            processor.process(createSchedule("queue-1", 2, 120));
-            processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
+            processor.process(createSchedule(1L, 2, 120));
+            processor.process(new TaktActivated(1, "TAKT100", BASE_TIME));
 
             // 150s → 30s delay
             List<SideEffect> effects1 = processor.process(new TimeEvent(BASE_TIME.plusSeconds(150)));
@@ -140,8 +140,8 @@ class DelayProcessorTest {
         @Test
         @DisplayName("Should not emit duplicate delay when value hasn't changed")
         void noDuplicateEmissions() {
-            processor.process(createSchedule("queue-1", 2, 120));
-            processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
+            processor.process(createSchedule(1L, 2, 120));
+            processor.process(new TaktActivated(1, "TAKT100", BASE_TIME));
 
             // 150s → 30s delay
             processor.process(new TimeEvent(BASE_TIME.plusSeconds(150)));
@@ -159,11 +159,11 @@ class DelayProcessorTest {
         @Test
         @DisplayName("Should calculate delay from last completed takt when no takt is active")
         void delayFromCompletedTakt() {
-            processor.process(createSchedule("queue-1", 2, 120));
-            processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
+            processor.process(createSchedule(1L, 2, 120));
+            processor.process(new TaktActivated(1, "TAKT100", BASE_TIME));
 
             // Complete TAKT100 at 150s (30s overrun on a 120s takt)
-            processor.process(new TaktCompleted("queue-1", "TAKT100", BASE_TIME.plusSeconds(150)));
+            processor.process(new TaktCompleted(1, "TAKT100", BASE_TIME.plusSeconds(150)));
 
             // No active takt now — delay should be based on completed takt
             List<SideEffect> effects = processor.process(new TimeEvent(BASE_TIME.plusSeconds(160)));
@@ -174,11 +174,11 @@ class DelayProcessorTest {
         @Test
         @DisplayName("Should show zero delay when completed takt finished on time")
         void noDelayFromOnTimeCompletion() {
-            processor.process(createSchedule("queue-1", 2, 120));
-            processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
+            processor.process(createSchedule(1L, 2, 120));
+            processor.process(new TaktActivated(1, "TAKT100", BASE_TIME));
 
             // Complete TAKT100 at exactly 120s (on time)
-            processor.process(new TaktCompleted("queue-1", "TAKT100", BASE_TIME.plusSeconds(120)));
+            processor.process(new TaktCompleted(1, "TAKT100", BASE_TIME.plusSeconds(120)));
 
             List<SideEffect> effects = processor.process(new TimeEvent(BASE_TIME.plusSeconds(130)));
             assertEquals(1, effects.size());
@@ -188,11 +188,11 @@ class DelayProcessorTest {
         @Test
         @DisplayName("Should show zero delay when completed takt finished early")
         void noDelayFromEarlyCompletion() {
-            processor.process(createSchedule("queue-1", 2, 120));
-            processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
+            processor.process(createSchedule(1L, 2, 120));
+            processor.process(new TaktActivated(1, "TAKT100", BASE_TIME));
 
             // Complete TAKT100 at 100s (20s early)
-            processor.process(new TaktCompleted("queue-1", "TAKT100", BASE_TIME.plusSeconds(100)));
+            processor.process(new TaktCompleted(1, "TAKT100", BASE_TIME.plusSeconds(100)));
 
             List<SideEffect> effects = processor.process(new TimeEvent(BASE_TIME.plusSeconds(110)));
             assertEquals(1, effects.size());
@@ -207,14 +207,14 @@ class DelayProcessorTest {
         @Test
         @DisplayName("Should decrease delay when second takt uses active takt's planned window")
         void delayDecreasesWithFasterTakt() {
-            processor.process(createSchedule("queue-1", 3, 120));
+            processor.process(createSchedule(1L, 3, 120));
 
             // TAKT100 starts on time, runs 150s (30s delay)
-            processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
-            processor.process(new TaktCompleted("queue-1", "TAKT100", BASE_TIME.plusSeconds(150)));
+            processor.process(new TaktActivated(1, "TAKT100", BASE_TIME));
+            processor.process(new TaktCompleted(1, "TAKT100", BASE_TIME.plusSeconds(150)));
 
             // TAKT101 starts at 150s (planned start was 120s)
-            processor.process(new TaktActivated("queue-1", "TAKT101", BASE_TIME.plusSeconds(150)));
+            processor.process(new TaktActivated(1, "TAKT101", BASE_TIME.plusSeconds(150)));
 
             // At 240s: TAKT101 planned end = 120+120=240s. Current time = 240s. Delay = 0.
             // But TAKT101 started at 150, so it's been running 90s of its 120s duration.
@@ -232,12 +232,12 @@ class DelayProcessorTest {
         @Test
         @DisplayName("Should track delays independently for multiple schedules")
         void tracksMultipleSchedulesIndependently() {
-            processor.process(createSchedule("queue-1", 2, 120));
-            processor.process(createSchedule("queue-2", 2, 60));
+            processor.process(createSchedule(1L, 2, 120));
+            processor.process(createSchedule(2L, 2, 60));
 
             // Activate both
-            processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
-            processor.process(new TaktActivated("queue-2", "TAKT100", BASE_TIME));
+            processor.process(new TaktActivated(1, "TAKT100", BASE_TIME));
+            processor.process(new TaktActivated(2, "TAKT100", BASE_TIME));
 
             // At 90s: queue-1 (120s takt) still within planned duration — no emission,
             // queue-2 (60s takt) 30s past planned end — emits delay
@@ -245,7 +245,7 @@ class DelayProcessorTest {
             assertEquals(1, effects.size());
 
             DelayUpdated q2Delay = (DelayUpdated) effects.get(0);
-            assertEquals("queue-2", q2Delay.workQueueId());
+            assertEquals(2, q2Delay.workQueueId());
             assertEquals(30, q2Delay.totalDelaySeconds());
         }
     }
@@ -257,11 +257,11 @@ class DelayProcessorTest {
         @Test
         @DisplayName("Should stop tracking delay after schedule is deactivated")
         void stopsTrackingAfterDeactivation() {
-            processor.process(createSchedule("queue-1", 2, 120));
-            processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
+            processor.process(createSchedule(1L, 2, 120));
+            processor.process(new TaktActivated(1, "TAKT100", BASE_TIME));
 
             // Deactivate
-            processor.process(new WorkQueueMessage("queue-1", INACTIVE, 0, null));
+            processor.process(new WorkQueueMessage(1, INACTIVE, 0, null));
 
             // No delay should be emitted
             List<SideEffect> effects = processor.process(new TimeEvent(BASE_TIME.plusSeconds(200)));
@@ -276,8 +276,8 @@ class DelayProcessorTest {
         @Test
         @DisplayName("Should capture and restore state correctly")
         void capturesAndRestoresState() {
-            processor.process(createSchedule("queue-1", 2, 120));
-            processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
+            processor.process(createSchedule(1L, 2, 120));
+            processor.process(new TaktActivated(1, "TAKT100", BASE_TIME));
 
             // Capture state before any delay
             Object state = processor.captureState();

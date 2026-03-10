@@ -20,7 +20,7 @@ import java.util.UUID;
  */
 public record ActionActivated(
         UUID actionId,
-        String workQueueId,
+        long workQueueId,
         String taktName,
         String actionDescription,
         Instant activatedAt

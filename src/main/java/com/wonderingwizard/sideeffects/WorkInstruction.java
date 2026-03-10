@@ -21,10 +21,11 @@ import java.time.Instant;
  * @param isTwinFetch whether this is a twin fetch operation
  * @param isTwinPut whether this is a twin put operation
  * @param isTwinCarry whether this is a twin carry operation
+ * @param twinCompanionWorkInstruction the twin companion work instruction ID
  */
 public record WorkInstruction(
-        String workInstructionId,
-        String workQueueId,
+        long workInstructionId,
+        long workQueueId,
         String fetchChe,
         WorkInstructionStatus status,
         Instant estimatedMoveTime,
@@ -33,7 +34,8 @@ public record WorkInstruction(
         String putChe,
         boolean isTwinFetch,
         boolean isTwinPut,
-        boolean isTwinCarry
+        boolean isTwinCarry,
+        long twinCompanionWorkInstruction
 ) {
 
     @Override
@@ -48,6 +50,7 @@ public record WorkInstruction(
                 ", estimatedRtgCycleTimeSeconds=" + estimatedRtgCycleTimeSeconds +
                 ", isTwinFetch=" + isTwinFetch +
                 ", isTwinPut=" + isTwinPut +
-                ", isTwinCarry=" + isTwinCarry + "]";
+                ", isTwinCarry=" + isTwinCarry +
+                ", twinCompanionWorkInstruction=" + twinCompanionWorkInstruction + "]";
     }
 }
