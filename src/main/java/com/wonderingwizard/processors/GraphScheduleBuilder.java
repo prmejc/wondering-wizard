@@ -109,7 +109,10 @@ public class GraphScheduleBuilder {
         return switch (loadMode) {
             case LOAD -> getLoadSingleTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
             case DSCH -> {
-                if (wi.isTwinFetch() && wi.isTwinPut()) {
+                if (!wi.isTwinCarry()){
+                    yield getDischargeSingleTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+                }
+                else if (wi.isTwinFetch() && wi.isTwinPut()) {
                     yield getDischargeTwinTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
                 } else {
                     yield getDischargeTwinAsSingleTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
@@ -119,6 +122,36 @@ public class GraphScheduleBuilder {
     }
 
     private static List<ActionTemplate> getDischargeTwinTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+        return List.of(
+                // ── QC chain (forward from anchor) ──
+                ActionTemplate.of("QC Lift", QC, qcLiftDuration)
+                        .withFirstInTakt().withAnchor(),
+                ActionTemplate.of("QC Place", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+
+                // ── TT chain (backward from sync point) ──
+                ActionTemplate.of("drive to QC pull", TT, driveToQcPull),
+                ActionTemplate.of("drive to QC standby", TT, 30),
+                ActionTemplate.of("drive under QC", TT, 30),
+                ActionTemplate.of("handover from QC", TT, qcLiftDuration)
+                        .withFirstInTakt().withSyncWith(QC, "QC Place"),
+
+                ActionTemplate.of("drive to RTG pull", TT, driveToRtgPull),
+                ActionTemplate.of("drive to RTG standby", TT, 240),
+                ActionTemplate.of("drive to RTG under", TT, driveToUnderRtg)
+                        .withFirstInTakt().withOnlyOnePerTakt(),
+                ActionTemplate.of("handover to RTG", TT, rtgPlaceDuration)
+                        .withOnlyOnePerTakt(),
+                ActionTemplate.of("drive to buffer", TT, 30),
+
+                // ── RTG chain (backward from sync point) ──
+                ActionTemplate.of("drive", RTG, 1),
+                ActionTemplate.of("lift from tt", RTG,
+                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, "handover to RTG"),
+                ActionTemplate.of("place on yard", RTG, driveToUnderRtg + rtgPlaceDuration)
+        );
+    }
+
+    private static List<ActionTemplate> getDischargeSingleTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of("QC Lift", QC, qcLiftDuration)
@@ -263,7 +296,7 @@ public class GraphScheduleBuilder {
     }
 
     private static boolean isTwinDischarge(WorkInstruction wi, LoadMode loadMode) {
-        return loadMode == LoadMode.DSCH && wi.isTwinFetch() && wi.isTwinPut();
+        return loadMode == LoadMode.DSCH && wi.isTwinCarry();
     }
 
     // ── Placement algorithm (determines takt assignment, creates Actions without deps) ──
