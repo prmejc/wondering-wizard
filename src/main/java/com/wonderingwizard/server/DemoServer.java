@@ -24,11 +24,13 @@ import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkInstructionStatus;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
+import com.wonderingwizard.processors.DelayProcessor;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
 import com.wonderingwizard.processors.WorkQueueProcessor;
 import com.wonderingwizard.sideeffects.ActionActivated;
 import com.wonderingwizard.sideeffects.ActionCompleted;
+import com.wonderingwizard.sideeffects.DelayUpdated;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
 import com.wonderingwizard.sideeffects.TaktActivated;
@@ -42,6 +44,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -95,7 +98,7 @@ public class DemoServer {
 
     /** Schedule view for the API state response. */
     public record ScheduleView(String workQueueId, boolean active, Instant estimatedMoveTime,
-                                List<TaktView> takts) {}
+                                long totalDelaySeconds, List<TaktView> takts) {}
 
     /** Condition evaluation result for the API. */
     public record ConditionView(String id, String type, boolean satisfied, boolean overridden, String explanation) {}
@@ -103,7 +106,9 @@ public class DemoServer {
     /** Takt view within a schedule. */
     public record TaktView(String name, TaktState status, Instant plannedStartTime,
                             Instant estimatedStartTime, Instant actualStartTime,
-                            int durationSeconds, List<ActionView> actions,
+                            Instant completedAt, int durationSeconds,
+                            long startDelaySeconds, long taktDelaySeconds,
+                            List<ActionView> actions,
                             List<ConditionView> conditions) {}
 
     /** Action view within a takt. */
@@ -117,6 +122,7 @@ public class DemoServer {
         engine.register(new TimeAlarmProcessor());
         engine.register(new WorkQueueProcessor());
         engine.register(new ScheduleRunnerProcessor());
+        engine.register(new DelayProcessor());
     }
 
     DemoServer(Engine engine) {
@@ -237,7 +243,7 @@ public class DemoServer {
                             }
                             builder.takts.add(new TaktView(takt.name(), TaktState.WAITING,
                                     takt.plannedStartTime(), takt.estimatedStartTime(), null,
-                                    takt.durationSeconds(), actionViews, List.of()));
+                                    null, takt.durationSeconds(), 0, 0, actionViews, List.of()));
                         }
                         builder.storeTakts(created.takts());
                         builders.put(created.workQueueId(), builder);
@@ -255,6 +261,13 @@ public class DemoServer {
                         ScheduleViewBuilder builder = builders.get(taktCompleted.workQueueId());
                         if (builder != null) {
                             builder.setTaktStatus(taktCompleted.taktName(), TaktState.COMPLETED);
+                            builder.setCompletedAt(taktCompleted.taktName(), taktCompleted.completedAt());
+                        }
+                    }
+                    case DelayUpdated delayUpdated -> {
+                        ScheduleViewBuilder builder = builders.get(delayUpdated.workQueueId());
+                        if (builder != null) {
+                            builder.totalDelaySeconds = delayUpdated.totalDelaySeconds();
                         }
                     }
                     case ActionActivated activated -> {
@@ -300,6 +313,8 @@ public class DemoServer {
         final Map<UUID, ActionState> actionStates = new HashMap<>();
         final Map<String, TaktState> taktStates = new HashMap<>();
         final Map<String, Instant> actualStartTimes = new HashMap<>();
+        final Map<String, Instant> completedAtTimes = new HashMap<>();
+        long totalDelaySeconds = 0;
         /** Original takt data for building conditions. */
         List<Takt> originalTakts = List.of();
         /** Overridden conditions per takt name. */
@@ -337,6 +352,10 @@ public class DemoServer {
             overriddenActionConditions.computeIfAbsent(actionId, k -> new HashSet<>()).add(conditionId);
         }
 
+        void setCompletedAt(String taktName, Instant time) {
+            completedAtTimes.put(taktName, time);
+        }
+
         ScheduleView build(Instant currentTime) {
             // Build action lookup for dependency descriptions
             Map<UUID, String> actionDescriptions = new HashMap<>();
@@ -361,6 +380,29 @@ public class DemoServer {
                 TaktView takt = takts.get(i);
                 TaktState taktState = taktStates.getOrDefault(takt.name(), takt.status());
                 Instant actualStartTime = actualStartTimes.get(takt.name());
+                Instant completedAt = completedAtTimes.get(takt.name());
+
+                // Calculate per-takt delay info
+                long startDelay = 0;
+                long taktDelay = 0;
+                if (actualStartTime != null && takt.plannedStartTime() != null) {
+                    startDelay = Math.max(0,
+                            Duration.between(takt.plannedStartTime(), actualStartTime).getSeconds());
+                }
+                if (completedAt != null && actualStartTime != null) {
+                    taktDelay = Math.max(0,
+                            Duration.between(actualStartTime, completedAt).getSeconds()
+                                    - takt.durationSeconds());
+                }
+
+                // Update estimated start time for waiting takts based on total delay
+                Instant updatedEstimatedStart = takt.estimatedStartTime();
+                if (taktState == TaktState.WAITING && totalDelaySeconds > 0
+                        && takt.estimatedStartTime() != null) {
+                    updatedEstimatedStart = takt.plannedStartTime()
+                            .plusSeconds(totalDelaySeconds);
+                }
+
                 List<ActionView> updatedActions = new ArrayList<>();
                 Takt originalTakt = i < originalTakts.size() ? originalTakts.get(i) : null;
                 for (ActionView action : takt.actions()) {
@@ -386,10 +428,13 @@ public class DemoServer {
                 }
 
                 updatedTakts.add(new TaktView(takt.name(), taktState,
-                        takt.plannedStartTime(), takt.estimatedStartTime(), actualStartTime,
-                        takt.durationSeconds(), updatedActions, conditionViews));
+                        takt.plannedStartTime(), updatedEstimatedStart, actualStartTime,
+                        completedAt, takt.durationSeconds(),
+                        startDelay, taktDelay,
+                        updatedActions, conditionViews));
             }
-            return new ScheduleView(workQueueId, active, estimatedMoveTime, updatedTakts);
+            return new ScheduleView(workQueueId, active, estimatedMoveTime,
+                    totalDelaySeconds, updatedTakts);
         }
 
         private List<ConditionView> buildActionConditionViews(
