@@ -8,6 +8,7 @@ import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
+import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
@@ -55,6 +56,7 @@ public class WorkQueueProcessor implements EventProcessor {
     private final Map<String, Boolean> activeSchedules = new HashMap<>();
     private final Map<String, List<WorkInstruction>> workInstructions = new HashMap<>();
     private final Map<String, Integer> qcMudaByQueue = new HashMap<>();
+    private final Map<String, LoadMode> loadModeByQueue = new HashMap<>();
     private final IntSupplier driveTimeSupplier;
     private final IntSupplier qcDriveTimeOffsetSupplier;
     private final boolean useGraphScheduleBuilder;
@@ -123,6 +125,9 @@ public class WorkQueueProcessor implements EventProcessor {
         String workQueueId = message.workQueueId();
         WorkQueueStatus status = message.status();
         qcMudaByQueue.put(workQueueId, message.qcMudaSeconds());
+        if (message.loadMode() != null) {
+            loadModeByQueue.put(workQueueId, message.loadMode());
+        }
 
         return switch (status) {
             case ACTIVE -> handleActiveStatus(workQueueId);
@@ -148,9 +153,10 @@ public class WorkQueueProcessor implements EventProcessor {
                 .orElse(null);
 
         int qcMuda = qcMudaByQueue.getOrDefault(workQueueId, 0);
+        LoadMode loadMode = loadModeByQueue.getOrDefault(workQueueId, LoadMode.DSCH);
         List<Takt> takts = useGraphScheduleBuilder
                 ? new GraphScheduleBuilder(driveTimeSupplier, qcDriveTimeOffsetSupplier)
-                        .createTakts(instructions, estimatedMoveTime, qcMuda)
+                        .createTakts(instructions, estimatedMoveTime, qcMuda, loadMode)
                 : createTaktsFromWorkInstructionsPrimvs(instructions, estimatedMoveTime, qcMuda);
 
         return List.of(new ScheduleCreated(workQueueId, takts.stream().sorted( (a, b) -> a.sequence() - b.sequence()).toList(), estimatedMoveTime));
@@ -416,6 +422,7 @@ public class WorkQueueProcessor implements EventProcessor {
         }
         state.put("workInstructions", instructionsCopy);
         state.put("qcMudaByQueue", new HashMap<>(qcMudaByQueue));
+        state.put("loadModeByQueue", new HashMap<>(loadModeByQueue));
 
         return state;
     }
@@ -448,6 +455,12 @@ public class WorkQueueProcessor implements EventProcessor {
         Object qcMudaState = stateMap.get("qcMudaByQueue");
         if (qcMudaState instanceof Map) {
             qcMudaByQueue.putAll((Map<String, Integer>) qcMudaState);
+        }
+
+        loadModeByQueue.clear();
+        Object loadModeState = stateMap.get("loadModeByQueue");
+        if (loadModeState instanceof Map) {
+            loadModeByQueue.putAll((Map<String, LoadMode>) loadModeState);
         }
     }
 }

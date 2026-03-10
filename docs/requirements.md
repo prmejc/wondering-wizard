@@ -79,7 +79,7 @@ INFO: Side effect: AlarmTriggered[alarmName=alarm a, triggeredAt=...]
 **Description:**
 Implement a WorkQueueProcessor that manages schedule creation based on work queue messages. The processor should:
 
-1. Accept `WorkQueueMessage` events with a `workQueueId` and `status` field (using `WorkQueueStatus` enum)
+1. Accept `WorkQueueMessage` events with a `workQueueId`, `status` (using `WorkQueueStatus` enum), and `loadMode` (using `LoadMode` enum: `LOAD` or `DSCH`) field
 2. Create a new schedule when a message with status `ACTIVE` is received for a new workQueueId
 3. Be idempotent for duplicate `ACTIVE` messages with the same workQueueId
 4. Abort the schedule when a message with status `INACTIVE` is received for an existing workQueueId
@@ -138,6 +138,7 @@ INFO: Side effect: ScheduleAborted[workQueueId=queue-1]
 **Implementation Files:**
 - `src/main/java/com/wonderingwizard/events/WorkQueueMessage.java`
 - `src/main/java/com/wonderingwizard/events/WorkQueueStatus.java`
+- `src/main/java/com/wonderingwizard/events/LoadMode.java`
 - `src/main/java/com/wonderingwizard/sideeffects/ScheduleCreated.java`
 - `src/main/java/com/wonderingwizard/sideeffects/ScheduleAborted.java`
 - `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java`
@@ -589,6 +590,7 @@ Alternative takt generation algorithm using a declarative graph-based approach. 
 4. Cross-resource synchronization uses `syncWith` (e.g., TT "handover to QC" syncs with QC "QC Lift")
 5. The algorithm places segments into takts, then wires dependencies as a post-processing step
 6. Enabled via a feature flag (`useGraphScheduleBuilder`) on `WorkQueueProcessor`
+7. Template selection based on `LoadMode`: `DSCH` uses discharge twin template (`getDischargeTwinTemplate`), `LOAD` uses load single template (`getLoadSingleTemplate`)
 
 **Key Concepts:**
 

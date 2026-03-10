@@ -3,6 +3,7 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
+import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.sideeffects.WorkInstruction;
 
 import java.time.Instant;
@@ -96,7 +97,7 @@ public class GraphScheduleBuilder {
 
     // ── Blueprint ──────────────────────────────────────────────────────
 
-    List<ActionTemplate> buildContainerBlueprint(WorkInstruction wi, int qcMudaSeconds) {
+    List<ActionTemplate> buildContainerBlueprint(WorkInstruction wi, int qcMudaSeconds, LoadMode loadMode) {
         int qcLiftDuration = 20;
         int rtgPlaceDuration = 20;
         int driveToUnderRtg = 30;
@@ -105,7 +106,10 @@ public class GraphScheduleBuilder {
                 driveToRtgPull + qcDriveTimeOffsetSupplier.getAsInt(),
                 DRIVE_TIME_MIN_SECONDS, DRIVE_TIME_MAX_SECONDS);
 
-        return getDischargeTwinTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+        return switch (loadMode) {
+            case LOAD -> getLoadSingleTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+            case DSCH -> getDischargeTwinTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+        };
     }
 
     private static List<ActionTemplate> getDischargeTwinTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
@@ -171,14 +175,14 @@ public class GraphScheduleBuilder {
 
     // ── Public entry point ─────────────────────────────────────────────
 
-    public List<Takt> createTakts(List<WorkInstruction> instructions, Instant estimatedMoveTime, int qcMudaSeconds) {
+    public List<Takt> createTakts(List<WorkInstruction> instructions, Instant estimatedMoveTime, int qcMudaSeconds, LoadMode loadMode) {
         var takts = new HashMap<Integer, Takt>();
         // Ordered list of all placed actions across all containers, in blueprint order per container
         var allPlacedActions = new ArrayList<PlacedAction>();
 
         for (int containerIdx = 0; containerIdx < instructions.size(); containerIdx++) {
             var wi = instructions.get(containerIdx);
-            var blueprint = buildContainerBlueprint(wi, qcMudaSeconds);
+            var blueprint = buildContainerBlueprint(wi, qcMudaSeconds, loadMode);
 
             var placed = placeContainerActions(blueprint, containerIdx, wi, qcMudaSeconds, takts);
             allPlacedActions.addAll(placed);

@@ -3,6 +3,7 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
+import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.processors.GraphScheduleBuilder.ActionTemplate;
 import com.wonderingwizard.sideeffects.WorkInstruction;
 import org.junit.jupiter.api.DisplayName;
@@ -98,7 +99,7 @@ class GraphScheduleBuilderTest {
     private static GraphScheduleBuilder builderWith(List<ActionTemplate> template) {
         return new GraphScheduleBuilder(() -> DEFAULT_DURATION_SECONDS, () -> 0) {
             @Override
-            List<ActionTemplate> buildContainerBlueprint(WorkInstruction wi, int qcMudaSeconds) {
+            List<ActionTemplate> buildContainerBlueprint(WorkInstruction wi, int qcMudaSeconds, LoadMode loadMode) {
                 return template;
             }
         };
@@ -113,7 +114,7 @@ class GraphScheduleBuilderTest {
         for (int i = 0; i < containerCount; i++) {
             instructions.add(wi("wi-" + (i + 1)));
         }
-        return builderWith(template).createTakts(instructions, EMT, 0);
+        return builderWith(template).createTakts(instructions, EMT, 0, LoadMode.DSCH);
     }
 
     private static List<Action> allActions(List<Takt> takts) {
@@ -476,7 +477,7 @@ class GraphScheduleBuilderTest {
         void qcMudaIncreasesTaktDuration() {
             int qcMuda = 15;
             var takts = builderWith(MINIMAL_TEMPLATE)
-                    .createTakts(List.of(wi("wi-1")), EMT, qcMuda);
+                    .createTakts(List.of(wi("wi-1")), EMT, qcMuda, LoadMode.DSCH);
             var anchorTakt = takts.stream().filter(t -> t.sequence() == 0).findFirst().orElseThrow();
             assertEquals(120 + qcMuda, anchorTakt.durationSeconds());
         }
@@ -651,7 +652,7 @@ class GraphScheduleBuilderTest {
         @Test
         @DisplayName("Empty instruction list returns empty takts")
         void emptyInstructions() {
-            var takts = builderWith(DISCHARGE_TEMPLATE).createTakts(List.of(), EMT, 0);
+            var takts = builderWith(DISCHARGE_TEMPLATE).createTakts(List.of(), EMT, 0, LoadMode.DSCH);
             assertTrue(takts.isEmpty());
         }
 
@@ -723,12 +724,60 @@ class GraphScheduleBuilderTest {
 
             var effects = engine.processEvent(
                     new com.wonderingwizard.events.WorkQueueMessage("queue-1",
-                            com.wonderingwizard.events.WorkQueueStatus.ACTIVE, 0));
+                            com.wonderingwizard.events.WorkQueueStatus.ACTIVE, 0, null));
 
             assertEquals(1, effects.size());
             assertInstanceOf(com.wonderingwizard.sideeffects.ScheduleCreated.class, effects.getFirst());
             var created = (com.wonderingwizard.sideeffects.ScheduleCreated) effects.getFirst();
             assertFalse(created.takts().isEmpty(), "Graph builder should produce takts");
+        }
+
+        @Test
+        @DisplayName("DSCH load mode uses discharge twin template")
+        void dschLoadModeUsesDischargeTemplate() {
+            var engine = new com.wonderingwizard.engine.EventProcessingEngine();
+            engine.register(new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS, () -> 0, true));
+
+            engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
+                    "wi-1", "queue-1", "CHE-001", PENDING, EMT, 120, 60));
+
+            var effects = engine.processEvent(
+                    new com.wonderingwizard.events.WorkQueueMessage("queue-1",
+                            com.wonderingwizard.events.WorkQueueStatus.ACTIVE, 0,
+                            com.wonderingwizard.events.LoadMode.DSCH));
+
+            var created = (com.wonderingwizard.sideeffects.ScheduleCreated) effects.getFirst();
+            var allActions = created.takts().stream()
+                    .flatMap(t -> t.actions().stream())
+                    .map(Action::description)
+                    .toList();
+            // Discharge template has "handover from QC" (TT receives from QC)
+            assertTrue(allActions.contains("handover from QC"),
+                    "DSCH mode should use discharge template with 'handover from QC'");
+        }
+
+        @Test
+        @DisplayName("LOAD load mode uses load single template")
+        void loadLoadModeUsesLoadTemplate() {
+            var engine = new com.wonderingwizard.engine.EventProcessingEngine();
+            engine.register(new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS, () -> 0, true));
+
+            engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
+                    "wi-1", "queue-1", "CHE-001", PENDING, EMT, 120, 60));
+
+            var effects = engine.processEvent(
+                    new com.wonderingwizard.events.WorkQueueMessage("queue-1",
+                            com.wonderingwizard.events.WorkQueueStatus.ACTIVE, 0,
+                            com.wonderingwizard.events.LoadMode.LOAD));
+
+            var created = (com.wonderingwizard.sideeffects.ScheduleCreated) effects.getFirst();
+            var allActions = created.takts().stream()
+                    .flatMap(t -> t.actions().stream())
+                    .map(Action::description)
+                    .toList();
+            // Load template has "handover to QC" (TT delivers to QC)
+            assertTrue(allActions.contains("handover to QC"),
+                    "LOAD mode should use load template with 'handover to QC'");
         }
 
         @Test
@@ -742,7 +791,7 @@ class GraphScheduleBuilderTest {
 
             var effects = engine.processEvent(
                     new com.wonderingwizard.events.WorkQueueMessage("queue-1",
-                            com.wonderingwizard.events.WorkQueueStatus.ACTIVE, 0));
+                            com.wonderingwizard.events.WorkQueueStatus.ACTIVE, 0, null));
 
             assertEquals(1, effects.size());
             assertInstanceOf(com.wonderingwizard.sideeffects.ScheduleCreated.class, effects.getFirst());

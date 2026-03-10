@@ -49,7 +49,7 @@ class EventPropagatingEngineTest {
 
             // Verify by processing an event that the processor would handle
             List<SideEffect> effects = propagatingEngine.processEvent(
-                    new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0, null));
 
             assertTrue(effects.stream().anyMatch(se -> se instanceof ScheduleCreated));
         }
@@ -63,7 +63,7 @@ class EventPropagatingEngineTest {
 
             // WorkQueueMessage(ACTIVE) produces ScheduleCreated which is also an Event,
             // so EventPropagatingEngine recursively processes it → 2 history entries
-            propagatingEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
+            propagatingEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0, null));
             assertEquals(2, propagatingEngine.getHistorySize());
 
             assertTrue(propagatingEngine.stepBack());
@@ -79,10 +79,10 @@ class EventPropagatingEngineTest {
 
             // Each WorkQueueMessage(ACTIVE) produces ScheduleCreated (implements Event),
             // which is recursively processed → 2 history entries per message
-            propagatingEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
+            propagatingEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0, null));
             assertEquals(2, propagatingEngine.getHistorySize());
 
-            propagatingEngine.processEvent(new WorkQueueMessage("queue2", WorkQueueStatus.ACTIVE, 0));
+            propagatingEngine.processEvent(new WorkQueueMessage("queue2", WorkQueueStatus.ACTIVE, 0, null));
             assertEquals(4, propagatingEngine.getHistorySize());
         }
 
@@ -91,8 +91,8 @@ class EventPropagatingEngineTest {
         void clearHistoryDelegatesToInnerEngine() {
             propagatingEngine.register(new WorkQueueProcessor(() -> 30));
 
-            propagatingEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
-            propagatingEngine.processEvent(new WorkQueueMessage("queue2", WorkQueueStatus.ACTIVE, 0));
+            propagatingEngine.processEvent(new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0, null));
+            propagatingEngine.processEvent(new WorkQueueMessage("queue2", WorkQueueStatus.ACTIVE, 0, null));
 
             assertEquals(4, propagatingEngine.getHistorySize());
 
@@ -112,7 +112,7 @@ class EventPropagatingEngineTest {
             propagatingEngine.register(new WorkQueueProcessor(() -> 30));
 
             List<SideEffect> effects = propagatingEngine.processEvent(
-                    new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0, null));
 
             // Should contain at least ScheduleCreated
             assertTrue(effects.stream().anyMatch(se -> se instanceof ScheduleCreated));
@@ -137,7 +137,7 @@ class EventPropagatingEngineTest {
             // Activate the work queue - this should produce ScheduleCreated,
             // which should then be recursively processed
             List<SideEffect> effects = propagatingEngine.processEvent(
-                    new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0, null));
 
             // Should contain ScheduleCreated from WorkQueueProcessor
             assertTrue(effects.stream().anyMatch(se -> se instanceof ScheduleCreated),
@@ -174,7 +174,7 @@ class EventPropagatingEngineTest {
 
             // Now activate - this will create a schedule that's already past its start time
             List<SideEffect> effects = propagatingEngine.processEvent(
-                    new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0, null));
 
             // Verify the order: ScheduleCreated should come before any ActionActivated
             int scheduleCreatedIndex = -1;
@@ -218,7 +218,7 @@ class EventPropagatingEngineTest {
 
             // Activate - will trigger recursive processing
             List<SideEffect> effects = propagatingEngine.processEvent(
-                    new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0, null));
 
             // Verify we got ScheduleCreated
             assertTrue(effects.stream().anyMatch(se -> se instanceof ScheduleCreated));
@@ -228,7 +228,7 @@ class EventPropagatingEngineTest {
         @DisplayName("processEvent with no processors returns empty list")
         void processEventWithNoProcessorsReturnsEmptyList() {
             List<SideEffect> effects = propagatingEngine.processEvent(
-                    new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage("queue1", WorkQueueStatus.ACTIVE, 0, null));
 
             assertTrue(effects.isEmpty());
         }
@@ -257,7 +257,7 @@ class EventPropagatingEngineTest {
             // Activate the queue - WorkQueueProcessor will produce ScheduleCreated
             // EventPropagatingEngine should then pass ScheduleCreated to ScheduleRunnerProcessor
             List<SideEffect> effects = propagatingEngine.processEvent(
-                    new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0, null));
 
             // Count the side effect types
             long scheduleCreatedCount = effects.stream()
@@ -289,7 +289,7 @@ class EventPropagatingEngineTest {
 
             // Activate the queue
             List<SideEffect> plainEffects = plainEngine.processEvent(
-                    new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0, null));
 
             // Plain engine should have ScheduleCreated, but ScheduleRunnerProcessor
             // won't process it in the same call since it's a side effect, not an event being processed

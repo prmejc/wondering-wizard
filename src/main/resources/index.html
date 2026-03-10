@@ -251,6 +251,13 @@ class EventPanel extends HTMLElement {
         <label>QC Muda (sec)</label>
         <input id="wq-muda" type="number" value="5">
       </div>
+      <div class="form-group">
+        <label>Load Mode</label>
+        <select id="wq-load-mode">
+          <option value="DSCH">DSCH</option>
+          <option value="LOAD">LOAD</option>
+        </select>
+      </div>
       <button onclick="this.closest('event-panel').sendWQ()" style="margin-top:8px;width:100%">Send Work Queue</button>`;
     this.querySelector('#wi-emt').addEventListener('input', () => { this._emtDirty = true; });
   }
@@ -283,7 +290,8 @@ class EventPanel extends HTMLElement {
     await apiCall('/api/work-queue', {
       workQueueId: this.querySelector('#wq-id').value,
       status: this.querySelector('#wq-status').value,
-      qcMudaSeconds: this.querySelector('#wq-muda').value
+      qcMudaSeconds: this.querySelector('#wq-muda').value,
+      loadMode: this.querySelector('#wq-load-mode').value
     });
     refreshState();
   }

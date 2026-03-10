@@ -1,5 +1,6 @@
 package com.wonderingwizard.kafka;
 
+import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.kafka.messages.WorkQueueKafkaMessage;
@@ -207,6 +208,54 @@ class WorkQueueEventMapperTest {
         assertEquals(30L, kafkaMessage.mudaQCCycleTime());
         assertEquals("Y", kafkaMessage.workQueueManaged());
         assertEquals(1700000000000L, kafkaMessage.sourceTsMs());
+    }
+
+    @Test
+    void shouldMapLoadModeLoad() {
+        GenericRecord record = new GenericData.Record(schema);
+        record.put("workQueueId", 1L);
+        record.put("workQueueStatus", "ACTIVE");
+        record.put("load_mode", "LOAD");
+
+        WorkQueueMessage event = mapper.map(record);
+
+        assertEquals(LoadMode.LOAD, event.loadMode());
+    }
+
+    @Test
+    void shouldMapLoadModeDsch() {
+        GenericRecord record = new GenericData.Record(schema);
+        record.put("workQueueId", 1L);
+        record.put("workQueueStatus", "ACTIVE");
+        record.put("load_mode", "DSCH");
+
+        WorkQueueMessage event = mapper.map(record);
+
+        assertEquals(LoadMode.DSCH, event.loadMode());
+    }
+
+    @Test
+    void shouldMapNullLoadModeToNull() {
+        GenericRecord record = new GenericData.Record(schema);
+        record.put("workQueueId", 1L);
+        record.put("workQueueStatus", "ACTIVE");
+        record.put("load_mode", null);
+
+        WorkQueueMessage event = mapper.map(record);
+
+        assertNull(event.loadMode());
+    }
+
+    @Test
+    void shouldMapUnknownLoadModeToDsch() {
+        GenericRecord record = new GenericData.Record(schema);
+        record.put("workQueueId", 1L);
+        record.put("workQueueStatus", "ACTIVE");
+        record.put("load_mode", "UNKNOWN_MODE");
+
+        WorkQueueMessage event = mapper.map(record);
+
+        assertEquals(LoadMode.DSCH, event.loadMode());
     }
 
     @Test

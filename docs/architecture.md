@@ -15,7 +15,7 @@ Marker interface for all events. Enables pattern matching in processors.
 **Implementations:**
 - `TimeEvent` - Represents a point in time
 - `SetTimeAlarm` - Request to set a time-based alarm
-- `WorkQueueMessage` - Work queue message with status for schedule management
+- `WorkQueueMessage` - Work queue message with status and load mode for schedule management
 - `WorkInstructionEvent` - Work instruction with workQueueId association and estimatedMoveTime
 - `ActionCompletedEvent` - Notification that an action has been completed (with UUID validation)
 
@@ -190,6 +190,7 @@ com.wonderingwizard
 │   ├── SetTimeAlarm.java            # Alarm setting event
 │   ├── WorkQueueMessage.java        # Work queue status message
 │   ├── WorkQueueStatus.java         # Work queue status enum
+│   ├── LoadMode.java                # Load mode enum (LOAD, DSCH) for template selection
 │   ├── WorkInstructionEvent.java    # Work instruction event (with estimatedMoveTime)
 │   ├── WorkInstructionStatus.java   # Work instruction status enum
 │   └── ActionCompletedEvent.java    # Action completion event (with UUID)

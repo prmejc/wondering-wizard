@@ -1,5 +1,6 @@
 package com.wonderingwizard.kafka;
 
+import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.kafka.messages.WorkQueueKafkaMessage;
@@ -69,10 +70,12 @@ public class WorkQueueEventMapper implements EventMapper<WorkQueueMessage> {
                 ? kafkaMessage.mudaQCCycleTime().intValue()
                 : 0;
 
-        logger.fine("Mapped WorkQueue Kafka message: workQueueId=" + workQueueId
-                + ", status=" + status + ", qcMudaSeconds=" + qcMudaSeconds);
+        LoadMode loadMode = mapLoadMode(kafkaMessage.loadMode());
 
-        return new WorkQueueMessage(workQueueId, status, qcMudaSeconds);
+        logger.fine("Mapped WorkQueue Kafka message: workQueueId=" + workQueueId
+                + ", status=" + status + ", qcMudaSeconds=" + qcMudaSeconds + ", loadMode=" + loadMode);
+
+        return new WorkQueueMessage(workQueueId, status, qcMudaSeconds, loadMode);
     }
 
     private WorkQueueStatus mapStatus(String kafkaStatus) {
@@ -86,6 +89,21 @@ public class WorkQueueEventMapper implements EventMapper<WorkQueueMessage> {
                 logger.warning("Unknown WorkQueue status from Kafka: " + kafkaStatus
                         + ", defaulting to INACTIVE");
                 yield WorkQueueStatus.INACTIVE;
+            }
+        };
+    }
+
+    private LoadMode mapLoadMode(String kafkaLoadMode) {
+        if (kafkaLoadMode == null) {
+            return null;
+        }
+        return switch (kafkaLoadMode.toUpperCase()) {
+            case "LOAD" -> LoadMode.LOAD;
+            case "DSCH" -> LoadMode.DSCH;
+            default -> {
+                logger.warning("Unknown load_mode from Kafka: " + kafkaLoadMode
+                        + ", defaulting to DSCH");
+                yield LoadMode.DSCH;
             }
         };
     }

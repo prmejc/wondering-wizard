@@ -126,7 +126,7 @@ class JsonSerializerTest {
         @Test
         @DisplayName("Should serialize WorkQueueMessage")
         void serializesWorkQueueMessage() {
-            WorkQueueMessage event = new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0);
+            WorkQueueMessage event = new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0, null);
             String json = JsonSerializer.serialize(event);
             assertTrue(json.contains("\"type\":\"WorkQueueMessage\""));
             assertTrue(json.contains("\"workQueueId\":\"WQ-001\""));

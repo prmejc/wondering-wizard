@@ -66,7 +66,7 @@ class DemoServerTest {
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
 
             List<SideEffect> effects = server.processStep("Activate WQ",
-                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0, null));
 
             assertFalse(effects.isEmpty());
             boolean hasScheduleCreated = effects.stream().anyMatch(se -> se instanceof ScheduleCreated);
@@ -88,7 +88,7 @@ class DemoServerTest {
                     "WI-002", "WQ-001", "RTG-02", WorkInstructionStatus.PENDING,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
             server.processStep("Activate WQ",
-                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0, null));
 
             assertEquals(3, server.getSteps().size());
 
@@ -133,7 +133,7 @@ class DemoServerTest {
 
             // Activate - this creates ScheduleCreated which propagates
             server.processStep("Activate WQ",
-                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0, null));
 
             assertEquals(2, server.getSteps().size());
 
@@ -144,7 +144,7 @@ class DemoServerTest {
 
             // Re-activate should produce ScheduleCreated again
             List<SideEffect> effects = server.processStep("Activate WQ again",
-                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0, null));
             boolean hasScheduleCreated = effects.stream().anyMatch(se -> se instanceof ScheduleCreated);
             assertTrue(hasScheduleCreated);
         }
@@ -170,7 +170,7 @@ class DemoServerTest {
                     "WI-001", "WQ-001", "RTG-01", WorkInstructionStatus.PENDING,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
             server.processStep("Activate WQ",
-                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0, null));
 
             Map<String, Object> state = server.getState();
             List<?> schedules = (List<?>) state.get("schedules");
@@ -189,7 +189,7 @@ class DemoServerTest {
             server.processStep("WI 1", new WorkInstructionEvent(
                     "WI-001", "WQ-001", "RTG-01", WorkInstructionStatus.PENDING, emt, 120));
             server.processStep("Activate WQ",
-                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0, null));
 
             // All actions should be PENDING initially
             Map<String, Object> state = server.getState();
@@ -222,7 +222,7 @@ class DemoServerTest {
                     "WI-001", "WQ-001", "RTG-01", WorkInstructionStatus.PENDING,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
             server.processStep("Activate WQ",
-                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0, null));
 
             String json = JsonSerializer.serialize(server.getState());
             assertNotNull(json);
@@ -252,7 +252,7 @@ class DemoServerTest {
 
             // Step 2: Activate work queue
             List<SideEffect> step2 = server.processStep("Activate",
-                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0));
+                    new WorkQueueMessage("WQ-001", WorkQueueStatus.ACTIVE, 0, null));
             assertTrue(step2.stream().anyMatch(se -> se instanceof ScheduleCreated));
 
             // Step 3: Tick time

@@ -150,7 +150,7 @@ public class Main {
         // Step 2: Activate the work queue - EventPropagatingEngine automatically processes
         // ScheduleCreated as an event since it implements both SideEffect and Event
         logger.info("--- Activating Work Queue ---");
-        List<SideEffect> sideEffects3 = engine.processEvent(new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0));
+        List<SideEffect> sideEffects3 = engine.processEvent(new WorkQueueMessage(workQueueId, WorkQueueStatus.ACTIVE, 0, null));
         logger.info("WorkQueueMessage ACTIVE side effects: " + sideEffects3);
 
         // Step 3: Process TimeEvent at estimated move time to trigger action activation

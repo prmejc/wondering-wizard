@@ -707,7 +707,12 @@ public class DemoServer {
             String qcMudaStr = body.getOrDefault("qcMudaSeconds", "0");
             int qcMudaSeconds = Integer.parseInt(qcMudaStr);
 
-            WorkQueueMessage event = new WorkQueueMessage(workQueueId, status, qcMudaSeconds);
+            String loadModeStr = body.get("loadMode");
+            com.wonderingwizard.events.LoadMode loadMode = loadModeStr != null
+                    ? com.wonderingwizard.events.LoadMode.valueOf(loadModeStr)
+                    : null;
+
+            WorkQueueMessage event = new WorkQueueMessage(workQueueId, status, qcMudaSeconds, loadMode);
             List<SideEffect> effects = processStep("WorkQueue " + statusStr + ": " + workQueueId, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(

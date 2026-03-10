@@ -261,7 +261,7 @@ class DelayProcessorTest {
             processor.process(new TaktActivated("queue-1", "TAKT100", BASE_TIME));
 
             // Deactivate
-            processor.process(new WorkQueueMessage("queue-1", INACTIVE, 0));
+            processor.process(new WorkQueueMessage("queue-1", INACTIVE, 0, null));
 
             // No delay should be emitted
             List<SideEffect> effects = processor.process(new TimeEvent(BASE_TIME.plusSeconds(200)));

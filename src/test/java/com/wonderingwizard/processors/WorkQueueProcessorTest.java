@@ -51,7 +51,7 @@ class WorkQueueProcessorTest {
         @DisplayName("Should return ScheduleCreated when first Active message is received")
         void activeMessage_returnsScheduleCreated() {
             List<SideEffect> sideEffects = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
             assertEquals(1, sideEffects.size(),
                     "Should contain exactly one side effect");
@@ -66,9 +66,9 @@ class WorkQueueProcessorTest {
         @DisplayName("Should return ScheduleCreated for different workQueueIds")
         void multipleActiveMessages_differentQueues_returnsScheduleCreatedForEach() {
             List<SideEffect> sideEffects1 = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
             List<SideEffect> sideEffects2 = engine.processEvent(
-                    new WorkQueueMessage("queue-2", ACTIVE, 0));
+                    new WorkQueueMessage("queue-2", ACTIVE, 0, null));
 
             assertEquals(1, sideEffects1.size());
             assertEquals(1, sideEffects2.size());
@@ -87,11 +87,11 @@ class WorkQueueProcessorTest {
         @DisplayName("Should return empty side effects for duplicate Active message")
         void duplicateActiveMessage_returnsEmptySideEffects() {
             // First Active message
-            engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0));
+            engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
             // Duplicate Active message for same workQueueId
             List<SideEffect> sideEffects = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
             assertTrue(sideEffects.isEmpty(),
                     "Duplicate Active message should not produce side effects");
@@ -102,15 +102,15 @@ class WorkQueueProcessorTest {
         void multipleDuplicateActiveMessages_returnsEmptySideEffects() {
             // First Active message
             List<SideEffect> first = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
             // Multiple duplicate Active messages
             List<SideEffect> second = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
             List<SideEffect> third = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
             List<SideEffect> fourth = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
             assertEquals(1, first.size(), "First Active should create schedule");
             assertTrue(second.isEmpty(), "Second Active should be idempotent");
@@ -127,11 +127,11 @@ class WorkQueueProcessorTest {
         @DisplayName("Should return ScheduleAborted when Inactive message follows Active")
         void inactiveAfterActive_returnsScheduleAborted() {
             // First create a schedule
-            engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0));
+            engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
             // Then abort it
             List<SideEffect> sideEffects = engine.processEvent(
-                    new WorkQueueMessage("queue-1", INACTIVE, 0));
+                    new WorkQueueMessage("queue-1", INACTIVE, 0, null));
 
             assertEquals(1, sideEffects.size(),
                     "Should contain exactly one side effect");
@@ -146,7 +146,7 @@ class WorkQueueProcessorTest {
         @DisplayName("Should return empty when Inactive message has no prior Active")
         void inactiveWithoutActive_returnsEmptySideEffects() {
             List<SideEffect> sideEffects = engine.processEvent(
-                    new WorkQueueMessage("queue-1", INACTIVE, 0));
+                    new WorkQueueMessage("queue-1", INACTIVE, 0, null));
 
             assertTrue(sideEffects.isEmpty(),
                     "Inactive without prior Active should not produce side effects");
@@ -156,12 +156,12 @@ class WorkQueueProcessorTest {
         @DisplayName("Should return empty for duplicate Inactive messages")
         void duplicateInactiveMessage_returnsEmptySideEffects() {
             // Create and abort
-            engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0));
-            engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE, 0));
+            engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0, null));
+            engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE, 0, null));
 
             // Duplicate Inactive
             List<SideEffect> sideEffects = engine.processEvent(
-                    new WorkQueueMessage("queue-1", INACTIVE, 0));
+                    new WorkQueueMessage("queue-1", INACTIVE, 0, null));
 
             assertTrue(sideEffects.isEmpty(),
                     "Duplicate Inactive message should not produce side effects");
@@ -177,15 +177,15 @@ class WorkQueueProcessorTest {
         void reactivationAfterAbort_returnsScheduleCreated() {
             // Create
             List<SideEffect> created = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
             // Abort
             List<SideEffect> aborted = engine.processEvent(
-                    new WorkQueueMessage("queue-1", INACTIVE, 0));
+                    new WorkQueueMessage("queue-1", INACTIVE, 0, null));
 
             // Reactivate
             List<SideEffect> reactivated = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
             assertEquals(1, created.size());
             assertInstanceOf(ScheduleCreated.class, created.get(0));
@@ -201,16 +201,16 @@ class WorkQueueProcessorTest {
         @DisplayName("Should handle multiple queues independently")
         void multipleQueues_handledIndependently() {
             // Activate queue-1 and queue-2
-            engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0));
-            engine.processEvent(new WorkQueueMessage("queue-2", ACTIVE, 0));
+            engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0, null));
+            engine.processEvent(new WorkQueueMessage("queue-2", ACTIVE, 0, null));
 
             // Deactivate only queue-1
             List<SideEffect> aborted = engine.processEvent(
-                    new WorkQueueMessage("queue-1", INACTIVE, 0));
+                    new WorkQueueMessage("queue-1", INACTIVE, 0, null));
 
             // queue-2 should still be idempotent
             List<SideEffect> stillActive = engine.processEvent(
-                    new WorkQueueMessage("queue-2", ACTIVE, 0));
+                    new WorkQueueMessage("queue-2", ACTIVE, 0, null));
 
             assertEquals(1, aborted.size());
             assertInstanceOf(ScheduleAborted.class, aborted.get(0));
@@ -225,29 +225,29 @@ class WorkQueueProcessorTest {
         void fullLifecycle() {
             // Create
             List<SideEffect> step1 = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
             assertEquals(1, step1.size());
             assertInstanceOf(ScheduleCreated.class, step1.get(0));
 
             // Duplicate Active (idempotent)
             List<SideEffect> step2 = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
             assertTrue(step2.isEmpty());
 
             // Abort
             List<SideEffect> step3 = engine.processEvent(
-                    new WorkQueueMessage("queue-1", INACTIVE, 0));
+                    new WorkQueueMessage("queue-1", INACTIVE, 0, null));
             assertEquals(1, step3.size());
             assertInstanceOf(ScheduleAborted.class, step3.get(0));
 
             // Duplicate Inactive (no effect)
             List<SideEffect> step4 = engine.processEvent(
-                    new WorkQueueMessage("queue-1", INACTIVE, 0));
+                    new WorkQueueMessage("queue-1", INACTIVE, 0, null));
             assertTrue(step4.isEmpty());
 
             // Recreate
             List<SideEffect> step5 = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
             assertEquals(1, step5.size());
             assertInstanceOf(ScheduleCreated.class, step5.get(0));
         }
@@ -261,7 +261,7 @@ class WorkQueueProcessorTest {
         @DisplayName("Should return empty for null status")
         void nullStatus_returnsEmptySideEffects() {
             List<SideEffect> sideEffects = engine.processEvent(
-                    new WorkQueueMessage("queue-1", null, 0));
+                    new WorkQueueMessage("queue-1", null, 0, null));
 
             assertTrue(sideEffects.isEmpty(),
                     "Null status should not produce side effects");
@@ -277,7 +277,7 @@ class WorkQueueProcessorTest {
         void completeF2Workflow() {
             // Step 1: First Active message creates schedule
             List<SideEffect> sideEffects1 = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
             assertEquals(1, sideEffects1.size(),
                     "F-2 Requirement: First Active should create schedule");
             assertInstanceOf(ScheduleCreated.class, sideEffects1.get(0));
@@ -285,13 +285,13 @@ class WorkQueueProcessorTest {
 
             // Step 2: Duplicate Active message is idempotent
             List<SideEffect> sideEffects2 = engine.processEvent(
-                    new WorkQueueMessage("queue-1", ACTIVE, 0));
+                    new WorkQueueMessage("queue-1", ACTIVE, 0, null));
             assertTrue(sideEffects2.isEmpty(),
                     "F-2 Requirement: Duplicate Active should be idempotent");
 
             // Step 3: Inactive message aborts schedule
             List<SideEffect> sideEffects3 = engine.processEvent(
-                    new WorkQueueMessage("queue-1", INACTIVE, 0));
+                    new WorkQueueMessage("queue-1", INACTIVE, 0, null));
             assertEquals(1, sideEffects3.size(),
                     "F-2 Requirement: Inactive should abort schedule");
             assertInstanceOf(ScheduleAborted.class, sideEffects3.get(0));
@@ -325,7 +325,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", IN_PROGRESS, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
@@ -348,7 +348,7 @@ class WorkQueueProcessorTest {
 
                 // Activate work queue
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 assertEquals(1, sideEffects.size());
                 assertInstanceOf(ScheduleCreated.class, sideEffects.get(0));
@@ -363,7 +363,7 @@ class WorkQueueProcessorTest {
             @DisplayName("Should return empty takts list when no work instructions registered")
             void activeMessage_noWorkInstructions_returnsEmptyTaktsList() {
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
@@ -381,7 +381,7 @@ class WorkQueueProcessorTest {
 
                 // Activate queue-1
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
@@ -403,12 +403,12 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, EMT, 120));
 
                 // Activate and then abort
-                engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0));
-                engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE, 0));
+                engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0, null));
+                engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE, 0, null));
 
                 // Reactivate
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
@@ -424,15 +424,15 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 // Activate and abort
-                engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0));
-                engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE, 0));
+                engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0, null));
+                engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE, 0, null));
 
                 // Add new work instruction
                 engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, EMT, 120));
 
                 // Reactivate
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 assertEquals(1, sideEffects.size());
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
@@ -455,7 +455,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-4", "queue-1", "CHE-004", CANCELLED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 // 4 containers with multi-device workflow: 4 + 3 (offset) = 7 takts
@@ -489,7 +489,7 @@ class WorkQueueProcessorTest {
 
                 // Step 2: Activate queue-1 - should generate takts for wi-1 and wi-2 but not wi-3
                 List<SideEffect> effects4 = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 assertEquals(1, effects4.size(),
                         "F-4 Requirement: Active should produce ScheduleCreated");
@@ -511,19 +511,19 @@ class WorkQueueProcessorTest {
 
                 // Activate
                 List<SideEffect> created1 = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
                 // 2 containers with multi-device workflow: 2 + 3 (offset) = 5 takts
                 assertEquals(5, ((ScheduleCreated) created1.get(0)).takts().size());
 
                 // Abort
-                engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE, 0));
+                engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE, 0, null));
 
                 // Add new instruction
                 engine.processEvent(new WorkInstructionEvent("wi-4", "queue-1", "CHE-004", PENDING, EMT, 120));
 
                 // Reactivate - should include all 3 instructions as takts
                 List<SideEffect> created2 = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated reactivated = (ScheduleCreated) created2.get(0);
                 // 3 containers with multi-device workflow: 3 + 3 (offset) = 6 takts
@@ -543,7 +543,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 // Activate queue
-                engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0));
+                engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 // Add another work instruction
                 engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, EMT, 120));
@@ -553,9 +553,9 @@ class WorkQueueProcessorTest {
                 assertTrue(success, "Step back should succeed");
 
                 // Abort and reactivate to see current takts
-                engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE, 0));
+                engine.processEvent(new WorkQueueMessage("queue-1", INACTIVE, 0, null));
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 // 1 container with multi-device workflow: 1 + 3 (offset) = 4 takts
@@ -579,9 +579,9 @@ class WorkQueueProcessorTest {
 
                 // Activate both queues and verify
                 List<SideEffect> effects1 = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
                 List<SideEffect> effects2 = engine.processEvent(
-                        new WorkQueueMessage("queue-2", ACTIVE, 0));
+                        new WorkQueueMessage("queue-2", ACTIVE, 0, null));
 
                 ScheduleCreated created1 = (ScheduleCreated) effects1.get(0);
                 ScheduleCreated created2 = (ScheduleCreated) effects2.get(0);
@@ -604,7 +604,7 @@ class WorkQueueProcessorTest {
 
                 // Activate and verify only one container's worth of takts
                 List<SideEffect> effects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) effects.get(0);
                 // 1 container with multi-device workflow: 1 + 3 (offset) = 4 takts
@@ -628,9 +628,9 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 // Activate all queues
-                List<SideEffect> effects1 = engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0));
-                List<SideEffect> effects2 = engine.processEvent(new WorkQueueMessage("queue-2", ACTIVE, 0));
-                List<SideEffect> effects3 = engine.processEvent(new WorkQueueMessage("queue-3", ACTIVE, 0));
+                List<SideEffect> effects1 = engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0, null));
+                List<SideEffect> effects2 = engine.processEvent(new WorkQueueMessage("queue-2", ACTIVE, 0, null));
+                List<SideEffect> effects3 = engine.processEvent(new WorkQueueMessage("queue-3", ACTIVE, 0, null));
 
                 ScheduleCreated created1 = (ScheduleCreated) effects1.get(0);
                 ScheduleCreated created2 = (ScheduleCreated) effects2.get(0);
@@ -657,8 +657,8 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-2", "CHE-001", PENDING, EMT, 120));
 
                 // Activate both queues
-                List<SideEffect> effects1 = engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0));
-                List<SideEffect> effects2 = engine.processEvent(new WorkQueueMessage("queue-2", ACTIVE, 0));
+                List<SideEffect> effects1 = engine.processEvent(new WorkQueueMessage("queue-1", ACTIVE, 0, null));
+                List<SideEffect> effects2 = engine.processEvent(new WorkQueueMessage("queue-2", ACTIVE, 0, null));
 
                 ScheduleCreated created1 = (ScheduleCreated) effects1.get(0);
                 ScheduleCreated created2 = (ScheduleCreated) effects2.get(0);
@@ -688,7 +688,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-3", "queue-1", "CHE-003", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 List<Takt> takts = created.takts();
@@ -709,7 +709,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 // 1 container with extra pulse: PULSE97, PULSE98, PULSE99, TAKT100
@@ -731,7 +731,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 int totalActions = created.takts().stream()
@@ -746,7 +746,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 Takt takt100 = created.takts().get(0);
@@ -774,7 +774,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 Takt pulse98 = created.takts().get(1);
@@ -810,7 +810,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 Takt pulse99 = created.takts().get(2);
@@ -825,7 +825,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 Takt takt100 = created.takts().get(3);
@@ -859,7 +859,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 // 2 containers: 2 + 3 (offset) = 5 takts
@@ -888,7 +888,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
 
@@ -912,7 +912,7 @@ class WorkQueueProcessorTest {
                 largeEngine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = largeEngine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
 
@@ -944,7 +944,7 @@ class WorkQueueProcessorTest {
 
                 offsetEngine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
                 List<SideEffect> sideEffects = offsetEngine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 List<Action> allActions = created.takts().stream()
@@ -973,7 +973,7 @@ class WorkQueueProcessorTest {
 
                 clampEngine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
                 List<SideEffect> sideEffects = clampEngine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 Action driveToQcPull = created.takts().stream()
@@ -995,7 +995,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 Takt takt100 = created.takts().get(0);
@@ -1021,7 +1021,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
 
@@ -1056,7 +1056,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 List<Action> allActions = created.takts().stream()
@@ -1082,7 +1082,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 List<Action> allActions = created.takts().stream()
@@ -1107,7 +1107,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-1", "queue-1", "CHE-001", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 List<Action> allActions = created.takts().stream()
@@ -1132,7 +1132,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 List<Action> allActions = created.takts().stream()
@@ -1173,7 +1173,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkInstructionEvent("wi-2", "queue-1", "CHE-002", PENDING, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkQueueMessage("queue-1", ACTIVE, 0));
+                        new WorkQueueMessage("queue-1", ACTIVE, 0, null));
 
                 ScheduleCreated created = (ScheduleCreated) sideEffects.get(0);
                 List<Action> allActions = created.takts().stream()
