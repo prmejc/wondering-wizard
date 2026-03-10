@@ -108,11 +108,47 @@ public class GraphScheduleBuilder {
 
         return switch (loadMode) {
             case LOAD -> getLoadSingleTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
-            case DSCH -> getDischargeTwinTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+            case DSCH -> {
+                if (wi.isTwinFetch() && wi.isTwinPut()) {
+                    yield getDischargeTwinTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+                } else {
+                    yield getDischargeTwinAsSingleTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+                }
+            }
         };
     }
 
     private static List<ActionTemplate> getDischargeTwinTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+        return List.of(
+                // ── QC chain (forward from anchor) ──
+                ActionTemplate.of("QC Lift", QC, qcLiftDuration)
+                        .withFirstInTakt().withAnchor(),
+                ActionTemplate.of("QC Place", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+
+                // ── TT chain (backward from sync point) ──
+                ActionTemplate.of("drive to QC pull", TT, driveToQcPull),
+                ActionTemplate.of("drive to QC standby", TT, 30),
+                ActionTemplate.of("drive under QC", TT, 30),
+                ActionTemplate.of("handover from QC", TT, qcLiftDuration)
+                        .withFirstInTakt().withSyncWith(QC, "QC Place"),
+
+                ActionTemplate.of("drive to RTG pull", TT, driveToRtgPull),
+                ActionTemplate.of("drive to RTG standby", TT, 240),
+                ActionTemplate.of("drive to RTG under", TT, driveToUnderRtg)
+                        .withFirstInTakt().withOnlyOnePerTakt(),
+                ActionTemplate.of("handover to RTG", TT, rtgPlaceDuration)
+                        .withOnlyOnePerTakt(),
+                ActionTemplate.of("drive to buffer", TT, 30),
+
+                // ── RTG chain (backward from sync point) ──
+                ActionTemplate.of("drive", RTG, 1),
+                ActionTemplate.of("lift from tt", RTG,
+                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, "handover to RTG"),
+                ActionTemplate.of("place on yard", RTG, driveToUnderRtg + rtgPlaceDuration)
+        );
+    }
+
+    private static List<ActionTemplate> getDischargeTwinAsSingleTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of("QC Lift", QC, qcLiftDuration)
@@ -180,12 +216,41 @@ public class GraphScheduleBuilder {
         // Ordered list of all placed actions across all containers, in blueprint order per container
         var allPlacedActions = new ArrayList<PlacedAction>();
 
-        for (int containerIdx = 0; containerIdx < instructions.size(); containerIdx++) {
-            var wi = instructions.get(containerIdx);
-            var blueprint = buildContainerBlueprint(wi, qcMudaSeconds, loadMode);
+        // Sort by estimated move time, then deduplicate twin pairs by companion ID
+        var sorted = instructions.stream()
+                .sorted(Comparator.comparing(WorkInstruction::estimatedMoveTime))
+                .toList();
 
-            var placed = placeContainerActions(blueprint, containerIdx, wi, qcMudaSeconds, takts);
+        var processedTwinIds = new HashSet<Long>();
+        int containerIdx = 0;
+
+        // Index WIs by ID for twin companion lookup
+        var wiById = new HashMap<Long, WorkInstruction>();
+        for (var wi : sorted) {
+            wiById.put(wi.workInstructionId(), wi);
+        }
+
+        for (var wi : sorted) {
+            // Skip twin companion that was already processed as part of its pair
+            if (isTwinDischarge(wi, loadMode) && processedTwinIds.contains(wi.workInstructionId())) {
+                continue;
+            }
+
+            // Build the list of WIs for this action — twin pairs include both WIs
+            List<WorkInstruction> actionWis;
+            if (isTwinDischarge(wi, loadMode) && wi.twinCompanionWorkInstruction() != 0) {
+                var companion = wiById.get(wi.twinCompanionWorkInstruction());
+                actionWis = companion != null ? List.of(wi, companion) : List.of(wi);
+                processedTwinIds.add(wi.twinCompanionWorkInstruction());
+            } else {
+                actionWis = List.of(wi);
+            }
+
+            var blueprint = buildContainerBlueprint(wi, qcMudaSeconds, loadMode);
+            var placed = placeContainerActions(blueprint, containerIdx, actionWis, qcMudaSeconds, takts);
             allPlacedActions.addAll(placed);
+
+            containerIdx++;
         }
 
         // Wire dependencies as a post-processing step
@@ -197,15 +262,20 @@ public class GraphScheduleBuilder {
                 .toList();
     }
 
+    private static boolean isTwinDischarge(WorkInstruction wi, LoadMode loadMode) {
+        return loadMode == LoadMode.DSCH && wi.isTwinFetch() && wi.isTwinPut();
+    }
+
     // ── Placement algorithm (determines takt assignment, creates Actions without deps) ──
 
     private List<PlacedAction> placeContainerActions(
             List<ActionTemplate> blueprint,
             int containerIndex,
-            WorkInstruction wi,
+            List<WorkInstruction> workInstructions,
             int qcMudaSeconds,
             Map<Integer, Takt> takts
     ) {
+        var wi = workInstructions.getFirst();
         var segmentsByDevice = buildSegmentsByDevice(blueprint);
         var placementIndex = new HashMap<String, Integer>(); // (containerIdx:device:name) → taktIndex
         var placedActions = new ArrayList<PlacedAction>();
@@ -224,7 +294,7 @@ public class GraphScheduleBuilder {
         int anchorTaktDuration = wi.estimatedCycleTimeSeconds() + qcMudaSeconds;
 
         ensureTaktExists(takts, anchorTaktIndex, anchorStartTime, anchorTaktDuration);
-        placeSegment(anchorSegment, anchorTaktIndex, containerIndex, takts, placementIndex, placedActions, blueprintOrder);
+        placeSegment(anchorSegment, anchorTaktIndex, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
 
         // Step 2: Place forward segments of the anchor device (e.g., if QC had more segments after anchor)
         var remaining = new ArrayList<Segment>();
@@ -246,7 +316,7 @@ public class GraphScheduleBuilder {
                 ensureTaktExists(takts, forwardTakt,
                         computeTaktStartTime(forwardTakt, takts),
                         wi.estimatedCycleTimeSeconds() + qcMudaSeconds);
-                placeSegment(seg, forwardTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder);
+                placeSegment(seg, forwardTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
                 deviceTaktCursor.put(anchorSegment.deviceType(), forwardTakt);
                 remaining.remove(seg);
             }
@@ -263,7 +333,7 @@ public class GraphScheduleBuilder {
                 if (targetTakt != null) {
                     ensureTaktExists(takts, targetTakt,
                             computeTaktStartTime(targetTakt, takts), DEFAULT_TAKT_DURATION);
-                    placeSegment(seg, targetTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder);
+                    placeSegment(seg, targetTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
                     deviceTaktCursor.put(seg.deviceType(), targetTakt);
                     it.remove();
                     progress = true;
@@ -282,7 +352,7 @@ public class GraphScheduleBuilder {
                                 computeTaktStartTime(backwardTakt, takts), DEFAULT_TAKT_DURATION);
                         backwardTakt = resolveOverflow(backSeg, backwardTakt, takts);
                         backwardTakt = pushBackUntilFits(backwardTakt, segmentDuration(backSeg), takts);
-                        placeSegment(backSeg, backwardTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder);
+                        placeSegment(backSeg, backwardTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
                         deviceTaktCursor.put(backSeg.deviceType(), backwardTakt);
                         remaining.remove(backSeg);
                     }
@@ -300,7 +370,7 @@ public class GraphScheduleBuilder {
                         forwardTaktIdx = pushForwardUntilFits(forwardTaktIdx, prevSegDuration,
                                 takts.get(prevFwdTaktIdx), takts);
                         forwardTaktIdx = resolveOverflow(fwdSeg, forwardTaktIdx, takts);
-                        placeSegment(fwdSeg, forwardTaktIdx, containerIndex, takts, placementIndex, placedActions, blueprintOrder);
+                        placeSegment(fwdSeg, forwardTaktIdx, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
                         deviceTaktCursor.put(fwdSeg.deviceType(), forwardTaktIdx);
                         remaining.remove(fwdSeg);
                         prevFwdTaktIdx = forwardTaktIdx;
@@ -327,12 +397,13 @@ public class GraphScheduleBuilder {
             Map<Integer, Takt> takts,
             Map<String, Integer> placementIndex,
             List<PlacedAction> placedActions,
-            Map<ActionTemplate, Integer> blueprintOrder
+            Map<ActionTemplate, Integer> blueprintOrder,
+            List<WorkInstruction> workInstructions
     ) {
         var takt = takts.get(taktIndex);
         for (var tmpl : segment.templates()) {
             var action = new Action(UUID.randomUUID(), segment.deviceType(), tmpl.name(),
-                    new HashSet<>(), containerIndex, tmpl.durationSeconds());
+                    new HashSet<>(), containerIndex, tmpl.durationSeconds(), workInstructions);
             takt.actions().add(action);
             placedActions.add(new PlacedAction(tmpl, action, containerIndex, blueprintOrder.getOrDefault(tmpl, 0)));
             placementIndex.put(placementKey(containerIndex, tmpl.deviceType(), tmpl.name()), taktIndex);
