@@ -4,6 +4,7 @@ import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.ActionCondition;
 import com.wonderingwizard.domain.takt.ActionConditionContext;
 import com.wonderingwizard.domain.takt.ActionDependencyCondition;
+import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.ConditionContext;
 import com.wonderingwizard.domain.takt.DependencyCondition;
 import com.wonderingwizard.domain.takt.DeviceType;
@@ -18,6 +19,7 @@ import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.EventPropagatingEngine;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.kafka.ActionActivatedToEquipmentInstructionMapper;
+import com.wonderingwizard.kafka.AssetEventMapper;
 import com.wonderingwizard.kafka.KafkaConsumerManager;
 import com.wonderingwizard.kafka.KafkaSideEffectPublisher;
 import com.wonderingwizard.kafka.WorkInstructionEventMapper;
@@ -238,6 +240,19 @@ public class DemoServer {
                 settings.workInstructionConsumerConfiguration(),
                 new WorkInstructionEventMapper()
         );
+        AssetEventMapper assetEventMapper = new AssetEventMapper();
+        kafkaConsumerManager.registerJson(
+                settings.assetEventRtgConsumerConfiguration(),
+                assetEventMapper
+        );
+        kafkaConsumerManager.registerJson(
+                settings.assetEventQcConsumerConfiguration(),
+                assetEventMapper
+        );
+        kafkaConsumerManager.registerJson(
+                settings.assetEventEhConsumerConfiguration(),
+                assetEventMapper
+        );
         kafkaConsumerManager.startAll();
     }
 
@@ -246,7 +261,27 @@ public class DemoServer {
         sideEffectPublisher.registerMapper(
                 ActionActivated.class,
                 settings.equipmentInstructionRtgTopic(),
-                new ActionActivatedToEquipmentInstructionMapper(settings.terminalCode())
+                new ActionActivatedToEquipmentInstructionMapper(settings.terminalCode(),
+                        Set.of(ActionType.RTG_DRIVE, ActionType.RTG_FETCH,
+                                ActionType.RTG_HANDOVER_TO_TT, ActionType.RTG_LIFT_FROM_TT,
+                                ActionType.RTG_PLACE_ON_YARD))
+        );
+        sideEffectPublisher.registerMapper(
+                ActionActivated.class,
+                settings.equipmentInstructionTtTopic(),
+                new ActionActivatedToEquipmentInstructionMapper(settings.terminalCode(),
+                        Set.of(ActionType.TT_DRIVE_TO_RTG_PULL, ActionType.TT_DRIVE_TO_RTG_STANDBY,
+                                ActionType.TT_DRIVE_TO_RTG_UNDER, ActionType.TT_HANDOVER_FROM_RTG,
+                                ActionType.TT_DRIVE_TO_QC_PULL, ActionType.TT_DRIVE_TO_QC_STANDBY,
+                                ActionType.TT_DRIVE_UNDER_QC, ActionType.TT_HANDOVER_TO_QC,
+                                ActionType.TT_HANDOVER_FROM_QC, ActionType.TT_HANDOVER_TO_RTG,
+                                ActionType.TT_DRIVE_TO_BUFFER, ActionType.TT_DRIVE_TO_DIFFERENT_BAY))
+        );
+        sideEffectPublisher.registerMapper(
+                ActionActivated.class,
+                settings.equipmentInstructionQcTopic(),
+                new ActionActivatedToEquipmentInstructionMapper(settings.terminalCode(),
+                        Set.of(ActionType.QC_LIFT, ActionType.QC_PLACE))
         );
         sideEffectPublisher.start();
     }

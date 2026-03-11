@@ -9,13 +9,14 @@ import org.apache.avro.generic.GenericRecord;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.logging.Logger;
 
 /**
  * Maps {@link ActionActivated} side effects to {@link EquipmentInstructionKafkaMessage} records,
  * then converts to Avro {@link GenericRecord} for Kafka publishing.
  * <p>
- * Only maps actions whose {@link ActionType} is {@link ActionType#RTG_DRIVE}.
+ * Only maps actions whose {@link ActionType} is in the configured set of supported action types.
  * All other action types return {@code null} (skipped).
  */
 public class ActionActivatedToEquipmentInstructionMapper implements SideEffectMapper<ActionActivated> {
@@ -24,9 +25,11 @@ public class ActionActivatedToEquipmentInstructionMapper implements SideEffectMa
     private static final String EVENT_SOURCE = "wondering-wizard";
 
     private final String terminalCode;
+    private final Set<ActionType> supportedActionTypes;
 
-    public ActionActivatedToEquipmentInstructionMapper(String terminalCode) {
+    public ActionActivatedToEquipmentInstructionMapper(String terminalCode, Set<ActionType> supportedActionTypes) {
         this.terminalCode = terminalCode;
+        this.supportedActionTypes = supportedActionTypes;
     }
 
     @Override
@@ -40,7 +43,7 @@ public class ActionActivatedToEquipmentInstructionMapper implements SideEffectMa
      * or returns {@code null} if this side effect should be skipped.
      */
     EquipmentInstructionKafkaMessage mapToMessage(ActionActivated activated) {
-        if (activated.actionType() != ActionType.RTG_DRIVE) {
+        if (activated.actionType() == null || !supportedActionTypes.contains(activated.actionType())) {
             return null;
         }
 

@@ -65,4 +65,56 @@ class KafkaConsumerManagerTest {
                 manager.getConsumers().add(null)
         );
     }
+
+    @Test
+    void shouldRegisterJsonConsumers() {
+        var kafkaConfig = new KafkaConfiguration(
+                "kafka-broker:9094", "client", "http://sr:8081",
+                null, null, null, null
+        );
+        Engine engine = new EventProcessingEngine();
+        var manager = new KafkaConsumerManager(kafkaConfig, engine);
+
+        var jsonConfig = new ConsumerConfiguration(
+                "test.json.topic.v1", "group-v1", null, "AssetEvent", false
+        );
+
+        manager.registerJson(jsonConfig, json -> null);
+
+        assertEquals(0, manager.getConsumers().size());
+        assertEquals(1, manager.getJsonConsumers().size());
+    }
+
+    @Test
+    void shouldSupportMixedAvroAndJsonRegistration() {
+        var kafkaConfig = new KafkaConfiguration(
+                "kafka-broker:9094", "client", "http://sr:8081",
+                null, null, null, null
+        );
+        Engine engine = new EventProcessingEngine();
+        var manager = new KafkaConsumerManager(kafkaConfig, engine);
+
+        var avroConfig = new ConsumerConfiguration("avro.topic", "group1", "Avro1", null, false);
+        var jsonConfig = new ConsumerConfiguration("json.topic", "group2", null, "JsonType", false);
+
+        manager.register(avroConfig, r -> null)
+                .registerJson(jsonConfig, json -> null);
+
+        assertEquals(1, manager.getConsumers().size());
+        assertEquals(1, manager.getJsonConsumers().size());
+    }
+
+    @Test
+    void shouldReturnUnmodifiableJsonConsumerList() {
+        var kafkaConfig = new KafkaConfiguration(
+                "kafka-broker:9094", "client", "http://sr:8081",
+                null, null, null, null
+        );
+        Engine engine = new EventProcessingEngine();
+        var manager = new KafkaConsumerManager(kafkaConfig, engine);
+
+        assertThrows(UnsupportedOperationException.class, () ->
+                manager.getJsonConsumers().add(null)
+        );
+    }
 }

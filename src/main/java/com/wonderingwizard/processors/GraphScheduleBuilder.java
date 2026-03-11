@@ -798,8 +798,26 @@ public class GraphScheduleBuilder {
 
     private Integer resolveSyncTarget(Segment segment, int containerIndex, Map<String, Integer> placementIndex) {
         if (segment.syncRef() == null) return null;
-        String key = placementKey(containerIndex, segment.syncRef().deviceType(), segment.syncRef().actionType().displayName());
-        return placementIndex.get(key);
+        String baseDisplayName = segment.syncRef().actionType().displayName();
+
+        // First try exact match (no suffix)
+        String key = placementKey(containerIndex, segment.syncRef().deviceType(), baseDisplayName);
+        Integer result = placementIndex.get(key);
+        if (result != null) return result;
+
+        // If the segment's first template has a suffix, apply it to the sync target lookup.
+        // E.g., RTG_LIFT_FROM_TT "1" syncing with TT_HANDOVER_TO_RTG should find "handover to RTG1".
+        ActionTemplate firstTemplate = segment.templates().getFirst();
+        String segmentName = firstTemplate.name();
+        String segmentBaseName = firstTemplate.actionType().displayName();
+        if (segmentName.length() > segmentBaseName.length()) {
+            String suffix = segmentName.substring(segmentBaseName.length());
+            String suffixedKey = placementKey(containerIndex, segment.syncRef().deviceType(),
+                    baseDisplayName + suffix);
+            return placementIndex.get(suffixedKey);
+        }
+
+        return null;
     }
 
     private static String placementKey(int containerIndex, DeviceType deviceType, String actionName) {

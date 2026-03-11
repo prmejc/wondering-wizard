@@ -85,6 +85,68 @@ class GraphScheduleBuilderTest {
     );
 
     /**
+     * Discharge twin carry, different bays: two TT handovers with suffixed names ("1", "2"),
+     * a drive-to-different-bay between them, and RTG segments syncing to the suffixed handovers.
+     * This template exercises the suffix-aware sync resolution in resolveSyncTarget().
+     */
+    static final List<ActionTemplate> DISCHARGE_TWIN_DIFFERENT_BAY_TEMPLATE = List.of(
+            ActionTemplate.of(QC_LIFT, QC, 20).withFirstInTakt().withAnchor(),
+            ActionTemplate.of(QC_PLACE, QC, 100),
+
+            ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 170),
+            ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, 30),
+            ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
+            ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, 20)
+                    .withFirstInTakt().withSyncWith(QC, QC_PLACE),
+
+            ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, 30),
+            ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
+            ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, 30)
+                    .withFirstInTakt().withOnlyOnePerTakt(),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, 20).withFirstInTakt(),
+            ActionTemplate.of(TT_DRIVE_TO_DIFFERENT_BAY, TT, 20),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, 20).withFirstInTakt(),
+            ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, 30),
+
+            ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, 40)
+                    .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
+            ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, 50),
+            ActionTemplate.of(RTG_LIFT_FROM_TT, "2", RTG, 40)
+                    .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
+            ActionTemplate.of(RTG_PLACE_ON_YARD, "2", RTG, 50)
+    );
+
+    /**
+     * Discharge twin carry, same bay: two TT handovers with suffixed names ("1", "2"),
+     * no drive-to-different-bay, and RTG segments syncing to the suffixed handovers.
+     */
+    static final List<ActionTemplate> DISCHARGE_TWIN_SAME_BAY_TEMPLATE = List.of(
+            ActionTemplate.of(QC_LIFT, QC, 20).withFirstInTakt().withAnchor(),
+            ActionTemplate.of(QC_PLACE, QC, 100),
+
+            ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 170),
+            ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, 30),
+            ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
+            ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, 20)
+                    .withFirstInTakt().withSyncWith(QC, QC_PLACE),
+
+            ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, 30),
+            ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
+            ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, 30)
+                    .withFirstInTakt().withOnlyOnePerTakt(),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, 20).withFirstInTakt(),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, 20).withFirstInTakt(),
+            ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, 30),
+
+            ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, 40)
+                    .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
+            ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, 50),
+            ActionTemplate.of(RTG_LIFT_FROM_TT, "2", RTG, 40)
+                    .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
+            ActionTemplate.of(RTG_PLACE_ON_YARD, "2", RTG, 50)
+    );
+
+    /**
      * Minimal two-device template for focused algorithm tests.
      * QC anchor + TT sync only — no RTG, no backward/forward complexity.
      */
@@ -707,6 +769,117 @@ class GraphScheduleBuilderTest {
         }
     }
 
+    // ── Twin Carry Suffix Sync Tests ─────────────────────────────────────
+
+    @Nested
+    @DisplayName("Twin carry suffix sync resolution")
+    class TwinCarrySuffixSyncTests {
+
+        @Test
+        @DisplayName("Different bay: RTG actions are placed for both suffixes")
+        void differentBayRtgActionsPlacedForBothSuffixes() {
+            var takts = schedule(DISCHARGE_TWIN_DIFFERENT_BAY_TEMPLATE, 1);
+            var actions = allActions(takts);
+            var rtgActions = actions.stream().filter(a -> a.deviceType() == RTG).toList();
+
+            assertFalse(rtgActions.isEmpty(), "RTG actions must be present in the schedule");
+            assertEquals(4, rtgActions.size(), "Expected 4 RTG actions (lift1, place1, lift2, place2)");
+
+            var rtgDescriptions = rtgActions.stream().map(Action::description).toList();
+            assertTrue(rtgDescriptions.contains("lift from tt1"), "Missing RTG lift from tt1");
+            assertTrue(rtgDescriptions.contains("place on yard1"), "Missing RTG place on yard1");
+            assertTrue(rtgDescriptions.contains("lift from tt2"), "Missing RTG lift from tt2");
+            assertTrue(rtgDescriptions.contains("place on yard2"), "Missing RTG place on yard2");
+        }
+
+        @Test
+        @DisplayName("Different bay: RTG lift1 syncs to same takt as TT handover to RTG1")
+        void differentBayRtgLift1SyncsToTtHandover1() {
+            var takts = schedule(DISCHARGE_TWIN_DIFFERENT_BAY_TEMPLATE, 1);
+
+            int ttHandover1Takt = taktSequenceOf(takts, "handover to RTG1");
+            int rtgLift1Takt = taktSequenceOf(takts, "lift from tt1");
+
+            assertEquals(ttHandover1Takt, rtgLift1Takt,
+                    "RTG 'lift from tt1' must be in the same takt as TT 'handover to RTG1'");
+        }
+
+        @Test
+        @DisplayName("Different bay: RTG lift2 syncs to same takt as TT handover to RTG2")
+        void differentBayRtgLift2SyncsToTtHandover2() {
+            var takts = schedule(DISCHARGE_TWIN_DIFFERENT_BAY_TEMPLATE, 1);
+
+            int ttHandover2Takt = taktSequenceOf(takts, "handover to RTG2");
+            int rtgLift2Takt = taktSequenceOf(takts, "lift from tt2");
+
+            assertEquals(ttHandover2Takt, rtgLift2Takt,
+                    "RTG 'lift from tt2' must be in the same takt as TT 'handover to RTG2'");
+        }
+
+        @Test
+        @DisplayName("Different bay: RTG place follows RTG lift within same suffix")
+        void differentBayRtgPlaceFollowsLift() {
+            var takts = schedule(DISCHARGE_TWIN_DIFFERENT_BAY_TEMPLATE, 1);
+
+            int rtgLift1Takt = taktSequenceOf(takts, "lift from tt1");
+            int rtgPlace1Takt = taktSequenceOf(takts, "place on yard1");
+            int rtgLift2Takt = taktSequenceOf(takts, "lift from tt2");
+            int rtgPlace2Takt = taktSequenceOf(takts, "place on yard2");
+
+            assertEquals(rtgLift1Takt, rtgPlace1Takt,
+                    "RTG 'place on yard1' should be in same takt as 'lift from tt1'");
+            assertEquals(rtgLift2Takt, rtgPlace2Takt,
+                    "RTG 'place on yard2' should be in same takt as 'lift from tt2'");
+        }
+
+        @Test
+        @DisplayName("Same bay: RTG actions are placed for both suffixes")
+        void sameBayRtgActionsPlacedForBothSuffixes() {
+            var takts = schedule(DISCHARGE_TWIN_SAME_BAY_TEMPLATE, 1);
+            var actions = allActions(takts);
+            var rtgActions = actions.stream().filter(a -> a.deviceType() == RTG).toList();
+
+            assertFalse(rtgActions.isEmpty(), "RTG actions must be present in the schedule");
+            assertEquals(4, rtgActions.size(), "Expected 4 RTG actions (lift1, place1, lift2, place2)");
+        }
+
+        @Test
+        @DisplayName("Same bay: RTG lift1 syncs to same takt as TT handover to RTG1")
+        void sameBayRtgLift1SyncsToTtHandover1() {
+            var takts = schedule(DISCHARGE_TWIN_SAME_BAY_TEMPLATE, 1);
+
+            int ttHandover1Takt = taktSequenceOf(takts, "handover to RTG1");
+            int rtgLift1Takt = taktSequenceOf(takts, "lift from tt1");
+
+            assertEquals(ttHandover1Takt, rtgLift1Takt,
+                    "RTG 'lift from tt1' must be in the same takt as TT 'handover to RTG1'");
+        }
+
+        @Test
+        @DisplayName("Same bay: RTG lift2 syncs to same takt as TT handover to RTG2")
+        void sameBayRtgLift2SyncsToTtHandover2() {
+            var takts = schedule(DISCHARGE_TWIN_SAME_BAY_TEMPLATE, 1);
+
+            int ttHandover2Takt = taktSequenceOf(takts, "handover to RTG2");
+            int rtgLift2Takt = taktSequenceOf(takts, "lift from tt2");
+
+            assertEquals(ttHandover2Takt, rtgLift2Takt,
+                    "RTG 'lift from tt2' must be in the same takt as TT 'handover to RTG2'");
+        }
+
+        @Test
+        @DisplayName("All three device types present in twin carry schedule")
+        void allDeviceTypesPresent() {
+            var takts = schedule(DISCHARGE_TWIN_DIFFERENT_BAY_TEMPLATE, 1);
+            var deviceTypes = allActions(takts).stream()
+                    .map(Action::deviceType)
+                    .collect(Collectors.toSet());
+
+            assertEquals(Set.of(QC, TT, RTG), deviceTypes,
+                    "Twin carry schedule must contain QC, TT, and RTG actions");
+        }
+    }
+
     // ── Feature Flag Integration Tests ──────────────────────────────────
 
     @Nested
@@ -780,6 +953,37 @@ class GraphScheduleBuilderTest {
             // Load template has "handover to QC" (TT delivers to QC)
             assertTrue(allActions.contains("handover to QC"),
                     "LOAD mode should use load template with 'handover to QC'");
+        }
+
+        @Test
+        @DisplayName("DSCH twin carry with different bay includes RTG actions")
+        void dischargeTwinCarryDifferentBayIncludesRtgActions() {
+            var engine = new com.wonderingwizard.engine.EventProcessingEngine();
+            engine.register(new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS, () -> 0, true));
+
+            // Twin carry, twin fetch, not twin put, different bays
+            engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
+                    1L, 1L, "RTG-01", PENDING, EMT, 120, 60,
+                    "", true, false, true, 2, "Y-PTM-1L20E4"));
+            engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
+                    2L, 1L, "RTG-01", PENDING, EMT.plusSeconds(120), 120, 60,
+                    "", true, false, true, 1, "Y-PTM-1L30E4"));
+
+            var effects = engine.processEvent(
+                    new com.wonderingwizard.events.WorkQueueMessage(1L,
+                            com.wonderingwizard.events.WorkQueueStatus.ACTIVE, 5,
+                            com.wonderingwizard.events.LoadMode.DSCH));
+
+            var created = (com.wonderingwizard.sideeffects.ScheduleCreated) effects.getFirst();
+            var allActionTypes = created.takts().stream()
+                    .flatMap(t -> t.actions().stream())
+                    .map(Action::actionType)
+                    .collect(Collectors.toSet());
+
+            assertTrue(allActionTypes.contains(RTG_LIFT_FROM_TT),
+                    "DSCH twin carry different bay should include RTG_LIFT_FROM_TT, but found: " + allActionTypes);
+            assertTrue(allActionTypes.contains(RTG_PLACE_ON_YARD),
+                    "DSCH twin carry different bay should include RTG_PLACE_ON_YARD, but found: " + allActionTypes);
         }
 
         @Test

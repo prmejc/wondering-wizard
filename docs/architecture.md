@@ -217,12 +217,15 @@ com.wonderingwizard
 │   ├── KafkaConfiguration.java      # Top-level Kafka connection config (broker, SASL, schema registry)
 │   ├── ConsumerConfiguration.java   # Per-topic consumer config (topic, group, message type)
 │   ├── ProducerConfiguration.java   # Per-topic producer config (topic)
-│   ├── EventMapper.java             # Functional interface: GenericRecord → Event (inbound)
+│   ├── EventMapper.java             # Functional interface: GenericRecord → Event (inbound, Avro)
+│   ├── JsonEventMapper.java         # Functional interface: String → Event (inbound, JSON)
 │   ├── SideEffectMapper.java        # Functional interface: SideEffect → GenericRecord (outbound)
-│   ├── KafkaEventConsumer.java      # Generic consumer: poll → map → engine (virtual thread)
+│   ├── KafkaEventConsumer.java      # Generic Avro consumer: poll → map → engine (virtual thread)
+│   ├── KafkaJsonEventConsumer.java  # Generic JSON consumer: poll → map → engine (virtual thread)
 │   ├── KafkaSideEffectPublisher.java # Generic publisher: side effects → map → Kafka
 │   ├── ActionActivatedToEquipmentInstructionMapper.java # Maps ActionActivated → EquipmentInstruction Avro
-│   ├── KafkaConsumerManager.java    # Lifecycle manager for all Kafka consumers
+│   ├── AssetEventMapper.java        # Maps JSON AssetEvent → AssetEvent engine event
+│   ├── KafkaConsumerManager.java    # Lifecycle manager for all Kafka consumers (Avro and JSON)
 │   ├── WorkQueueEventMapper.java    # Maps WorkQueue Avro → WorkQueueMessage event
 │   └── messages/
 │       └── WorkQueueKafkaMessage.java # WorkQueue Avro schema as Java record
@@ -391,4 +394,4 @@ The `kafka` package provides a symmetric outbound framework for publishing side 
 - **SideEffectMapper<S>**: Functional interface that transforms a `SideEffect` to an Avro `GenericRecord` (outbound counterpart to `EventMapper`)
 - **KafkaSideEffectPublisher**: Manages registered mappers, matches side effects by type, and publishes to Kafka (outbound counterpart to `KafkaEventConsumer`)
 - **ProducerConfiguration**: Per-topic producer settings
-- **ActionActivatedToEquipmentInstructionMapper**: Maps `ActionActivated` (enriched with `DeviceType` and `List<WorkInstruction>`) to the EquipmentInstruction Avro schema
+- **ActionActivatedToEquipmentInstructionMapper**: Maps `ActionActivated` (enriched with `DeviceType` and `List<WorkInstruction>`) to the EquipmentInstruction Avro schema. Parameterized with a `Set<ActionType>` to filter which action types to publish. Registered three times: for RTG actions (→ `equipmentinstruction.rubbertyredgantry` topic), TT actions (→ `equipmentinstruction.terminaltruck` topic), and QC actions (→ `equipmentinstruction.quaycrane` topic)

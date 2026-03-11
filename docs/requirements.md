@@ -918,8 +918,9 @@ Implement a Kafka side effect publisher that maps engine side effects to Avro re
 1. `ActionActivated` side effect is enriched with `deviceType` and `workInstructions` from the originating `Action` record
 2. A `SideEffectMapper<S>` functional interface maps a `SideEffect` to an Avro `GenericRecord` (symmetric to `EventMapper`)
 3. A `KafkaSideEffectPublisher` manages registered mappers and publishes side effects to configured topics (symmetric to `KafkaEventConsumer`)
-4. An `ActionActivatedToEquipmentInstructionMapper` maps `ActionActivated` → EquipmentInstruction Avro record
+4. An `ActionActivatedToEquipmentInstructionMapper` maps `ActionActivated` → EquipmentInstruction Avro record, parameterized with a `Set<ActionType>` to filter which action types to publish
 5. The publisher is called after `engine.processEvent()` returns, keeping the engine pure (no I/O inside processors)
+6. Three mapper instances are registered — one for RTG actions (→ RTG topic), one for TT actions (→ TT topic), and one for QC actions (→ QC topic)
 
 **Architecture:**
 
@@ -929,7 +930,9 @@ Engine.processEvent(event) → List<SideEffect>
         ▼
 KafkaSideEffectPublisher.publish(sideEffects)
         │
-        ├── ActionActivated? → ActionActivatedToEquipmentInstructionMapper → Kafka (EquipmentInstruction topic)
+        ├── ActionActivated (RTG_*) → Mapper(RTG types) → Kafka (RTG EquipmentInstruction topic)
+        ├── ActionActivated (TT_*) → Mapper(TT types) → Kafka (TT EquipmentInstruction topic)
+        ├── ActionActivated (QC_*) → Mapper(QC types) → Kafka (QC EquipmentInstruction topic)
         ├── OtherSideEffect? → (future mapper) → Kafka (other topic)
         └── No mapper match → skip
 ```
@@ -959,3 +962,57 @@ mvn test -Dtest="ActionActivatedToEquipmentInstructionMapperTest,KafkaSideEffect
 - `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — serializes new fields)
 - `src/test/java/com/wonderingwizard/kafka/ActionActivatedToEquipmentInstructionMapperTest.java`
 - `src/test/java/com/wonderingwizard/kafka/KafkaSideEffectPublisherTest.java`
+
+### F-14: AssetEvent Kafka Consumers (JSON)
+
+**Status:** Implemented
+
+**Description:**
+Consume AssetEvent messages from three JSON Kafka topics (RTG, QC, EH). AssetEvents are operational milestones published by container handling equipment, reporting actions such as lifting containers, placing them, or reaching positions.
+
+1. A `JsonEventMapper<E>` functional interface maps raw JSON strings to engine events (counterpart to `EventMapper` for Avro)
+2. A `KafkaJsonEventConsumer<E>` consumes JSON messages using `StringDeserializer` (counterpart to `KafkaEventConsumer` for Avro)
+3. `KafkaConsumerManager` extended with `registerJson()` to support both Avro and JSON consumers
+4. An `AssetEventMapper` parses flat JSON AssetEvent messages using the existing `JsonParser`
+5. Three consumers registered — one per CHE type (RTG, QC, EH), each on its own topic
+
+**Topics:**
+- `apmt.terminaloperations.assetevent.rubbertyredgantry.topic.confidential.dedicated.v1`
+- `apmt.terminaloperations.assetevent.quaycrane.topic.confidential.dedicated.v1`
+- `apmt.terminaloperations.assetevent.emptyhandler.topic.confidential.dedicated.v1`
+
+**JSON Format:**
+```json
+{
+    "move": "LOAD",
+    "operationalEvent": "QCplacedContaineronVessel",
+    "cheID": "QCZ1",
+    "terminalCode": "",
+    "timestamp": 1773103048
+}
+```
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Parse QC AssetEvent JSON | AssetEvent with correct move, operationalEvent, cheId, timestamp |
+| 2 | Parse RTG AssetEvent JSON | AssetEvent with RTG cheId and operational event |
+| 3 | Parse compact JSON (no whitespace) | Same result as formatted JSON |
+| 4 | Register JSON consumers in manager | JSON consumers tracked separately from Avro consumers |
+
+**Test Execution:**
+```bash
+mvn test -Dtest="AssetEventMapperTest,KafkaJsonEventConsumerTest,KafkaConsumerManagerTest"
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/kafka/JsonEventMapper.java` (new — functional interface for JSON)
+- `src/main/java/com/wonderingwizard/kafka/KafkaJsonEventConsumer.java` (new — JSON consumer)
+- `src/main/java/com/wonderingwizard/kafka/AssetEventMapper.java` (new — JSON → AssetEvent mapper)
+- `src/main/java/com/wonderingwizard/events/AssetEvent.java` (new — event record)
+- `src/main/java/com/wonderingwizard/kafka/KafkaConsumerManager.java` (modified — added registerJson)
+- `src/main/java/com/wonderingwizard/server/Settings.java` (modified — 3 AssetEvent consumer configs)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — registers 3 AssetEvent consumers)
+- `src/test/java/com/wonderingwizard/kafka/AssetEventMapperTest.java`
+- `src/test/java/com/wonderingwizard/kafka/KafkaJsonEventConsumerTest.java`

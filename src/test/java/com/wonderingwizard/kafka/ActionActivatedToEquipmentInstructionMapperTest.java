@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -24,22 +25,36 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     private static final String TERMINAL_CODE = "ECTDELTA";
     private static final Instant ACTIVATED_AT = Instant.parse("2024-01-01T10:00:00Z");
 
-    private ActionActivatedToEquipmentInstructionMapper mapper;
+    private ActionActivatedToEquipmentInstructionMapper rtgMapper;
+    private ActionActivatedToEquipmentInstructionMapper ttMapper;
+    private ActionActivatedToEquipmentInstructionMapper qcMapper;
 
     @BeforeEach
     void setUp() {
-        mapper = new ActionActivatedToEquipmentInstructionMapper(TERMINAL_CODE);
+        rtgMapper = new ActionActivatedToEquipmentInstructionMapper(TERMINAL_CODE,
+                Set.of(ActionType.RTG_DRIVE, ActionType.RTG_FETCH,
+                        ActionType.RTG_HANDOVER_TO_TT, ActionType.RTG_LIFT_FROM_TT,
+                        ActionType.RTG_PLACE_ON_YARD));
+        ttMapper = new ActionActivatedToEquipmentInstructionMapper(TERMINAL_CODE,
+                Set.of(ActionType.TT_DRIVE_TO_RTG_PULL, ActionType.TT_DRIVE_TO_RTG_STANDBY,
+                        ActionType.TT_DRIVE_TO_RTG_UNDER, ActionType.TT_HANDOVER_FROM_RTG,
+                        ActionType.TT_DRIVE_TO_QC_PULL, ActionType.TT_DRIVE_TO_QC_STANDBY,
+                        ActionType.TT_DRIVE_UNDER_QC, ActionType.TT_HANDOVER_TO_QC,
+                        ActionType.TT_HANDOVER_FROM_QC, ActionType.TT_HANDOVER_TO_RTG,
+                        ActionType.TT_DRIVE_TO_BUFFER, ActionType.TT_DRIVE_TO_DIFFERENT_BAY));
+        qcMapper = new ActionActivatedToEquipmentInstructionMapper(TERMINAL_CODE,
+                Set.of(ActionType.QC_LIFT, ActionType.QC_PLACE));
     }
 
     @Test
-    @DisplayName("Should return null for non-RTG_DRIVE action types")
-    void returnsNullForNonRtgDrive() {
+    @DisplayName("RTG mapper should return null for TT action types")
+    void rtgMapperReturnsNullForTtActions() {
         ActionActivated activated = new ActionActivated(
                 UUID.randomUUID(), 1L, "TAKT100", ActionType.TT_DRIVE_TO_RTG_PULL, "drive to RTG pull",
                 ACTIVATED_AT, DeviceType.TT, List.of()
         );
 
-        assertNull(mapper.mapToMessage(activated));
+        assertNull(rtgMapper.mapToMessage(activated));
     }
 
     @Test
@@ -49,7 +64,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
                 UUID.randomUUID(), 1L, "TAKT100", "drive to RTG pull", ACTIVATED_AT
         );
 
-        assertNull(mapper.mapToMessage(activated));
+        assertNull(rtgMapper.mapToMessage(activated));
     }
 
     @Test
@@ -60,7 +75,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
                 ACTIVATED_AT, DeviceType.RTG, List.of()
         );
 
-        assertNull(mapper.mapToMessage(activated));
+        assertNull(rtgMapper.mapToMessage(activated));
     }
 
     @Test
@@ -78,7 +93,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
                 ACTIVATED_AT, DeviceType.RTG, List.of(wi)
         );
 
-        EquipmentInstructionKafkaMessage message = mapper.mapToMessage(activated);
+        EquipmentInstructionKafkaMessage message = rtgMapper.mapToMessage(activated);
 
         assertNotNull(message);
         assertEquals("drive", message.equipmentInstructionType());
@@ -111,7 +126,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
                 ACTIVATED_AT, DeviceType.RTG, List.of(wi1, wi2)
         );
 
-        EquipmentInstructionKafkaMessage message = mapper.mapToMessage(activated);
+        EquipmentInstructionKafkaMessage message = rtgMapper.mapToMessage(activated);
         List<Container> containers = message.containers();
 
         assertEquals(2, containers.size());
@@ -142,13 +157,57 @@ class ActionActivatedToEquipmentInstructionMapperTest {
                 ACTIVATED_AT, DeviceType.RTG, List.of(wi)
         );
 
-        EquipmentInstructionKafkaMessage message = mapper.mapToMessage(activated);
+        EquipmentInstructionKafkaMessage message = rtgMapper.mapToMessage(activated);
 
         assertEquals("RTG05", message.recipientCHEShortName());
     }
 
     @Test
-    @DisplayName("Should return null for non-RTG_DRIVE action types like QC_LIFT")
+    @DisplayName("RTG mapper should map RTG_FETCH action")
+    void rtgMapperMapsRtgFetch() {
+        UUID actionId = UUID.randomUUID();
+        WorkInstruction wi = new WorkInstruction(
+                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                ACTIVATED_AT, 120, 60, "RTG05",
+                false, false, false, 0, "Y01.01.01"
+        );
+
+        ActionActivated activated = new ActionActivated(
+                actionId, 1L, "TAKT100", ActionType.RTG_FETCH, "fetch",
+                ACTIVATED_AT, DeviceType.RTG, List.of(wi)
+        );
+
+        EquipmentInstructionKafkaMessage message = rtgMapper.mapToMessage(activated);
+
+        assertNotNull(message);
+        assertEquals("fetch", message.equipmentInstructionType());
+        assertEquals(actionId.toString(), message.equipmentInstructionId());
+        assertEquals("RTG", message.recipientCHEKind());
+    }
+
+    @Test
+    @DisplayName("RTG mapper should map RTG_PLACE_ON_YARD action")
+    void rtgMapperMapsPlaceOnYard() {
+        UUID actionId = UUID.randomUUID();
+        WorkInstruction wi = new WorkInstruction(
+                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                ACTIVATED_AT, 120, 60, "RTG05",
+                false, false, false, 0, "Y01.01.01"
+        );
+
+        ActionActivated activated = new ActionActivated(
+                actionId, 1L, "TAKT100", ActionType.RTG_PLACE_ON_YARD, "place on yard",
+                ACTIVATED_AT, DeviceType.RTG, List.of(wi)
+        );
+
+        EquipmentInstructionKafkaMessage message = rtgMapper.mapToMessage(activated);
+
+        assertNotNull(message);
+        assertEquals("place on yard", message.equipmentInstructionType());
+    }
+
+    @Test
+    @DisplayName("RTG mapper should return null for QC_LIFT action types")
     void returnsNullForNonRtgDriveActionType() {
         WorkInstruction wi = new WorkInstruction(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
@@ -161,7 +220,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
                 ACTIVATED_AT, DeviceType.QC, List.of(wi)
         );
 
-        assertNull(mapper.mapToMessage(activated));
+        assertNull(rtgMapper.mapToMessage(activated));
     }
 
     @Test
@@ -179,10 +238,216 @@ class ActionActivatedToEquipmentInstructionMapperTest {
                 ACTIVATED_AT, DeviceType.RTG, List.of(wi)
         );
 
-        GenericRecord avro = mapper.map(activated);
+        GenericRecord avro = rtgMapper.map(activated);
 
         assertNotNull(avro);
         assertEquals("drive", avro.get("equipmentInstructionType").toString());
+        assertEquals(actionId.toString(), avro.get("equipmentInstructionId").toString());
+        assertEquals(TERMINAL_CODE, avro.get("terminalCode").toString());
+    }
+
+    // ── TT mapper tests ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("TT mapper should map TT_DRIVE_TO_RTG_PULL action")
+    void ttMapperMapsDriveToRtgPull() {
+        UUID actionId = UUID.randomUUID();
+        WorkInstruction wi = new WorkInstruction(
+                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                ACTIVATED_AT, 120, 60, "RTG05",
+                false, false, false, 0, "Y01.01.01"
+        );
+
+        ActionActivated activated = new ActionActivated(
+                actionId, 1L, "TAKT100", ActionType.TT_DRIVE_TO_RTG_PULL, "drive to RTG pull",
+                ACTIVATED_AT, DeviceType.TT, List.of(wi)
+        );
+
+        EquipmentInstructionKafkaMessage message = ttMapper.mapToMessage(activated);
+
+        assertNotNull(message);
+        assertEquals("drive to RTG pull", message.equipmentInstructionType());
+        assertEquals(actionId.toString(), message.equipmentInstructionId());
+        assertEquals("TT", message.recipientCHEKind());
+        assertEquals("QC01", message.recipientCHEShortName());
+        assertEquals(TERMINAL_CODE, message.terminalCode());
+    }
+
+    @Test
+    @DisplayName("TT mapper should map TT_HANDOVER_TO_QC action")
+    void ttMapperMapsHandoverToQc() {
+        UUID actionId = UUID.randomUUID();
+        WorkInstruction wi = new WorkInstruction(
+                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                ACTIVATED_AT, 120, 60, "RTG05",
+                false, false, false, 0, "Y01.01.01"
+        );
+
+        ActionActivated activated = new ActionActivated(
+                actionId, 1L, "TAKT100", ActionType.TT_HANDOVER_TO_QC, "handover to QC",
+                ACTIVATED_AT, DeviceType.TT, List.of(wi)
+        );
+
+        EquipmentInstructionKafkaMessage message = ttMapper.mapToMessage(activated);
+
+        assertNotNull(message);
+        assertEquals("handover to QC", message.equipmentInstructionType());
+    }
+
+    @Test
+    @DisplayName("TT mapper should return null for RTG_DRIVE action types")
+    void ttMapperReturnsNullForRtgDrive() {
+        WorkInstruction wi = new WorkInstruction(
+                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                ACTIVATED_AT, 120, 60, "RTG05",
+                false, false, false, 0, "Y01.01.01"
+        );
+
+        ActionActivated activated = new ActionActivated(
+                UUID.randomUUID(), 1L, "TAKT100", ActionType.RTG_DRIVE, "drive",
+                ACTIVATED_AT, DeviceType.RTG, List.of(wi)
+        );
+
+        assertNull(ttMapper.mapToMessage(activated));
+    }
+
+    @Test
+    @DisplayName("TT mapper should return null when TT action has no work instructions")
+    void ttMapperReturnsNullForEmptyWorkInstructions() {
+        ActionActivated activated = new ActionActivated(
+                UUID.randomUUID(), 1L, "TAKT100", ActionType.TT_DRIVE_TO_BUFFER, "drive to buffer",
+                ACTIVATED_AT, DeviceType.TT, List.of()
+        );
+
+        assertNull(ttMapper.mapToMessage(activated));
+    }
+
+    @Test
+    @DisplayName("TT mapper should use fetchChe as recipientCHE for TT device type")
+    void ttMapperUsesFetchCheAsRecipient() {
+        WorkInstruction wi = new WorkInstruction(
+                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                ACTIVATED_AT, 120, 60, "RTG05",
+                false, false, false, 0, "Y01.01.01"
+        );
+
+        ActionActivated activated = new ActionActivated(
+                UUID.randomUUID(), 1L, "TAKT100", ActionType.TT_DRIVE_TO_QC_PULL, "drive to QC pull",
+                ACTIVATED_AT, DeviceType.TT, List.of(wi)
+        );
+
+        EquipmentInstructionKafkaMessage message = ttMapper.mapToMessage(activated);
+
+        assertEquals("QC01", message.recipientCHEShortName());
+    }
+
+    @Test
+    @DisplayName("TT mapper should produce valid Avro GenericRecord")
+    void ttMapperProducesValidAvroRecord() {
+        UUID actionId = UUID.randomUUID();
+        WorkInstruction wi = new WorkInstruction(
+                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                ACTIVATED_AT, 120, 60, "RTG05",
+                false, false, false, 0, "Y01.01.01"
+        );
+
+        ActionActivated activated = new ActionActivated(
+                actionId, 1L, "TAKT100", ActionType.TT_DRIVE_TO_RTG_UNDER, "drive to RTG under",
+                ACTIVATED_AT, DeviceType.TT, List.of(wi)
+        );
+
+        GenericRecord avro = ttMapper.map(activated);
+
+        assertNotNull(avro);
+        assertEquals("drive to RTG under", avro.get("equipmentInstructionType").toString());
+        assertEquals(actionId.toString(), avro.get("equipmentInstructionId").toString());
+        assertEquals(TERMINAL_CODE, avro.get("terminalCode").toString());
+    }
+
+    // ── QC mapper tests ─────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("QC mapper should map QC_LIFT action")
+    void qcMapperMapsQcLift() {
+        UUID actionId = UUID.randomUUID();
+        WorkInstruction wi = new WorkInstruction(
+                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                ACTIVATED_AT, 120, 60, "RTG05",
+                false, false, false, 0, "Y01.01.01"
+        );
+
+        ActionActivated activated = new ActionActivated(
+                actionId, 1L, "TAKT100", ActionType.QC_LIFT, "QC Lift",
+                ACTIVATED_AT, DeviceType.QC, List.of(wi)
+        );
+
+        EquipmentInstructionKafkaMessage message = qcMapper.mapToMessage(activated);
+
+        assertNotNull(message);
+        assertEquals("QC Lift", message.equipmentInstructionType());
+        assertEquals(actionId.toString(), message.equipmentInstructionId());
+        assertEquals("QC", message.recipientCHEKind());
+        assertEquals("QC01", message.recipientCHEShortName());
+        assertEquals(TERMINAL_CODE, message.terminalCode());
+    }
+
+    @Test
+    @DisplayName("QC mapper should map QC_PLACE action")
+    void qcMapperMapsQcPlace() {
+        UUID actionId = UUID.randomUUID();
+        WorkInstruction wi = new WorkInstruction(
+                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                ACTIVATED_AT, 120, 60, "RTG05",
+                false, false, false, 0, "Y01.01.01"
+        );
+
+        ActionActivated activated = new ActionActivated(
+                actionId, 1L, "TAKT100", ActionType.QC_PLACE, "QC Place",
+                ACTIVATED_AT, DeviceType.QC, List.of(wi)
+        );
+
+        EquipmentInstructionKafkaMessage message = qcMapper.mapToMessage(activated);
+
+        assertNotNull(message);
+        assertEquals("QC Place", message.equipmentInstructionType());
+    }
+
+    @Test
+    @DisplayName("QC mapper should return null for RTG action types")
+    void qcMapperReturnsNullForRtgActions() {
+        WorkInstruction wi = new WorkInstruction(
+                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                ACTIVATED_AT, 120, 60, "RTG05",
+                false, false, false, 0, "Y01.01.01"
+        );
+
+        ActionActivated activated = new ActionActivated(
+                UUID.randomUUID(), 1L, "TAKT100", ActionType.RTG_DRIVE, "drive",
+                ACTIVATED_AT, DeviceType.RTG, List.of(wi)
+        );
+
+        assertNull(qcMapper.mapToMessage(activated));
+    }
+
+    @Test
+    @DisplayName("QC mapper should produce valid Avro GenericRecord")
+    void qcMapperProducesValidAvroRecord() {
+        UUID actionId = UUID.randomUUID();
+        WorkInstruction wi = new WorkInstruction(
+                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                ACTIVATED_AT, 120, 60, "RTG05",
+                false, false, false, 0, "Y01.01.01"
+        );
+
+        ActionActivated activated = new ActionActivated(
+                actionId, 1L, "TAKT100", ActionType.QC_LIFT, "QC Lift",
+                ACTIVATED_AT, DeviceType.QC, List.of(wi)
+        );
+
+        GenericRecord avro = qcMapper.map(activated);
+
+        assertNotNull(avro);
+        assertEquals("QC Lift", avro.get("equipmentInstructionType").toString());
         assertEquals(actionId.toString(), avro.get("equipmentInstructionId").toString());
         assertEquals(TERMINAL_CODE, avro.get("terminalCode").toString());
     }

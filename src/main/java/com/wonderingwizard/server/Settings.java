@@ -98,6 +98,39 @@ public class Settings {
         );
     }
 
+    public ConsumerConfiguration assetEventRtgConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.asset-event-rtg.topic",
+                        "apmt.terminaloperations.assetevent.rubbertyredgantry.topic.confidential.dedicated.v1"),
+                get("kafka.consumer.asset-event-rtg.group-id", "wondering-wizard-asset-event-rtg"),
+                null,
+                "AssetEvent",
+                false
+        );
+    }
+
+    public ConsumerConfiguration assetEventQcConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.asset-event-qc.topic",
+                        "apmt.terminaloperations.assetevent.quaycrane.topic.confidential.dedicated.v1"),
+                get("kafka.consumer.asset-event-qc.group-id", "wondering-wizard-asset-event-qc"),
+                null,
+                "AssetEvent",
+                false
+        );
+    }
+
+    public ConsumerConfiguration assetEventEhConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.asset-event-eh.topic",
+                        "apmt.terminaloperations.assetevent.emptyhandler.topic.confidential.dedicated.v1"),
+                get("kafka.consumer.asset-event-eh.group-id", "wondering-wizard-asset-event-eh"),
+                null,
+                "AssetEvent",
+                false
+        );
+    }
+
     public String terminalCode() {
         return get("kafka.terminal-code", "UNKNOWN");
     }
@@ -105,6 +138,16 @@ public class Settings {
     public String equipmentInstructionRtgTopic() {
         return get("kafka.producer.equipment-instruction-rtg.topic",
                 "apmt.terminaloperations.equipmentinstruction.rubbertyredgantry.topic.confidential.dedicated.v1");
+    }
+
+    public String equipmentInstructionTtTopic() {
+        return get("kafka.producer.equipment-instruction-tt.topic",
+                "apmt.terminaloperations.equipmentinstruction.terminaltruck.topic.confidential.dedicated.v1");
+    }
+
+    public String equipmentInstructionQcTopic() {
+        return get("kafka.producer.equipment-instruction-qc.topic",
+                "apmt.terminaloperations.equipmentinstruction.quaycrane.topic.confidential.dedicated.v1");
     }
 
     public ConsumerConfiguration workInstructionConsumerConfiguration() {

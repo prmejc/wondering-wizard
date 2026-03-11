@@ -22,6 +22,7 @@ public class KafkaConsumerManager {
     private final KafkaConfiguration kafkaConfig;
     private final Engine engine;
     private final List<KafkaEventConsumer<?>> consumers = new ArrayList<>();
+    private final List<KafkaJsonEventConsumer<?>> jsonConsumers = new ArrayList<>();
 
     public KafkaConsumerManager(KafkaConfiguration kafkaConfig, Engine engine) {
         this.kafkaConfig = kafkaConfig;
@@ -29,7 +30,7 @@ public class KafkaConsumerManager {
     }
 
     /**
-     * Register a new Kafka consumer for a specific topic.
+     * Register a new Kafka Avro consumer for a specific topic.
      *
      * @param consumerConfig the consumer-specific configuration (topic, group, etc.)
      * @param mapper the mapper that transforms Avro records into engine events
@@ -47,29 +48,62 @@ public class KafkaConsumerManager {
     }
 
     /**
-     * Start all registered consumers.
+     * Register a new Kafka JSON consumer for a specific topic.
+     *
+     * @param consumerConfig the consumer-specific configuration (topic, group, etc.)
+     * @param mapper the mapper that transforms JSON strings into engine events
+     * @param <E> the type of engine event
+     * @return this manager for fluent chaining
+     */
+    public <E extends Event> KafkaConsumerManager registerJson(
+            ConsumerConfiguration consumerConfig,
+            JsonEventMapper<E> mapper
+    ) {
+        var consumer = new KafkaJsonEventConsumer<>(kafkaConfig, consumerConfig, mapper, engine);
+        jsonConsumers.add(consumer);
+        logger.info("Registered Kafka JSON consumer for topic: " + consumerConfig.topic());
+        return this;
+    }
+
+    /**
+     * Start all registered consumers (both Avro and JSON).
      */
     public void startAll() {
-        logger.info("Starting " + consumers.size() + " Kafka consumer(s)...");
+        int total = consumers.size() + jsonConsumers.size();
+        logger.info("Starting " + total + " Kafka consumer(s)...");
         for (var consumer : consumers) {
+            consumer.start();
+        }
+        for (var consumer : jsonConsumers) {
             consumer.start();
         }
     }
 
     /**
-     * Stop all running consumers.
+     * Stop all running consumers (both Avro and JSON).
      */
     public void stopAll() {
-        logger.info("Stopping " + consumers.size() + " Kafka consumer(s)...");
+        int total = consumers.size() + jsonConsumers.size();
+        logger.info("Stopping " + total + " Kafka consumer(s)...");
         for (var consumer : consumers) {
+            consumer.stop();
+        }
+        for (var consumer : jsonConsumers) {
             consumer.stop();
         }
     }
 
     /**
-     * Returns an unmodifiable view of the registered consumers.
+     * Returns an unmodifiable view of the registered Avro consumers.
      */
     public List<KafkaEventConsumer<?>> getConsumers() {
         return Collections.unmodifiableList(consumers);
+    }
+
+    /**
+     * Returns an unmodifiable view of the registered JSON consumers.
+     */
+    public List<KafkaJsonEventConsumer<?>> getJsonConsumers() {
+        return Collections.unmodifiableList(jsonConsumers);
     }
 }
