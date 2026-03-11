@@ -125,214 +125,122 @@ public class GraphScheduleBuilder {
         return switch (loadMode) {
             case LOAD -> getLoadSingleTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
             case DSCH -> {
-                if (!wi.isTwinCarry()){
+                if (!wi.isTwinCarry()) {
                     yield getDischargeSingleTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
                 }
-                //pick as twin, drop as singles in the same bay
-                else if (wi.isTwinFetch() && !wi.isTwinPut() && !isDifferentBay(wi, workInstructionHashMap)) {
-                    yield getDischargeLiftTwinsDropSinglesSameBay(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
-                }
-                //pick as twin, drop as singles in different bay
-                else if (wi.isTwinFetch() && !wi.isTwinPut() && isDifferentBay(wi, workInstructionHashMap)) {
-                    yield getDischargeLiftTwinsDropSinglesDifferentBay(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
-                }
-                //pick as twin, drop as twin
-                else if (wi.isTwinFetch() && wi.isTwinPut()) {
-                    yield getDischargeTwinTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
-                }
-                //pick as singles, drop as singles in the same bay
-                else if (!wi.isTwinFetch() && !wi.isTwinPut() && !isDifferentBay(wi, workInstructionHashMap)) {
-                    yield getDischargeLiftSinglesDropSinglesSameBay(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
-                }
-                //pick as singles, drop as singles in a different bay
-                else if (!wi.isTwinFetch() && !wi.isTwinPut() && isDifferentBay(wi, workInstructionHashMap)) {
-                    yield getDischargeLiftSinglesDropSinglesDifferentBay(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
-                }
-                //pick as singles, drop as twin
-                else if (!wi.isTwinFetch() && wi.isTwinPut()) {
-                    yield getDischargeLiftSinglesDropTwin(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
-                }
-                else {
-                    throw new RuntimeException("Unsupported twin fetch");
-                }
+                boolean differentBay = isDifferentBay(wi, workInstructionHashMap);
+                yield getTwinDischargeTemplate(wi, wi.isTwinFetch(), wi.isTwinPut(), differentBay,
+                        qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
             }
         };
     }
 
-    private List<ActionTemplate> getDischargeLiftSinglesDropTwin(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
-                // ── QC chain (forward from anchor) ──
-                ActionTemplate.of(QC_LIFT, "1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
-                ActionTemplate.of(QC_PLACE, "1", QC, qcLiftDuration).withFirstInTakt().withAnchor(),
-                ActionTemplate.of(QC_LIFT, "2", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
-                ActionTemplate.of(QC_PLACE, "2", QC, qcLiftDuration).withFirstInTakt(),
+    /**
+     * Consolidated template for all twin-carry discharge variants.
+     * The three dimensions (twinFetch, twinPut, differentBay) control how QC, TT, and RTG chains are built.
+     */
+    private List<ActionTemplate> getTwinDischargeTemplate(
+            WorkInstruction wi, boolean twinFetch, boolean twinPut, boolean differentBay,
+            int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
 
-                // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
-                ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
-                ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
-                ActionTemplate.of(TT_HANDOVER_FROM_QC, "1", TT, qcLiftDuration)
-                        .withFirstInTakt().withSyncWith(QC, QC_PLACE),
-                ActionTemplate.of(TT_HANDOVER_FROM_QC, "2", TT, qcLiftDuration)
-                        .withFirstInTakt().withSyncWith(QC, QC_PLACE),
+        var templates = new ArrayList<ActionTemplate>();
 
-                ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, driveToRtgPull),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg),
-                ActionTemplate.of(TT_HANDOVER_TO_RTG, TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
+        // ── QC chain ──
+        if (twinFetch) {
+            var lift = ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration);
+            var place = ActionTemplate.of(QC_PLACE, QC, qcLiftDuration).withFirstInTakt();
+            if (!twinPut && !differentBay) {
+                // Same-bay single drop: anchor on QC_LIFT
+                templates.add(lift.withAnchor());
+                templates.add(place);
+            } else {
+                // Twin drop or different bay: anchor on QC_PLACE
+                templates.add(lift);
+                templates.add(place.withAnchor());
+            }
+        } else {
+            // Single fetch: two QC pairs with suffixes
+            templates.add(ActionTemplate.of(QC_LIFT, "1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration));
+            templates.add(ActionTemplate.of(QC_PLACE, "1", QC, qcLiftDuration).withFirstInTakt().withAnchor());
+            templates.add(ActionTemplate.of(QC_LIFT, "2", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration));
+            templates.add(ActionTemplate.of(QC_PLACE, "2", QC, qcLiftDuration).withFirstInTakt());
+        }
 
-                // ── RTG chain (backward from sync point) ──
-                ActionTemplate.of(RTG_DRIVE, "1", RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL),
-                ActionTemplate.of(RTG_WAIT_FOR_TRUCK, "1", RTG, 0),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, rtgPlaceDuration),
-                ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, driveToUnderRtg + rtgPlaceDuration)
-        ));
-    }
+        // ── TT chain ──
+        // Common QC-approach prefix
+        templates.add(ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30));
+        templates.add(ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull));
+        templates.add(ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30));
 
-    private List<ActionTemplate> getDischargeLiftSinglesDropSinglesDifferentBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
-                // ── QC chain (forward from anchor) ──
-                ActionTemplate.of(QC_LIFT, "1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
-                ActionTemplate.of(QC_PLACE, "1", QC, qcLiftDuration).withFirstInTakt().withAnchor(),
-                ActionTemplate.of(QC_LIFT, "2", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
-                ActionTemplate.of(QC_PLACE, "2", QC, qcLiftDuration).withFirstInTakt(),
+        // QC handover
+        if (twinFetch) {
+            templates.add(ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, qcLiftDuration)
+                    .withFirstInTakt().withSyncWith(QC, QC_PLACE));
+        } else {
+            templates.add(ActionTemplate.of(TT_HANDOVER_FROM_QC, "1", TT, qcLiftDuration)
+                    .withFirstInTakt().withSyncWith(QC, QC_PLACE));
+            templates.add(ActionTemplate.of(TT_HANDOVER_FROM_QC, "2", TT, qcLiftDuration)
+                    .withFirstInTakt().withSyncWith(QC, QC_PLACE));
+        }
 
+        // Drive to RTG + handover
+        if (differentBay && !twinPut) {
+            // Two separate drive-to-RTG sequences for different bays
+            templates.add(ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, "1", TT, driveToRtgPull));
+            templates.add(ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, "1", TT, 240));
+            templates.add(ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, "1", TT, driveToUnderRtg));
+            templates.add(ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, rtgPlaceDuration));
+            templates.add(ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, "2", TT, twinFetch ? driveToRtgPull : 30));
+            templates.add(ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, "2", TT, 30));
+            templates.add(ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, "2", TT, twinFetch ? driveToUnderRtg : 30));
+            templates.add(ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, rtgPlaceDuration));
+        } else {
+            // Single drive-to-RTG sequence
+            templates.add(ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, driveToRtgPull));
+            templates.add(ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240));
+            templates.add(ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg));
+            if (twinPut) {
+                templates.add(ActionTemplate.of(TT_HANDOVER_TO_RTG, TT, rtgPlaceDuration));
+            } else {
+                templates.add(ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, rtgPlaceDuration));
+                templates.add(ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, rtgPlaceDuration));
+            }
+        }
+        templates.add(ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS));
 
-                // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
-                ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
-                ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
-                ActionTemplate.of(TT_HANDOVER_FROM_QC, "1", TT, qcLiftDuration)
-                        .withFirstInTakt().withSyncWith(QC, QC_PLACE),
-                ActionTemplate.of(TT_HANDOVER_FROM_QC, "2", TT, qcLiftDuration)
-                        .withFirstInTakt().withSyncWith(QC, QC_PLACE),
+        // ── RTG chain ──
+        if (differentBay && !twinPut) {
+            // Two RTG device chains on separate physical devices
+            templates.add(ActionTemplate.of(RTG_DRIVE, "1", RTG, RTG_DRIVE_SECONDS)
+                    .withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL).withDeviceIndex(1));
+            templates.add(ActionTemplate.of(RTG_WAIT_FOR_TRUCK, "1", RTG, 0).withDeviceIndex(1));
+            templates.add(ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, rtgPlaceDuration).withDeviceIndex(1));
+            templates.add(ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, driveToUnderRtg + rtgPlaceDuration).withDeviceIndex(1));
+            templates.add(ActionTemplate.of(RTG_DRIVE, "2", RTG, RTG_DRIVE_SECONDS)
+                    .withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL).withDeviceIndex(2));
+            templates.add(ActionTemplate.of(RTG_WAIT_FOR_TRUCK, "2", RTG, 0).withDeviceIndex(2));
+            templates.add(ActionTemplate.of(RTG_LIFT_FROM_TT, "2", RTG, rtgPlaceDuration).withDeviceIndex(2));
+            templates.add(ActionTemplate.of(RTG_PLACE_ON_YARD, "2", RTG, driveToUnderRtg + rtgPlaceDuration).withDeviceIndex(2));
+        } else if (twinPut) {
+            // Twin put: single RTG set
+            templates.add(ActionTemplate.of(RTG_DRIVE, "1", RTG, RTG_DRIVE_SECONDS)
+                    .withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL));
+            templates.add(ActionTemplate.of(RTG_WAIT_FOR_TRUCK, "1", RTG, 0));
+            templates.add(ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, rtgPlaceDuration));
+            templates.add(ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, driveToUnderRtg + rtgPlaceDuration));
+        } else {
+            // Same bay, single put: two RTG sets on same device
+            templates.add(ActionTemplate.of(RTG_DRIVE, "1", RTG, RTG_DRIVE_SECONDS)
+                    .withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL));
+            templates.add(ActionTemplate.of(RTG_WAIT_FOR_TRUCK, "1", RTG, 0));
+            templates.add(ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, rtgPlaceDuration));
+            templates.add(ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, driveToUnderRtg + rtgPlaceDuration));
+            templates.add(ActionTemplate.of(RTG_DRIVE, "2", RTG, RTG_DRIVE_SECONDS));
+            templates.add(ActionTemplate.of(RTG_LIFT_FROM_TT, "2", RTG, rtgPlaceDuration));
+            templates.add(ActionTemplate.of(RTG_PLACE_ON_YARD, "2", RTG, driveToUnderRtg + rtgPlaceDuration));
+        }
 
-                ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, "1", TT, driveToRtgPull),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, "1", TT, 240),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, "1", TT, driveToUnderRtg),
-                ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, "2",TT, 30),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, "2", TT, 30),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER,"2", TT, 30),
-                ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
-
-                // ── RTG chain (backward from sync point) ──
-                ActionTemplate.of(RTG_DRIVE, "1", RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL).withDeviceIndex(1),
-                ActionTemplate.of(RTG_WAIT_FOR_TRUCK, "1", RTG, 0).withDeviceIndex(1),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, rtgPlaceDuration).withDeviceIndex(1),
-                ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, driveToUnderRtg + rtgPlaceDuration).withDeviceIndex(1),
-                ActionTemplate.of(RTG_DRIVE, "2", RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL).withDeviceIndex(2),
-                ActionTemplate.of(RTG_WAIT_FOR_TRUCK, "2", RTG, 0).withDeviceIndex(2),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, "2", RTG, rtgPlaceDuration).withDeviceIndex(2),
-                ActionTemplate.of(RTG_PLACE_ON_YARD, "2", RTG, driveToUnderRtg + rtgPlaceDuration).withDeviceIndex(2)
-        ));
-    }
-
-    private List<ActionTemplate> getDischargeLiftSinglesDropSinglesSameBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
-                // ── QC chain (forward from anchor) ──
-                ActionTemplate.of(QC_LIFT, "1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
-                ActionTemplate.of(QC_PLACE, "1", QC, qcLiftDuration).withFirstInTakt().withAnchor(),
-                ActionTemplate.of(QC_LIFT, "2", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
-                ActionTemplate.of(QC_PLACE, "2", QC, qcLiftDuration).withFirstInTakt(),
-
-
-                // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
-                ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
-                ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
-                ActionTemplate.of(TT_HANDOVER_FROM_QC, "1", TT, qcLiftDuration)
-                        .withFirstInTakt().withSyncWith(QC, QC_PLACE),
-                ActionTemplate.of(TT_HANDOVER_FROM_QC, "2", TT, qcLiftDuration)
-                        .withFirstInTakt().withSyncWith(QC, QC_PLACE),
-
-                ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, driveToRtgPull),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg),
-                ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
-
-                // ── RTG chain (backward from sync point) ──
-                ActionTemplate.of(RTG_DRIVE, "1", RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL),
-                ActionTemplate.of(RTG_WAIT_FOR_TRUCK, "1", RTG, 0),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, rtgPlaceDuration),
-                ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, driveToUnderRtg + rtgPlaceDuration),
-                ActionTemplate.of(RTG_DRIVE, "2", RTG, RTG_DRIVE_SECONDS),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, "2", RTG, rtgPlaceDuration),
-                ActionTemplate.of(RTG_PLACE_ON_YARD, "2", RTG, driveToUnderRtg + rtgPlaceDuration)
-        ));
-    }
-
-    private List<ActionTemplate> getDischargeLiftTwinsDropSinglesDifferentBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
-                // ── QC chain (forward from anchor) ──
-                ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
-                ActionTemplate.of(QC_PLACE, QC, qcLiftDuration)
-                        .withFirstInTakt().withAnchor(),
-
-                // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
-                ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
-                ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
-                ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, qcLiftDuration)
-                        .withFirstInTakt().withSyncWith(QC, QC_PLACE),
-
-                ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, "1", TT, driveToRtgPull),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, "1", TT, 240),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, "1", TT, driveToUnderRtg),
-                ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, "2", TT, driveToRtgPull),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, "2", TT, 30),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, "2", TT, driveToUnderRtg),
-
-                ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
-
-                // ── RTG chain (backward from sync point) ──
-                ActionTemplate.of(RTG_DRIVE, "1", RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL).withDeviceIndex(1),
-                ActionTemplate.of(RTG_WAIT_FOR_TRUCK, "1", RTG, 0).withDeviceIndex(1),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, rtgPlaceDuration).withDeviceIndex(1),
-                ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, driveToUnderRtg + rtgPlaceDuration).withDeviceIndex(1),
-                ActionTemplate.of(RTG_DRIVE, "2", RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL).withDeviceIndex(2),
-                ActionTemplate.of(RTG_WAIT_FOR_TRUCK, "2", RTG, 0).withDeviceIndex(2),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, "2", RTG, rtgPlaceDuration).withDeviceIndex(2),
-                ActionTemplate.of(RTG_PLACE_ON_YARD, "2", RTG, driveToUnderRtg + rtgPlaceDuration).withDeviceIndex(2)
-        ));
-    }
-
-    private List<ActionTemplate> getDischargeLiftTwinsDropSinglesSameBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
-                // ── QC chain (forward from anchor) ──
-                ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration)
-                       .withAnchor(),
-                ActionTemplate.of(QC_PLACE, QC, qcLiftDuration ).withFirstInTakt(),
-
-                // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
-                ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
-                ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
-                ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, qcLiftDuration)
-                        .withFirstInTakt().withSyncWith(QC, QC_PLACE),
-
-                ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, driveToRtgPull),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg),
-                ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
-
-                // ── RTG chain (backward from sync point) ──
-                ActionTemplate.of(RTG_DRIVE, "1", RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL),
-                ActionTemplate.of(RTG_WAIT_FOR_TRUCK, "1", RTG, 0),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, rtgPlaceDuration),
-                ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, driveToUnderRtg + rtgPlaceDuration),
-                ActionTemplate.of(RTG_DRIVE, "2", RTG, RTG_DRIVE_SECONDS),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, "2", RTG, rtgPlaceDuration),
-                ActionTemplate.of(RTG_PLACE_ON_YARD, "2", RTG, driveToUnderRtg + rtgPlaceDuration)
-        ));
+        return withComputedRtgWaitDuration(templates);
     }
 
     private boolean isDifferentBay(WorkInstruction wi, HashMap<Long, WorkInstruction> workInstructionHashMap) {
@@ -347,33 +255,6 @@ public class GraphScheduleBuilder {
         if (yardLocation == null || companionYardLocation == null) return false;
 
         return !yardLocation.bay().equals(companionYardLocation.bay());
-    }
-
-    private static List<ActionTemplate> getDischargeTwinTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
-                // ── QC chain (forward from anchor) ──
-                ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
-                ActionTemplate.of(QC_PLACE, QC,qcLiftDuration ).withFirstInTakt().withAnchor(),
-
-                // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
-                ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
-                ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
-                ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, qcLiftDuration)
-                        .withFirstInTakt().withSyncWith(QC, QC_PLACE),
-
-                ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, driveToRtgPull),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg),
-                ActionTemplate.of(TT_HANDOVER_TO_RTG, TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
-
-                // ── RTG chain (backward from sync point) ──
-                ActionTemplate.of(RTG_DRIVE, "1", RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL),
-                ActionTemplate.of(RTG_WAIT_FOR_TRUCK, "1", RTG, 0),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, rtgPlaceDuration),
-                ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, driveToUnderRtg + rtgPlaceDuration)
-        ));
     }
 
     private static List<ActionTemplate> getDischargeSingleTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
