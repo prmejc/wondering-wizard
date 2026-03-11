@@ -230,7 +230,7 @@ class JsonSerializerTest {
         @DisplayName("Should serialize Action")
         void serializesAction() {
             UUID id = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
-            Action action = new Action(id, DeviceType.RTG, ActionType.RTG_DRIVE, "lift container", Set.of(), 0, 0, List.of());
+            Action action = new Action(id, DeviceType.RTG, ActionType.RTG_DRIVE, "lift container", Set.of(), 0, 0, 0, List.of());
             String json = JsonSerializer.serialize(action);
             assertTrue(json.contains("\"id\":\"550e8400-e29b-41d4-a716-446655440000\""));
             assertTrue(json.contains("\"deviceType\":\"RTG\""));
@@ -256,7 +256,7 @@ class JsonSerializerTest {
         @DisplayName("Should serialize ScheduleCreated with full takts")
         void serializesScheduleCreatedWithTakts() {
             Action a1 = Action.create(DeviceType.RTG, ActionType.RTG_DRIVE);
-            Action a2 = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.RTG_DRIVE, "action2", Set.of(a1.id()), 0, 0, List.of());
+            Action a2 = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.RTG_DRIVE, "action2", Set.of(a1.id()), 0, 0, 0, List.of());
             Instant time = Instant.parse("2024-01-01T10:00:00Z");
             Takt takt = new Takt(0, List.of(a1, a2), time, time, 120);
             ScheduleCreated se = new ScheduleCreated(1L, List.of(takt),

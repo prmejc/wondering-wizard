@@ -24,6 +24,7 @@ public enum ActionType {
 
     // ── RTG actions ─────────────────────────────────────────────────────
     RTG_DRIVE("drive"),
+    RTG_WAIT_FOR_TRUCK("wait for tt"),
     RTG_FETCH("fetch"),
     RTG_HANDOVER_TO_TT("handover to tt"),
     RTG_LIFT_FROM_TT("lift from tt"),
@@ -41,7 +42,6 @@ public enum ActionType {
     TT_HANDOVER_FROM_QC("handover from QC"),
     TT_HANDOVER_TO_RTG("handover to RTG"),
     TT_DRIVE_TO_BUFFER("drive to buffer"),
-    TT_DRIVE_TO_DIFFERENT_BAY("drive to different bay"),
 
     // ── QC actions ──────────────────────────────────────────────────────
     QC_LIFT("QC Lift"),

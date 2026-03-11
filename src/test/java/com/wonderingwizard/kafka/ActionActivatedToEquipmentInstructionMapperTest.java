@@ -41,7 +41,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
                         ActionType.TT_DRIVE_TO_QC_PULL, ActionType.TT_DRIVE_TO_QC_STANDBY,
                         ActionType.TT_DRIVE_UNDER_QC, ActionType.TT_HANDOVER_TO_QC,
                         ActionType.TT_HANDOVER_FROM_QC, ActionType.TT_HANDOVER_TO_RTG,
-                        ActionType.TT_DRIVE_TO_BUFFER, ActionType.TT_DRIVE_TO_DIFFERENT_BAY));
+                        ActionType.TT_DRIVE_TO_BUFFER));
         qcMapper = new ActionActivatedToEquipmentInstructionMapper(TERMINAL_CODE,
                 Set.of(ActionType.QC_LIFT, ActionType.QC_PLACE));
     }

@@ -104,7 +104,6 @@ class GraphScheduleBuilderTest {
             ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, 30)
                     .withFirstInTakt().withOnlyOnePerTakt(),
             ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, 20).withFirstInTakt(),
-            ActionTemplate.of(TT_DRIVE_TO_DIFFERENT_BAY, TT, 20),
             ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, 20).withFirstInTakt(),
             ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, 30),
 
@@ -877,6 +876,95 @@ class GraphScheduleBuilderTest {
 
             assertEquals(Set.of(QC, TT, RTG), deviceTypes,
                     "Twin carry schedule must contain QC, TT, and RTG actions");
+        }
+
+        @Test
+        @DisplayName("Multi-container: no RTG overlap across containers in same takt")
+        void multiContainerNoRtgOverlap() {
+            var takts = schedule(DISCHARGE_TWIN_SAME_BAY_TEMPLATE, 2);
+
+            for (var takt : takts) {
+                var rtgContainers = takt.actions().stream()
+                        .filter(a -> a.deviceType() == RTG)
+                        .map(Action::containerIndex)
+                        .collect(Collectors.toSet());
+
+                assertTrue(rtgContainers.size() <= 1,
+                        "Takt " + takt.sequence() + " has RTG actions from multiple containers: " + rtgContainers
+                        + " actions: " + takt.actions().stream()
+                                .filter(a -> a.deviceType() == RTG)
+                                .map(a -> a.description() + "(C" + a.containerIndex() + ")")
+                                .toList());
+            }
+        }
+
+        @Test
+        @DisplayName("Multi-container different bay: no RTG overlap across containers in same takt")
+        void multiContainerDifferentBayNoRtgOverlap() {
+            var takts = schedule(DISCHARGE_TWIN_DIFFERENT_BAY_TEMPLATE, 2);
+
+            for (var takt : takts) {
+                var rtgContainers = takt.actions().stream()
+                        .filter(a -> a.deviceType() == RTG)
+                        .map(Action::containerIndex)
+                        .collect(Collectors.toSet());
+
+                assertTrue(rtgContainers.size() <= 1,
+                        "Takt " + takt.sequence() + " has RTG actions from multiple containers: " + rtgContainers);
+            }
+        }
+
+        @Test
+        @DisplayName("Multi-container: TT handover moves with RTG when pushed forward for device exclusivity")
+        void multiContainerTtHandoverMovesWithRtg() {
+            var takts = schedule(DISCHARGE_TWIN_DIFFERENT_BAY_TEMPLATE, 2);
+
+            // For each container, RTG lift from tt1 must be in the same takt as TT handover to RTG1
+            for (int ci = 0; ci < 2; ci++) {
+                int container = ci;
+                var rtgLift1Takt = takts.stream()
+                        .filter(t -> t.actions().stream()
+                                .anyMatch(a -> a.containerIndex() == container
+                                        && a.description().equals("lift from tt1")))
+                        .findFirst();
+                var ttHandover1Takt = takts.stream()
+                        .filter(t -> t.actions().stream()
+                                .anyMatch(a -> a.containerIndex() == container
+                                        && a.description().equals("handover to RTG1")))
+                        .findFirst();
+
+                assertTrue(rtgLift1Takt.isPresent(), "C" + container + " RTG lift from tt1 not found");
+                assertTrue(ttHandover1Takt.isPresent(), "C" + container + " TT handover to RTG1 not found");
+                assertEquals(rtgLift1Takt.get().sequence(), ttHandover1Takt.get().sequence(),
+                        "C" + container + ": RTG lift from tt1 (takt " + rtgLift1Takt.get().sequence()
+                        + ") must be in same takt as TT handover to RTG1 (takt " + ttHandover1Takt.get().sequence() + ")");
+            }
+        }
+
+        @Test
+        @DisplayName("Multi-container: TT handover to RTG1 and handover to RTG2 are in different takts")
+        void multiContainerTtHandoversInDifferentTakts() {
+            var takts = schedule(DISCHARGE_TWIN_DIFFERENT_BAY_TEMPLATE, 2);
+
+            for (int ci = 0; ci < 2; ci++) {
+                int container = ci;
+                var handover1Takt = takts.stream()
+                        .filter(t -> t.actions().stream()
+                                .anyMatch(a -> a.containerIndex() == container
+                                        && a.description().equals("handover to RTG1")))
+                        .findFirst();
+                var handover2Takt = takts.stream()
+                        .filter(t -> t.actions().stream()
+                                .anyMatch(a -> a.containerIndex() == container
+                                        && a.description().equals("handover to RTG2")))
+                        .findFirst();
+
+                assertTrue(handover1Takt.isPresent(), "C" + container + " TT handover to RTG1 not found");
+                assertTrue(handover2Takt.isPresent(), "C" + container + " TT handover to RTG2 not found");
+                assertNotEquals(handover1Takt.get().sequence(), handover2Takt.get().sequence(),
+                        "C" + container + ": TT handover to RTG1 and handover to RTG2 must not be in the same takt (both in takt "
+                        + handover1Takt.get().sequence() + ")");
+            }
         }
     }
 

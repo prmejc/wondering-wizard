@@ -407,25 +407,44 @@ class ScheduleView extends HTMLElement {
       const takts = schedule.takts || [];
       if (takts.length === 0) { html += '</div>'; continue; }
 
-      // Collect TT container indices across all takts
-      const ttContainerSet = new Set();
+      // Collect unique (deviceIndex, containerIndex) pairs for RTG and containerIndex for TT
+      const rtgKeys = new Set();
+      const ttContainerIndices = new Set();
       for (const takt of takts) {
         for (const action of takt.actions || []) {
-          if (action.deviceType === 'TT') {
-            ttContainerSet.add(action.containerIndex != null ? action.containerIndex : 0);
+          if (action.deviceType === 'RTG') {
+            const di = action.deviceIndex != null ? action.deviceIndex : 0;
+            const ci = action.containerIndex != null ? action.containerIndex : 0;
+            rtgKeys.add(di + ':' + ci);
+          } else if (action.deviceType === 'TT') {
+            ttContainerIndices.add(action.containerIndex != null ? action.containerIndex : 0);
           }
         }
       }
-      const ttContainers = [...ttContainerSet].sort((a, b) => a - b);
+      const rtgRows = [...rtgKeys].map(k => { const [di, ci] = k.split(':').map(Number); return { di, ci }; })
+        .sort((a, b) => a.di !== b.di ? a.di - b.di : a.ci - b.ci);
+      const ttContainers = [...ttContainerIndices].sort((a, b) => a - b);
+      const numRtgDevices = new Set(rtgRows.map(r => r.di)).size;
 
-      // Build rows: QC, RTG, then one TT row per container
+      // Build rows: QC, then one RTG row per (deviceIndex, containerIndex), then one TT row per container
       const rows = [
         { label: 'QC', color: deviceColors.QC, match: a => a.deviceType === 'QC' },
-        { label: 'RTG', color: deviceColors.RTG, match: a => a.deviceType === 'RTG' },
       ];
+      for (const { di, ci } of rtgRows) {
+        const label = rtgRows.length > 1
+          ? 'RTG' + (numRtgDevices > 1 ? di : '') + '\u00a0C' + ci
+          : 'RTG';
+        rows.push({
+          label,
+          color: deviceColors.RTG,
+          match: a => a.deviceType === 'RTG'
+            && (a.deviceIndex != null ? a.deviceIndex : 0) === di
+            && (a.containerIndex != null ? a.containerIndex : 0) === ci
+        });
+      }
       for (const ci of ttContainers) {
         rows.push({
-          label: ttContainers.length > 1 ? 'TT\u00a0' + ci : 'TT',
+          label: ttContainers.length > 1 ? 'TT\u00a0C' + ci : 'TT',
           color: deviceColors.TT,
           match: a => a.deviceType === 'TT' && (a.containerIndex != null ? a.containerIndex : 0) === ci
         });

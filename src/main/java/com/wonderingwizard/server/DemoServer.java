@@ -128,7 +128,7 @@ public class DemoServer {
     /** Action view within a takt. */
     public record ActionView(UUID id, DeviceType deviceType, String description,
                               ActionState status, Set<UUID> dependsOn, int containerIndex,
-                              int durationSeconds, List<ConditionView> conditions) {}
+                              int durationSeconds, int deviceIndex, List<ConditionView> conditions) {}
 
     public DemoServer() {
         this(Settings.load());
@@ -275,7 +275,7 @@ public class DemoServer {
                                 ActionType.TT_DRIVE_TO_QC_PULL, ActionType.TT_DRIVE_TO_QC_STANDBY,
                                 ActionType.TT_DRIVE_UNDER_QC, ActionType.TT_HANDOVER_TO_QC,
                                 ActionType.TT_HANDOVER_FROM_QC, ActionType.TT_HANDOVER_TO_RTG,
-                                ActionType.TT_DRIVE_TO_BUFFER, ActionType.TT_DRIVE_TO_DIFFERENT_BAY))
+                                ActionType.TT_DRIVE_TO_BUFFER))
         );
         sideEffectPublisher.registerMapper(
                 ActionActivated.class,
@@ -390,7 +390,7 @@ public class DemoServer {
                                 actionViews.add(new ActionView(
                                         action.id(), action.deviceType(), action.description(),
                                         ActionState.PENDING, action.dependsOn(), action.containerIndex(),
-                                        action.durationSeconds(), List.of()));
+                                        action.durationSeconds(), action.deviceIndex(), List.of()));
                             }
                             builder.takts.add(new TaktView(takt.name(), TaktState.WAITING,
                                     takt.plannedStartTime(), takt.estimatedStartTime(), null,
@@ -567,7 +567,7 @@ public class DemoServer {
                     updatedActions.add(new ActionView(
                             action.id(), action.deviceType(), action.description(),
                             actionState, action.dependsOn(), action.containerIndex(),
-                            action.durationSeconds(), actionConditions));
+                            action.durationSeconds(), action.deviceIndex(), actionConditions));
                 }
 
                 // Build conditions for WAITING takts

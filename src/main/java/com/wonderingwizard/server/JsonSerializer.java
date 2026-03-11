@@ -342,6 +342,7 @@ public final class JsonSerializer {
         writeValue(sb, action.dependsOn() != null ? action.dependsOn().stream().toList() : List.of());
         writeField(sb, "containerIndex", action.containerIndex(), false);
         writeField(sb, "durationSeconds", action.durationSeconds(), false);
+        writeField(sb, "deviceIndex", action.deviceIndex(), false);
         sb.append('}');
     }
 
@@ -415,6 +416,7 @@ public final class JsonSerializer {
         writeValue(sb, view.dependsOn() != null ? view.dependsOn().stream().toList() : List.of());
         writeField(sb, "containerIndex", view.containerIndex(), false);
         writeField(sb, "durationSeconds", view.durationSeconds(), false);
+        writeField(sb, "deviceIndex", view.deviceIndex(), false);
         writeFieldKey(sb, "conditions", false);
         writeValue(sb, view.conditions() != null ? view.conditions() : List.of());
         sb.append('}');
