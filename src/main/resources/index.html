@@ -62,7 +62,7 @@
 <side-effects-log></side-effects-log>
 
 <script>
-const API = '';
+const API = window.location.pathname.replace(/\/$/, '');
 
 async function apiCall(path, body) {
   const opts = body ? { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) } : {};
@@ -128,7 +128,7 @@ class ScheduleHeader extends HTMLElement {
           <span id="live-label">Disconnected</span>
         </span>
       </div>
-      <div style="display:flex;align-items:center;gap:12px">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <span id="clock" style="font-family:monospace;font-size:20px;color:var(--qc-color)">00:00:00</span>
         <button class="secondary" onclick="this.closest('schedule-header').tick(1)">+1 sec</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(60)">+1 min</button>
@@ -145,6 +145,7 @@ class ScheduleHeader extends HTMLElement {
         <span style="border-left:1px solid var(--border);height:24px;margin:0 4px"></span>
         <button class="secondary" onclick="this.closest('schedule-header').exportLog()" title="Export event log">&#8615; Export</button>
         <button class="secondary" onclick="this.closest('schedule-header').importLog()" title="Import event log">&#8613; Import</button>
+        <button class="secondary" onclick="window.open(API+'/editor','_blank')" title="Open export editor">&#9998; Editor</button>
         <input id="import-file" type="file" accept=".json" style="display:none">
       </div>`;
     this.setAttribute('data-refresh', '');

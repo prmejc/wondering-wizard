@@ -170,6 +170,7 @@ public class DemoServer {
         httpServer.createContext("/api/event-log/export", this::handleExportEventLog);
         httpServer.createContext("/api/event-log/import", this::handleImportEventLog);
         httpServer.createContext("/api/events", this::handleSseConnection);
+        httpServer.createContext("/editor", this::handleEditor);
         httpServer.start();
         sseManager.startKeepalive();
         logger.info("Demo server started on port " + port);
@@ -717,6 +718,26 @@ public class DemoServer {
         try (InputStream is = getClass().getResourceAsStream("/index.html")) {
             if (is == null) {
                 sendResponse(exchange, 404, "Schedule viewer not found");
+                return;
+            }
+            byte[] html = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, html.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html);
+            }
+        }
+    }
+
+    private void handleEditor(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try (InputStream is = getClass().getResourceAsStream("/editor.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "Editor not found");
                 return;
             }
             byte[] html = is.readAllBytes();

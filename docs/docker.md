@@ -6,6 +6,9 @@ From the project root:
 
 ```bash
 docker build -t wondering-wizard .
+
+docker buildx build --platform linux/amd64 -t ghcr.io/prmejc/twin-discharge:latest --push .
+
 ```
 
 This runs a multi-stage build: compiles with `eclipse-temurin:21-jdk`, runs tests, then packages into a slim `eclipse-temurin:21-jre` runtime image.

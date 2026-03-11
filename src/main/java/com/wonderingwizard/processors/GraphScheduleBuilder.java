@@ -193,10 +193,10 @@ public class GraphScheduleBuilder {
     private List<ActionTemplate> getDischargeLiftSinglesDropSinglesDifferentBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return withComputedRtgWaitDuration(List.of(
                 // ── QC chain (forward from anchor) ──
-                ActionTemplate.of(QC_LIFT, "1", QC, qcLiftDuration),
-                ActionTemplate.of(QC_PLACE, "1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration).withFirstInTakt().withAnchor(),
-                ActionTemplate.of(QC_LIFT, "2", QC, qcLiftDuration),
-                ActionTemplate.of(QC_PLACE, "2", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration).withFirstInTakt(),
+                ActionTemplate.of(QC_LIFT, "1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+                ActionTemplate.of(QC_PLACE, "1", QC, qcLiftDuration).withFirstInTakt().withAnchor(),
+                ActionTemplate.of(QC_LIFT, "2", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+                ActionTemplate.of(QC_PLACE, "2", QC, qcLiftDuration).withFirstInTakt(),
 
 
                 // ── TT chain (backward from sync point) ──
@@ -233,10 +233,10 @@ public class GraphScheduleBuilder {
     private List<ActionTemplate> getDischargeLiftSinglesDropSinglesSameBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return withComputedRtgWaitDuration(List.of(
                 // ── QC chain (forward from anchor) ──
-                ActionTemplate.of(QC_LIFT, "1", QC, qcLiftDuration),
-                ActionTemplate.of(QC_PLACE, "1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration).withFirstInTakt().withAnchor(),
-                ActionTemplate.of(QC_LIFT, "2", QC, qcLiftDuration),
-                ActionTemplate.of(QC_PLACE, "2", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration).withFirstInTakt(),
+                ActionTemplate.of(QC_LIFT, "1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+                ActionTemplate.of(QC_PLACE, "1", QC, qcLiftDuration).withFirstInTakt().withAnchor(),
+                ActionTemplate.of(QC_LIFT, "2", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+                ActionTemplate.of(QC_PLACE, "2", QC, qcLiftDuration).withFirstInTakt(),
 
 
                 // ── TT chain (backward from sync point) ──
@@ -379,9 +379,9 @@ public class GraphScheduleBuilder {
     private static List<ActionTemplate> getDischargeSingleTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return List.of(
                 // ── QC chain (forward from anchor) ──
-                ActionTemplate.of(QC_LIFT, QC, qcLiftDuration)
+                ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration)
                         .withFirstInTakt().withAnchor(),
-                ActionTemplate.of(QC_PLACE, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+                ActionTemplate.of(QC_PLACE, QC, qcLiftDuration),
 
                 // ── TT chain (backward from sync point) ──
                 ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, driveToQcPull),
@@ -409,9 +409,9 @@ public class GraphScheduleBuilder {
     private static List<ActionTemplate> getLoadSingleTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return List.of(
                 // ── QC chain (forward from anchor) ──
-                ActionTemplate.of(QC_LIFT, QC, qcLiftDuration)
+                ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration)
                         .withFirstInTakt().withAnchor(),
-                ActionTemplate.of(QC_PLACE, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+                ActionTemplate.of(QC_PLACE, QC, qcLiftDuration),
 
                 // ── TT chain (backward from sync point) ──
                 ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, driveToRtgPull),

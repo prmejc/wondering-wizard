@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wondering Wizard - Export Editor</title>
+<style>
+  :root {
+    --rtg-color: #3b82f6;
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface2: #334155;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --border: #475569;
+    --active: #3b82f6;
+    --danger: #ef4444;
+    --completed: #22c55e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  h1 { font-size: 20px; margin-bottom: 16px; }
+  .toolbar {
+    display: flex; gap: 8px; margin-bottom: 16px; align-items: center; flex-wrap: wrap;
+  }
+  button {
+    background: var(--active); color: white; border: none; padding: 8px 16px;
+    border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  button:hover { opacity: 0.9; }
+  button.secondary { background: var(--surface2); color: var(--text); }
+  button.danger { background: var(--danger); }
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  th {
+    background: var(--surface2); padding: 8px 6px; text-align: left;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-muted); position: sticky; top: 0; white-space: nowrap;
+  }
+  td { padding: 2px 4px; border-bottom: 1px solid var(--border); }
+  td input, td select {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 6px; border-radius: 3px; font-size: 13px; width: 100%;
+    font-family: inherit;
+  }
+  td input:focus, td select:focus { outline: none; border-color: var(--active); }
+  td input[type="number"] { width: 80px; }
+  td input[type="checkbox"] { width: auto; }
+  .row-actions { white-space: nowrap; }
+  .row-actions button { padding: 3px 8px; font-size: 11px; }
+  .drop-zone {
+    border: 2px dashed var(--border); border-radius: 8px; padding: 40px;
+    text-align: center; color: var(--text-muted); cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  .drop-zone.over { border-color: var(--active); color: var(--text); }
+  .drop-zone input { display: none; }
+  .hidden { display: none; }
+  .non-wi-summary {
+    background: var(--surface); border-radius: 6px; padding: 12px 16px;
+    margin-bottom: 16px; font-size: 13px; color: var(--text-muted);
+  }
+  .non-wi-summary span { color: var(--text); font-weight: 500; }
+</style>
+</head>
+<body>
+
+<h1>Export Editor</h1>
+
+<div id="import-section">
+  <div class="drop-zone" id="drop-zone">
+    <p>Drop an export JSON file here, or click to select</p>
+    <input type="file" id="file-input" accept=".json,application/json">
+  </div>
+  <div style="margin-top: 12px; text-align: center; color: var(--text-muted); font-size: 13px;">
+    &mdash; or &mdash;
+  </div>
+  <div style="margin-top: 12px; text-align: center;">
+    <button class="secondary" id="paste-btn">Paste from clipboard</button>
+  </div>
+</div>
+
+<div id="editor-section" class="hidden">
+  <div class="non-wi-summary" id="non-wi-summary"></div>
+  <div class="toolbar">
+    <button id="add-row-btn">Add Row</button>
+    <button class="secondary" id="export-btn">Export JSON</button>
+    <button class="secondary" id="download-btn">Download JSON</button>
+    <button class="secondary" id="reset-btn">Reset</button>
+  </div>
+  <div class="table-wrap">
+    <table>
+      <thead id="table-head"></thead>
+      <tbody id="table-body"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const WI_FIELDS = [
+  { key: 'workInstructionId', label: 'WI ID', type: 'number' },
+  { key: 'workQueueId', label: 'WQ ID', type: 'number' },
+  { key: 'fetchChe', label: 'Fetch CHE', type: 'text' },
+  { key: 'status', label: 'Status', type: 'select', options: ['PENDING', 'DISPATCHED', 'READY', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] },
+  { key: 'estimatedMoveTime', label: 'Est. Move Time', type: 'datetime' },
+  { key: 'estimatedCycleTimeSeconds', label: 'Cycle Time (s)', type: 'number' },
+  { key: 'estimatedRtgCycleTimeSeconds', label: 'RTG Cycle (s)', type: 'number' },
+  { key: 'putChe', label: 'Put CHE', type: 'text' },
+  { key: 'isTwinFetch', label: 'Twin Fetch', type: 'checkbox' },
+  { key: 'isTwinPut', label: 'Twin Put', type: 'checkbox' },
+  { key: 'isTwinCarry', label: 'Twin Carry', type: 'checkbox' },
+  { key: 'twinCompanionWorkInstruction', label: 'Twin Companion', type: 'number' },
+  { key: 'toPosition', label: 'To Position', type: 'text' },
+];
+
+let nonWiEntries = [];
+let wiRows = [];
+
+function parseExport(data) {
+  nonWiEntries = [];
+  wiRows = [];
+  for (const entry of data) {
+    if (entry.event && entry.event.type === 'WorkInstructionEvent') {
+      const row = {};
+      for (const f of WI_FIELDS) {
+        row[f.key] = entry.event[f.key] ?? (f.type === 'checkbox' ? false : '');
+      }
+      wiRows.push(row);
+    } else {
+      nonWiEntries.push(entry);
+    }
+  }
+}
+
+function buildExport() {
+  const result = [...nonWiEntries];
+  for (const row of wiRows) {
+    const event = { type: 'WorkInstructionEvent' };
+    for (const f of WI_FIELDS) {
+      event[f.key] = row[f.key];
+    }
+    result.push({
+      description: 'WorkInstruction: ' + row.workInstructionId,
+      event
+    });
+  }
+  return result;
+}
+
+function renderHead() {
+  const tr = document.createElement('tr');
+  tr.innerHTML = '<th>#</th>' +
+    WI_FIELDS.map(f => '<th>' + f.label + '</th>').join('') +
+    '<th>Actions</th>';
+  document.getElementById('table-head').replaceChildren(tr);
+}
+
+function renderBody() {
+  const tbody = document.getElementById('table-body');
+  tbody.replaceChildren();
+  wiRows.forEach((row, idx) => {
+    const tr = document.createElement('tr');
+    let html = '<td style="color:var(--text-muted);font-size:11px;">' + (idx + 1) + '</td>';
+    for (const f of WI_FIELDS) {
+      html += '<td>' + inputFor(f, row, idx) + '</td>';
+    }
+    html += '<td class="row-actions">' +
+      '<button class="danger" data-remove="' + idx + '">Remove</button></td>';
+    tr.innerHTML = html;
+    tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll('[data-remove]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      wiRows.splice(parseInt(btn.dataset.remove), 1);
+      renderBody();
+    });
+  });
+
+  tbody.querySelectorAll('[data-field]').forEach(el => {
+    const idx = parseInt(el.dataset.idx);
+    const key = el.dataset.field;
+    const field = WI_FIELDS.find(f => f.key === key);
+    el.addEventListener('change', () => {
+      if (field.type === 'checkbox') {
+        wiRows[idx][key] = el.checked;
+      } else if (field.type === 'number') {
+        wiRows[idx][key] = el.value === '' ? 0 : parseInt(el.value);
+      } else {
+        wiRows[idx][key] = el.value;
+      }
+    });
+  });
+}
+
+function inputFor(field, row, idx) {
+  const attrs = 'data-field="' + field.key + '" data-idx="' + idx + '"';
+  if (field.type === 'select') {
+    const opts = field.options.map(o =>
+      '<option value="' + o + '"' + (row[field.key] === o ? ' selected' : '') + '>' + o + '</option>'
+    ).join('');
+    return '<select ' + attrs + '>' + opts + '</select>';
+  }
+  if (field.type === 'checkbox') {
+    return '<input type="checkbox" ' + attrs + (row[field.key] ? ' checked' : '') + '>';
+  }
+  if (field.type === 'number') {
+    return '<input type="number" ' + attrs + ' value="' + (row[field.key] ?? '') + '">';
+  }
+  if (field.type === 'datetime') {
+    return '<input type="text" ' + attrs + ' value="' + (row[field.key] ?? '') + '" placeholder="2026-03-11T09:00:00Z">';
+  }
+  return '<input type="text" ' + attrs + ' value="' + (row[field.key] ?? '') + '">';
+}
+
+function showEditor() {
+  document.getElementById('import-section').classList.add('hidden');
+  document.getElementById('editor-section').classList.remove('hidden');
+
+  const summary = document.getElementById('non-wi-summary');
+  if (nonWiEntries.length > 0) {
+    const types = {};
+    nonWiEntries.forEach(e => {
+      const t = e.event?.type || 'Unknown';
+      types[t] = (types[t] || 0) + 1;
+    });
+    const parts = Object.entries(types).map(([t, c]) => '<span>' + c + '</span> ' + t);
+    summary.innerHTML = 'Non-WorkInstruction events (preserved on export): ' + parts.join(', ');
+  } else {
+    summary.classList.add('hidden');
+  }
+
+  renderHead();
+  renderBody();
+}
+
+function loadJson(text) {
+  const data = JSON.parse(text);
+  if (!Array.isArray(data)) throw new Error('Expected a JSON array');
+  parseExport(data);
+  showEditor();
+}
+
+// Import handlers
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('over');
+  const file = e.dataTransfer.files[0];
+  if (file) file.text().then(loadJson).catch(err => alert('Invalid JSON: ' + err.message));
+});
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (file) file.text().then(loadJson).catch(err => alert('Invalid JSON: ' + err.message));
+});
+document.getElementById('paste-btn').addEventListener('click', async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    loadJson(text);
+  } catch (err) {
+    alert('Could not read clipboard: ' + err.message);
+  }
+});
+
+// Editor actions
+document.getElementById('add-row-btn').addEventListener('click', () => {
+  const lastRow = wiRows[wiRows.length - 1];
+  const newRow = {};
+  for (const f of WI_FIELDS) {
+    if (f.type === 'checkbox') newRow[f.key] = false;
+    else if (f.type === 'number') newRow[f.key] = 0;
+    else newRow[f.key] = '';
+  }
+  if (lastRow) {
+    newRow.workInstructionId = lastRow.workInstructionId + 1;
+    newRow.workQueueId = lastRow.workQueueId;
+    newRow.fetchChe = lastRow.fetchChe;
+    newRow.status = lastRow.status;
+    newRow.estimatedCycleTimeSeconds = lastRow.estimatedCycleTimeSeconds;
+    newRow.estimatedRtgCycleTimeSeconds = lastRow.estimatedRtgCycleTimeSeconds;
+    newRow.toPosition = lastRow.toPosition;
+  }
+  wiRows.push(newRow);
+  renderBody();
+});
+
+document.getElementById('export-btn').addEventListener('click', () => {
+  const json = JSON.stringify(buildExport(), null, 2);
+  navigator.clipboard.writeText(json).then(
+    () => alert('Copied to clipboard'),
+    () => alert('Failed to copy')
+  );
+});
+
+document.getElementById('download-btn').addEventListener('click', () => {
+  const json = JSON.stringify(buildExport(), null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'export.json';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  document.getElementById('editor-section').classList.add('hidden');
+  document.getElementById('import-section').classList.remove('hidden');
+  nonWiEntries = [];
+  wiRows = [];
+});
+</script>
+</body>
+</html>
