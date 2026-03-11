@@ -7,5 +7,6 @@ public enum WorkInstructionStatus {
     PENDING,
     IN_PROGRESS,
     COMPLETED,
-    CANCELLED
+    CANCELLED,
+    FETCH_COMPLETE
 }

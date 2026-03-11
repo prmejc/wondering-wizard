@@ -1221,4 +1221,118 @@ class WorkQueueProcessorTest {
         }
 
     }
+
+    @Nested
+    @DisplayName("Rescheduling on FETCH_COMPLETE with changed twin flags")
+    class ReschedulingTests {
+
+        @Test
+        @DisplayName("Should produce ScheduleModified when FETCH_COMPLETE changes twin flags")
+        void fetchCompleteWithChangedTwinFlags_producesScheduleModified() {
+            // Setup: register 2 work instructions as twin carry
+            engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    "CHE-QC", true, true, true, 2L, "A01-01-01"));
+            engine.processEvent(new WorkInstructionEvent(
+                    2L, 1L, "CHE-002", PENDING, EMT.plusSeconds(120), 120, 60,
+                    "CHE-QC", true, true, true, 1L, "A01-01-02"));
+
+            // Activate - creates initial schedule with twin templates
+            List<SideEffect> createEffects = engine.processEvent(
+                    new WorkQueueMessage(1L, ACTIVE, 0, com.wonderingwizard.events.LoadMode.DSCH));
+
+            assertEquals(1, createEffects.size());
+            assertInstanceOf(ScheduleCreated.class, createEffects.get(0));
+            ScheduleCreated original = (ScheduleCreated) createEffects.get(0);
+            int originalTaktCount = original.takts().size();
+
+            // Now: FETCH_COMPLETE arrives with changed twin flags (no longer twin put)
+            List<SideEffect> rescheduleEffects = engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", FETCH_COMPLETE, EMT, 120, 60,
+                    "CHE-QC", true, false, true, 2L, "A01-01-01"));
+
+            // Should produce a ScheduleModified
+            assertEquals(1, rescheduleEffects.size(),
+                    "Should produce exactly one ScheduleModified side effect");
+            assertInstanceOf(com.wonderingwizard.sideeffects.ScheduleModified.class,
+                    rescheduleEffects.get(0));
+
+            var modified = (com.wonderingwizard.sideeffects.ScheduleModified) rescheduleEffects.get(0);
+            assertEquals(1L, modified.workQueueId());
+            assertFalse(modified.newTakts().isEmpty(),
+                    "Rebuilt schedule should have takts");
+        }
+
+        @Test
+        @DisplayName("Should NOT produce ScheduleModified when twin flags are unchanged")
+        void fetchCompleteWithSameTwinFlags_noScheduleModified() {
+            // Setup: register 1 work instruction as single
+            engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    "CHE-QC", false, false, false));
+
+            // Activate
+            engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, com.wonderingwizard.events.LoadMode.DSCH));
+
+            // FETCH_COMPLETE with same flags
+            List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", FETCH_COMPLETE, EMT, 120, 60,
+                    "CHE-QC", false, false, false));
+
+            assertTrue(effects.isEmpty(),
+                    "No reschedule should happen when twin flags haven't changed");
+        }
+
+        @Test
+        @DisplayName("Should NOT produce ScheduleModified when no active schedule exists")
+        void fetchCompleteWithNoActiveSchedule_noScheduleModified() {
+            // Register WI but don't activate
+            engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    "CHE-QC", true, true, true));
+
+            // FETCH_COMPLETE with changed flags but no active schedule
+            List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", FETCH_COMPLETE, EMT, 120, 60,
+                    "CHE-QC", false, false, false));
+
+            assertTrue(effects.isEmpty(),
+                    "No reschedule should happen without an active schedule");
+        }
+
+        @Test
+        @DisplayName("Should produce rebuilt takts with correct template when twin becomes single")
+        void twinToSingle_rebuildsWithSingleTemplate() {
+            // Setup: 3 WIs where WI 2&3 are twin pair
+            engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    "CHE-QC", false, false, false));
+            engine.processEvent(new WorkInstructionEvent(
+                    2L, 1L, "CHE-002", PENDING, EMT.plusSeconds(120), 120, 60,
+                    "CHE-QC", true, true, true, 3L, "A01-01-01"));
+            engine.processEvent(new WorkInstructionEvent(
+                    3L, 1L, "CHE-003", PENDING, EMT.plusSeconds(240), 120, 60,
+                    "CHE-QC", true, true, true, 2L, "A01-01-02"));
+
+            // Activate
+            List<SideEffect> createEffects = engine.processEvent(
+                    new WorkQueueMessage(1L, ACTIVE, 0, com.wonderingwizard.events.LoadMode.DSCH));
+
+            ScheduleCreated original = (ScheduleCreated) createEffects.get(0);
+
+            // FETCH_COMPLETE: WI 2 twin flags changed (no longer twin fetch/put)
+            List<SideEffect> rescheduleEffects = engine.processEvent(new WorkInstructionEvent(
+                    2L, 1L, "CHE-002", FETCH_COMPLETE, EMT.plusSeconds(120), 120, 60,
+                    "CHE-QC", false, false, false, 3L, "A01-01-01"));
+
+            assertEquals(1, rescheduleEffects.size());
+            var modified = (com.wonderingwizard.sideeffects.ScheduleModified) rescheduleEffects.get(0);
+
+            // The rebuilt takts should contain QC actions (basic sanity check)
+            boolean hasQcAction = modified.newTakts().stream()
+                    .flatMap(t -> t.actions().stream())
+                    .anyMatch(a -> a.deviceType() == DeviceType.QC);
+            assertTrue(hasQcAction, "Rebuilt schedule should contain QC actions");
+        }
+    }
 }

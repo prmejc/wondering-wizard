@@ -1040,4 +1040,88 @@ public class GraphScheduleBuilder {
                 idx -> new Takt(idx, new ArrayList<>(), startTime, startTime, duration));
     }
 
+    // ── Reschedule: rebuild remaining takts from a given point ─────────
+
+    /**
+     * Rebuilds takts for the remaining work instructions, starting from the given container index
+     * and takt sequence offset. Used when a FETCH_COMPLETE event reveals that the actual container
+     * data differs from what was originally planned (e.g., twin → singles).
+     *
+     * <p>The returned takts have sequences starting at {@code startTaktSequence}. The caller
+     * (WorkQueueProcessor) is responsible for cancelling the old WAITING takts and stitching
+     * cross-container dependencies from the last completed/active takt.
+     *
+     * @param remainingInstructions work instructions that have not yet been executed
+     * @param startTime             estimated start time for the first rebuilt takt
+     * @param startContainerIndex   the container index to start numbering from
+     * @param startTaktSequence     the takt sequence number to start from
+     * @param qcMudaSeconds         QC muda time
+     * @param loadMode              LOAD or DSCH mode
+     * @return list of rebuilt takts with sequences starting at startTaktSequence
+     */
+    public List<Takt> rebuildRemainingTakts(
+            List<WorkInstruction> remainingInstructions,
+            Instant startTime,
+            int startContainerIndex,
+            int startTaktSequence,
+            int qcMudaSeconds,
+            LoadMode loadMode
+    ) {
+        if (remainingInstructions.isEmpty()) {
+            return List.of();
+        }
+
+        var takts = new HashMap<Integer, Takt>();
+        var allPlacedActions = new ArrayList<PlacedAction>();
+
+        var sorted = remainingInstructions.stream()
+                .sorted(Comparator.comparing(WorkInstruction::estimatedMoveTime))
+                .toList();
+
+        var processedTwinIds = new HashSet<Long>();
+        int containerIdx = startContainerIndex;
+
+        var wiById = new HashMap<Long, WorkInstruction>();
+        for (var wi : sorted) {
+            wiById.put(wi.workInstructionId(), wi);
+        }
+
+        for (var wi : sorted) {
+            if (isTwinDischarge(wi, loadMode) && processedTwinIds.contains(wi.workInstructionId())) {
+                continue;
+            }
+
+            List<WorkInstruction> actionWis;
+            if (isTwinDischarge(wi, loadMode) && wi.twinCompanionWorkInstruction() != 0) {
+                var companion = wiById.get(wi.twinCompanionWorkInstruction());
+                actionWis = companion != null ? List.of(wi, companion) : List.of(wi);
+                processedTwinIds.add(wi.twinCompanionWorkInstruction());
+            } else {
+                actionWis = List.of(wi);
+            }
+
+            var blueprint = buildContainerBlueprint(wi, wiById, qcMudaSeconds, loadMode);
+            var placed = placeContainerActions(blueprint, containerIdx, actionWis, qcMudaSeconds, takts);
+            allPlacedActions.addAll(placed);
+
+            containerIdx++;
+        }
+
+        wireDependencies(allPlacedActions);
+
+        // Resequence: shift all takt indices so that the minimum maps to startTaktSequence
+        int minIdx = takts.keySet().stream().mapToInt(Integer::intValue).min().orElse(0);
+        int offset = startTaktSequence - minIdx;
+
+        return takts.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> {
+                    int newSeq = entry.getKey() + offset;
+                    Takt old = entry.getValue();
+                    Instant taktStart = startTime.plusSeconds(
+                            (long) (newSeq - startTaktSequence) * old.durationSeconds());
+                    return new Takt(newSeq, old.actions(), taktStart, taktStart, old.durationSeconds());
+                })
+                .toList();
+    }
 }
