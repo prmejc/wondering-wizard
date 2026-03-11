@@ -17,16 +17,18 @@ RUN mvn dependency:go-offline -B
 # Copy source files
 COPY src ./src
 
-# Build the project and run tests
-RUN mvn clean package -B
+# Build the project, run tests, and copy dependencies
+RUN mvn clean package -B && \
+    mvn dependency:copy-dependencies -DoutputDirectory=target/libs -B
 
 # Stage 2: Runtime image
 FROM eclipse-temurin:21-jre
 
 WORKDIR /app
 
-# Copy only the built JAR from the build stage
-COPY --from=build /app/target/*.jar app.jar
+# Copy the built JAR and its dependencies from the build stage
+COPY --from=build /app/target/event-processing-engine-1.0-SNAPSHOT.jar app.jar
+COPY --from=build /app/target/libs/ libs/
 
-# Run the application
-ENTRYPOINT ["java", "--enable-preview", "-jar", "app.jar"]
+# Run the application with JPMS module reads for unnamed modules (Kafka, Avro, etc.)
+ENTRYPOINT ["java", "--add-reads", "com.wonderingwizard=ALL-UNNAMED", "-cp", "app.jar:libs/*", "com.wonderingwizard.Main"]
