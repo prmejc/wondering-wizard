@@ -64,34 +64,39 @@ public class GraphScheduleBuilder {
             boolean isAnchor,
             SyncRef syncWith,
             boolean onlyOnePerTakt,
-            int deviceIndex
+            int deviceIndex,
+            boolean independentAcrossContainers
     ) {
         static ActionTemplate of(ActionType actionType, DeviceType type, int duration) {
-            return new ActionTemplate(actionType, actionType.displayName(), type, duration, false, false, null, false, 0);
+            return new ActionTemplate(actionType, actionType.displayName(), type, duration, false, false, null, false, 0, false);
         }
 
         static ActionTemplate of(ActionType actionType, String suffix, DeviceType type, int duration) {
-            return new ActionTemplate(actionType, actionType.displayName(suffix), type, duration, false, false, null, false, 0);
+            return new ActionTemplate(actionType, actionType.displayName(suffix), type, duration, false, false, null, false, 0, false);
         }
 
         ActionTemplate withFirstInTakt() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, true, isAnchor, syncWith, onlyOnePerTakt, deviceIndex);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, true, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers);
         }
 
         ActionTemplate withAnchor() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, true, syncWith, onlyOnePerTakt, deviceIndex);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, true, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers);
         }
 
         ActionTemplate withSyncWith(DeviceType type, ActionType refActionType) {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, new SyncRef(type, refActionType), onlyOnePerTakt, deviceIndex);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, new SyncRef(type, refActionType), onlyOnePerTakt, deviceIndex, independentAcrossContainers);
         }
 
         ActionTemplate withOnlyOnePerTakt() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, true, deviceIndex);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, true, deviceIndex, independentAcrossContainers);
         }
 
         ActionTemplate withDeviceIndex(int deviceIndex) {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers);
+        }
+
+        ActionTemplate withIndependentAcrossContainers() {
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, true);
         }
     }
 
@@ -168,7 +173,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(QC_PLACE, "2", QC, qcLiftDuration).withFirstInTakt(),
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, "1", TT, qcLiftDuration)
@@ -200,7 +205,7 @@ public class GraphScheduleBuilder {
 
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, "1", TT, qcLiftDuration)
@@ -240,7 +245,7 @@ public class GraphScheduleBuilder {
 
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, "1", TT, qcLiftDuration)
@@ -274,7 +279,7 @@ public class GraphScheduleBuilder {
                         .withFirstInTakt().withAnchor(),
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, qcLiftDuration)
@@ -310,7 +315,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(QC_PLACE, QC, qcLiftDuration ).withFirstInTakt().withAnchor(),
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, qcLiftDuration)
@@ -355,7 +360,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(QC_PLACE, QC,qcLiftDuration ).withFirstInTakt().withAnchor(),
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, qcLiftDuration)
@@ -383,7 +388,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(QC_PLACE, QC, qcLiftDuration),
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, driveToQcPull),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, driveToQcPull).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, 30),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, qcLiftDuration)
@@ -413,7 +418,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(QC_PLACE, QC, qcLiftDuration),
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, driveToRtgPull),
+                ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, driveToRtgPull).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
                 ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg)
                         .withFirstInTakt().withOnlyOnePerTakt(),
@@ -480,7 +485,7 @@ public class GraphScheduleBuilder {
                     if (t.actionType() == RTG_WAIT_FOR_TRUCK && waitIndex[0] < waitDurations.size()) {
                         int duration = waitDurations.get(waitIndex[0]++);
                         return new ActionTemplate(t.actionType(), t.name(), t.deviceType(), duration,
-                                t.firstInTakt(), t.isAnchor(), t.syncWith(), t.onlyOnePerTakt(), t.deviceIndex());
+                                t.firstInTakt(), t.isAnchor(), t.syncWith(), t.onlyOnePerTakt(), t.deviceIndex(), t.independentAcrossContainers());
                     }
                     return t;
                 })
@@ -747,8 +752,7 @@ public class GraphScheduleBuilder {
                     placed.action().dependsOn().add(prev.id());
                 } else {
                     // First action in this container's device chain — link to previous container
-                    // TT actions are independent across containers (no cross-container chaining)
-                    if (placed.action().deviceType() != DeviceType.TT) {
+                    if (!placed.template().independentAcrossContainers()) {
                         Action crossContainerPrev = lastActionByDevice.get(placed.action().deviceType());
                         if (crossContainerPrev != null) {
                             placed.action().dependsOn().add(crossContainerPrev.id());
