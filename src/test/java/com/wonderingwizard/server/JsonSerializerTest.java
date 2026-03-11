@@ -1,6 +1,7 @@
 package com.wonderingwizard.server;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.events.ActionCompletedEvent;
@@ -229,7 +230,7 @@ class JsonSerializerTest {
         @DisplayName("Should serialize Action")
         void serializesAction() {
             UUID id = UUID.fromString("550e8400-e29b-41d4-a716-446655440000");
-            Action action = new Action(id, DeviceType.RTG, "lift container", Set.of());
+            Action action = new Action(id, DeviceType.RTG, ActionType.RTG_DRIVE, "lift container", Set.of(), 0, 0, List.of());
             String json = JsonSerializer.serialize(action);
             assertTrue(json.contains("\"id\":\"550e8400-e29b-41d4-a716-446655440000\""));
             assertTrue(json.contains("\"deviceType\":\"RTG\""));
@@ -240,7 +241,7 @@ class JsonSerializerTest {
         @Test
         @DisplayName("Should serialize Takt")
         void serializesTakt() {
-            Action action = Action.create(DeviceType.QC, "test action");
+            Action action = Action.create(DeviceType.QC, ActionType.RTG_DRIVE);
             Instant time = Instant.parse("2024-01-01T10:00:00Z");
             Takt takt = new Takt(0, List.of(action), time, time, 125);
             String json = JsonSerializer.serialize(takt);
@@ -254,15 +255,15 @@ class JsonSerializerTest {
         @Test
         @DisplayName("Should serialize ScheduleCreated with full takts")
         void serializesScheduleCreatedWithTakts() {
-            Action a1 = Action.create(DeviceType.RTG, "action1");
-            Action a2 = new Action(UUID.randomUUID(), DeviceType.QC, "action2", Set.of(a1.id()));
+            Action a1 = Action.create(DeviceType.RTG, ActionType.RTG_DRIVE);
+            Action a2 = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.RTG_DRIVE, "action2", Set.of(a1.id()), 0, 0, List.of());
             Instant time = Instant.parse("2024-01-01T10:00:00Z");
             Takt takt = new Takt(0, List.of(a1, a2), time, time, 120);
             ScheduleCreated se = new ScheduleCreated(1L, List.of(takt),
                     Instant.parse("2024-01-01T10:00:00Z"));
             String json = JsonSerializer.serialize(se);
             assertTrue(json.contains("\"name\":\"TAKT100\""));
-            assertTrue(json.contains("\"action1\""));
+            assertTrue(json.contains("\"drive\""));
             assertTrue(json.contains("\"action2\""));
             assertTrue(json.contains(a1.id().toString()));
         }

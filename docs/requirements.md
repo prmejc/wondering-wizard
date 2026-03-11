@@ -907,3 +907,55 @@ mvn test -Dtest="EventLogProcessorTest,EventDeserializerTest,EventLogExportImpor
 - `src/test/java/com/wonderingwizard/processors/EventLogProcessorTest.java`
 - `src/test/java/com/wonderingwizard/server/EventDeserializerTest.java`
 - `src/test/java/com/wonderingwizard/server/EventLogExportImportTest.java`
+
+### F-13: Kafka Side Effect Publisher (EquipmentInstruction)
+
+**Status:** Implemented
+
+**Description:**
+Implement a Kafka side effect publisher that maps engine side effects to Avro records and publishes them to Kafka topics. This is the outbound counterpart to the Kafka event consumer infrastructure (F-11). The first use case is publishing `EquipmentInstruction` messages when actions are activated.
+
+1. `ActionActivated` side effect is enriched with `deviceType` and `workInstructions` from the originating `Action` record
+2. A `SideEffectMapper<S>` functional interface maps a `SideEffect` to an Avro `GenericRecord` (symmetric to `EventMapper`)
+3. A `KafkaSideEffectPublisher` manages registered mappers and publishes side effects to configured topics (symmetric to `KafkaEventConsumer`)
+4. An `ActionActivatedToEquipmentInstructionMapper` maps `ActionActivated` → EquipmentInstruction Avro record
+5. The publisher is called after `engine.processEvent()` returns, keeping the engine pure (no I/O inside processors)
+
+**Architecture:**
+
+```
+Engine.processEvent(event) → List<SideEffect>
+        │
+        ▼
+KafkaSideEffectPublisher.publish(sideEffects)
+        │
+        ├── ActionActivated? → ActionActivatedToEquipmentInstructionMapper → Kafka (EquipmentInstruction topic)
+        ├── OtherSideEffect? → (future mapper) → Kafka (other topic)
+        └── No mapper match → skip
+```
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Activate an action with work instructions | ActionActivated contains deviceType and workInstructions |
+| 2 | Map ActionActivated with work instructions | EquipmentInstruction Avro record with all fields populated |
+| 3 | Map ActionActivated without work instructions | Returns null (skipped) |
+| 4 | Register mapper and publish side effects | Only matching side effect types are dispatched to their mapper |
+
+**Test Execution:**
+```bash
+mvn test -Dtest="ActionActivatedToEquipmentInstructionMapperTest,KafkaSideEffectPublisherTest"
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/sideeffects/ActionActivated.java` (modified — added deviceType and workInstructions)
+- `src/main/java/com/wonderingwizard/processors/ScheduleRunnerProcessor.java` (modified — populates enriched ActionActivated)
+- `src/main/java/com/wonderingwizard/kafka/SideEffectMapper.java` (new — functional interface)
+- `src/main/java/com/wonderingwizard/kafka/ProducerConfiguration.java` (new — per-topic producer config)
+- `src/main/java/com/wonderingwizard/kafka/KafkaSideEffectPublisher.java` (new — generic publisher)
+- `src/main/java/com/wonderingwizard/kafka/ActionActivatedToEquipmentInstructionMapper.java` (new — Avro mapper)
+- `src/main/resources/schemas/EquipmentInstruction.avro` (copied from schemas/)
+- `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — serializes new fields)
+- `src/test/java/com/wonderingwizard/kafka/ActionActivatedToEquipmentInstructionMapperTest.java`
+- `src/test/java/com/wonderingwizard/kafka/KafkaSideEffectPublisherTest.java`

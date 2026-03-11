@@ -408,7 +408,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         state.activeActionIds.add(actionId);
         return List.of(new ActionActivated(
                 actionId, workQueueId, taktName,
-                action.description(), this.currentTime
+                action.actionType(), action.description(), this.currentTime,
+                action.deviceType(), action.workInstructions()
         ));
     }
 
@@ -532,8 +533,11 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                     actionId,
                     workQueueId,
                     actionInfo.taktName(),
+                    actionInfo.action().actionType(),
                     actionInfo.action().description(),
-                    this.currentTime
+                    this.currentTime,
+                    actionInfo.action().deviceType(),
+                    actionInfo.action().workInstructions()
             ));
         }
 

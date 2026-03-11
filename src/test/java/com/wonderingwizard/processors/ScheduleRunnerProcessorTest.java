@@ -1,6 +1,7 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.SideEffect;
@@ -75,7 +76,7 @@ class ScheduleRunnerProcessorTest {
             ActionActivated activated = (ActionActivated) sideEffects.get(1);
             assertEquals(1L, activated.workQueueId());
             assertEquals("TAKT100", activated.taktName());
-            assertEquals("QC lift container from truck", activated.actionDescription());
+            assertEquals("QC Lift", activated.actionDescription());
         }
 
         @Test
@@ -157,13 +158,13 @@ class ScheduleRunnerProcessorTest {
             assertEquals(firstActionId, completed.actionId());
             assertEquals(1L, completed.workQueueId());
             assertEquals("TAKT100", completed.taktName());
-            assertEquals("QC lift container from truck", completed.actionDescription());
+            assertEquals("QC Lift", completed.actionDescription());
 
             ActionActivated activated = (ActionActivated) sideEffects.get(1);
             assertEquals(secondActionId, activated.actionId());
             assertEquals(1L, activated.workQueueId());
             assertEquals("TAKT100", activated.taktName());
-            assertEquals("QC place container on vessel", activated.actionDescription());
+            assertEquals("QC Place", activated.actionDescription());
         }
 
         @Test
@@ -263,8 +264,8 @@ class ScheduleRunnerProcessorTest {
         @DisplayName("Empty takt should not complete until previous takt is completed")
         void emptyTakt_completesAfterPreviousTakt() {
             // Create 3 takts: first with actions, second empty, third with action depending on first
-            Action a1 = Action.create(DeviceType.QC, "action 1");
-            Action a2 = Action.create(DeviceType.QC, "action 2");
+            Action a1 = Action.create(DeviceType.QC, ActionType.QC_LIFT);
+            Action a2 = Action.create(DeviceType.QC, ActionType.QC_PLACE);
             Instant t0 = EMT;
             Instant t1 = EMT.plusSeconds(120);
             Instant t2 = EMT.plusSeconds(240);
@@ -425,9 +426,9 @@ class ScheduleRunnerProcessorTest {
         @Test
         @DisplayName("Should only activate action when ALL dependencies are completed")
         void activatesOnlyWhenAllDependenciesComplete() {
-            Action action1 = Action.create("Action 1");
-            Action action2 = Action.create("Action 2");
-            Action action3 = new Action(UUID.randomUUID(), DeviceType.QC, "Action 3", Set.of(action1.id(), action2.id()));
+            Action action1 = Action.create(DeviceType.QC, ActionType.QC_LIFT);
+            Action action2 = Action.create(DeviceType.QC, ActionType.QC_PLACE);
+            Action action3 = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.RTG_DRIVE, "Action 3", Set.of(action1.id(), action2.id()));
 
             Takt takt = new Takt(0, List.of(action1, action2, action3), EMT, EMT, 120);
             List<Takt> takts = List.of(takt);
@@ -458,9 +459,9 @@ class ScheduleRunnerProcessorTest {
         @Test
         @DisplayName("Should activate multiple actions simultaneously when their dependencies are satisfied")
         void activatesMultipleActionsSimultaneously() {
-            Action action1 = Action.create("Action 1");
-            Action action2 = new Action(UUID.randomUUID(), DeviceType.QC, "Action 2", Set.of(action1.id()));
-            Action action3 = new Action(UUID.randomUUID(), DeviceType.QC, "Action 3", Set.of(action1.id()));
+            Action action1 = Action.create(DeviceType.QC, ActionType.QC_LIFT);
+            Action action2 = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.QC_PLACE, "Action 2", Set.of(action1.id()));
+            Action action3 = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.RTG_DRIVE, "Action 3", Set.of(action1.id()));
 
             Takt takt = new Takt(0, List.of(action1, action2, action3), EMT, EMT, 120);
             List<Takt> takts = List.of(takt);
@@ -489,8 +490,8 @@ class ScheduleRunnerProcessorTest {
     private List<Takt> createLinkedTakts(int count, Instant startTime) {
         Action[][] allActions = new Action[count][2];
         for (int i = 0; i < count; i++) {
-            allActions[i][0] = Action.create("QC lift container from truck");
-            allActions[i][1] = Action.create("QC place container on vessel");
+            allActions[i][0] = Action.create(DeviceType.QC, ActionType.QC_LIFT);
+            allActions[i][1] = Action.create(DeviceType.QC, ActionType.QC_PLACE);
         }
 
         List<Takt> takts = new java.util.ArrayList<>();

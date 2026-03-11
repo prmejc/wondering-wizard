@@ -13,7 +13,8 @@ package com.wonderingwizard.domain.takt;
  * the last RTG action "rtg handover to TT").
  *
  * @param deviceType the type of device performing this action
- * @param description the action description
+ * @param actionType the type-safe action identifier
+ * @param description the display name (derived from actionType, may include suffix for twins)
  * @param isFirstInTaktForDevice true if this action must be the first for this device in a takt
  *                                (all previous actions go in earlier takts)
  * @param crossDeviceDependency optional device type whose most recent action this action depends on
@@ -21,6 +22,7 @@ package com.wonderingwizard.domain.takt;
  */
 public record DeviceActionTemplate(
         DeviceType deviceType,
+        ActionType actionType,
         String description,
         boolean isFirstInTaktForDevice,
         DeviceType crossDeviceDependency,
@@ -33,10 +35,10 @@ public record DeviceActionTemplate(
      */
     public static DeviceActionTemplate of(
             DeviceType deviceType,
-            String description,
+            ActionType actionType,
             boolean isFirstInTaktForDevice
     ) {
-        return new DeviceActionTemplate(deviceType, description, isFirstInTaktForDevice, null, DEFAULT_DURATION_SECONDS);
+        return new DeviceActionTemplate(deviceType, actionType, actionType.displayName(), isFirstInTaktForDevice, null, DEFAULT_DURATION_SECONDS);
     }
 
     /**
@@ -44,11 +46,11 @@ public record DeviceActionTemplate(
      */
     public static DeviceActionTemplate of(
             DeviceType deviceType,
-            String description,
+            ActionType actionType,
             boolean isFirstInTaktForDevice,
             DeviceType crossDeviceDependency
     ) {
-        return new DeviceActionTemplate(deviceType, description, isFirstInTaktForDevice, crossDeviceDependency, DEFAULT_DURATION_SECONDS);
+        return new DeviceActionTemplate(deviceType, actionType, actionType.displayName(), isFirstInTaktForDevice, crossDeviceDependency, DEFAULT_DURATION_SECONDS);
     }
 
     /**
@@ -56,10 +58,10 @@ public record DeviceActionTemplate(
      */
     public static DeviceActionTemplate of(
             DeviceType deviceType,
-            String description,
+            ActionType actionType,
             boolean isFirstInTaktForDevice,
             int durationSeconds
     ) {
-        return new DeviceActionTemplate(deviceType, description, isFirstInTaktForDevice, null, durationSeconds);
+        return new DeviceActionTemplate(deviceType, actionType, actionType.displayName(), isFirstInTaktForDevice, null, durationSeconds);
     }
 }

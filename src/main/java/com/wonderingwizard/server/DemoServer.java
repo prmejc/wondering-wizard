@@ -17,7 +17,9 @@ import com.wonderingwizard.engine.EventProcessingEngine;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.EventPropagatingEngine;
 import com.wonderingwizard.engine.SideEffect;
+import com.wonderingwizard.kafka.ActionActivatedToEquipmentInstructionMapper;
 import com.wonderingwizard.kafka.KafkaConsumerManager;
+import com.wonderingwizard.kafka.KafkaSideEffectPublisher;
 import com.wonderingwizard.kafka.WorkInstructionEventMapper;
 import com.wonderingwizard.kafka.WorkQueueEventMapper;
 import com.wonderingwizard.events.ActionCompletedEvent;
@@ -81,6 +83,7 @@ public class DemoServer {
     private Instant currentTime = initialTime;
     private HttpServer httpServer;
     private KafkaConsumerManager kafkaConsumerManager;
+    private KafkaSideEffectPublisher sideEffectPublisher;
     private final SseConnectionManager sseManager = new SseConnectionManager();
 
     /**
@@ -174,8 +177,9 @@ public class DemoServer {
 
         if (settings.kafkaEnabled()) {
             startKafkaConsumers();
+            startSideEffectPublisher();
         } else {
-            logger.info("Kafka consumers disabled (kafka.enabled=false)");
+            logger.info("Kafka disabled (kafka.enabled=false)");
         }
     }
 
@@ -184,6 +188,9 @@ public class DemoServer {
      */
     public void stop() {
         sseManager.stop();
+        if (sideEffectPublisher != null) {
+            sideEffectPublisher.stop();
+        }
         if (kafkaConsumerManager != null) {
             kafkaConsumerManager.stopAll();
         }
@@ -234,6 +241,16 @@ public class DemoServer {
         kafkaConsumerManager.startAll();
     }
 
+    private void startSideEffectPublisher() {
+        sideEffectPublisher = new KafkaSideEffectPublisher(settings.kafkaConfiguration());
+        sideEffectPublisher.registerMapper(
+                ActionActivated.class,
+                settings.equipmentInstructionRtgTopic(),
+                new ActionActivatedToEquipmentInstructionMapper(settings.terminalCode())
+        );
+        sideEffectPublisher.start();
+    }
+
     /**
      * Sends a SystemTimeSet event, updating the system clock.
      *
@@ -263,6 +280,10 @@ public class DemoServer {
 
         int stepNumber = steps.size() + 1;
         steps.add(new Step(stepNumber, description, event, sideEffects, historyDelta));
+
+        if (sideEffectPublisher != null) {
+            sideEffectPublisher.publish(sideEffects);
+        }
 
         broadcastState();
 

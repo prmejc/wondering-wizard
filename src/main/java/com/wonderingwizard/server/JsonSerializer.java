@@ -277,6 +277,13 @@ public final class JsonSerializer {
                 writeField(sb, "taktName", e.taktName(), false);
                 writeField(sb, "actionDescription", e.actionDescription(), false);
                 writeField(sb, "activatedAt", e.activatedAt(), false);
+                if (e.deviceType() != null) {
+                    writeField(sb, "deviceType", e.deviceType().name(), false);
+                }
+                if (e.workInstructions() != null && !e.workInstructions().isEmpty()) {
+                    writeFieldKey(sb, "workInstructions", false);
+                    writeValue(sb, e.workInstructions());
+                }
                 sb.append('}');
             }
             case ActionCompleted e -> {

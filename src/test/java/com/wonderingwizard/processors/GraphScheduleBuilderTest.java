@@ -1,6 +1,7 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.events.LoadMode;
@@ -15,6 +16,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.wonderingwizard.domain.takt.DeviceActionTemplate.DEFAULT_DURATION_SECONDS;
+import static com.wonderingwizard.domain.takt.ActionType.*;
 import static com.wonderingwizard.domain.takt.DeviceType.*;
 import static com.wonderingwizard.events.WorkInstructionStatus.PENDING;
 import static org.junit.jupiter.api.Assertions.*;
@@ -31,27 +33,27 @@ class GraphScheduleBuilderTest {
      * QC anchor → TT backward pre-QC + sync + forward post-sync → RTG sync to TT handover.
      */
     static final List<ActionTemplate> DISCHARGE_TEMPLATE = List.of(
-            ActionTemplate.of("QC Lift", QC, 20).withFirstInTakt().withAnchor(),
-            ActionTemplate.of("QC Place", QC, 100),
+            ActionTemplate.of(QC_LIFT, QC, 20).withFirstInTakt().withAnchor(),
+            ActionTemplate.of(QC_PLACE, QC, 100),
 
-            ActionTemplate.of("drive to QC", TT, 170),
-            ActionTemplate.of("QC standby", TT, 30),
-            ActionTemplate.of("under QC", TT, 30),
+            ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 170),
+            ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, 30),
+            ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
 
-            ActionTemplate.of("QC handover", TT, 20)
-                    .withFirstInTakt().withSyncWith(QC, "QC Place"),
-            ActionTemplate.of("drive to yard", TT, 30),
-            ActionTemplate.of("yard standby", TT, 240),
+            ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, 20)
+                    .withFirstInTakt().withSyncWith(QC, QC_PLACE),
+            ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, 30),
+            ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
 
-            ActionTemplate.of("under RTG", TT, 30)
+            ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, 30)
                     .withFirstInTakt().withOnlyOnePerTakt(),
-            ActionTemplate.of("RTG handover", TT, 20).withOnlyOnePerTakt(),
-            ActionTemplate.of("drive to buffer", TT, 30),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, TT, 20).withOnlyOnePerTakt(),
+            ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, 30),
 
-            ActionTemplate.of("RTG reposition", RTG, 1),
-            ActionTemplate.of("RTG lift", RTG, 40)
-                    .withFirstInTakt().withSyncWith(TT, "RTG handover"),
-            ActionTemplate.of("RTG place", RTG, 50)
+            ActionTemplate.of(RTG_DRIVE, RTG, 1),
+            ActionTemplate.of(RTG_LIFT_FROM_TT, RTG, 40)
+                    .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
+            ActionTemplate.of(RTG_PLACE_ON_YARD, RTG, 50)
     );
 
     /**
@@ -59,27 +61,27 @@ class GraphScheduleBuilderTest {
      * QC anchor → TT backward pre-RTG + RTG-handover segment + forward to QC sync → RTG sync to TT.
      */
     static final List<ActionTemplate> LOAD_TEMPLATE = List.of(
-            ActionTemplate.of("QC Lift", QC, 20).withFirstInTakt().withAnchor(),
-            ActionTemplate.of("QC Place", QC, 100),
+            ActionTemplate.of(QC_LIFT, QC, 20).withFirstInTakt().withAnchor(),
+            ActionTemplate.of(QC_PLACE, QC, 100),
 
-            ActionTemplate.of("drive to yard", TT, 30),
-            ActionTemplate.of("yard standby", TT, 240),
+            ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, 30),
+            ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
 
-            ActionTemplate.of("under RTG", TT, 30)
+            ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, 30)
                     .withFirstInTakt().withOnlyOnePerTakt(),
-            ActionTemplate.of("RTG handover", TT, 20).withOnlyOnePerTakt(),
-            ActionTemplate.of("drive to QC", TT, 170),
-            ActionTemplate.of("QC standby", TT, 30),
-            ActionTemplate.of("under QC", TT, 30),
+            ActionTemplate.of(TT_HANDOVER_FROM_RTG, TT, 20).withOnlyOnePerTakt(),
+            ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 170),
+            ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, 30),
+            ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
 
-            ActionTemplate.of("QC handover", TT, 20)
-                    .withFirstInTakt().withSyncWith(QC, "QC Lift"),
-            ActionTemplate.of("drive to buffer", TT, 30),
+            ActionTemplate.of(TT_HANDOVER_TO_QC, TT, 20)
+                    .withFirstInTakt().withSyncWith(QC, QC_LIFT),
+            ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, 30),
 
-            ActionTemplate.of("RTG reposition", RTG, 1),
-            ActionTemplate.of("RTG fetch", RTG, 40),
-            ActionTemplate.of("RTG deliver", RTG, 50)
-                    .withFirstInTakt().withSyncWith(TT, "RTG handover")
+            ActionTemplate.of(RTG_DRIVE, RTG, 1),
+            ActionTemplate.of(RTG_FETCH, RTG, 40),
+            ActionTemplate.of(RTG_HANDOVER_TO_TT, RTG, 50)
+                    .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_FROM_RTG)
     );
 
     /**
@@ -87,11 +89,11 @@ class GraphScheduleBuilderTest {
      * QC anchor + TT sync only — no RTG, no backward/forward complexity.
      */
     static final List<ActionTemplate> MINIMAL_TEMPLATE = List.of(
-            ActionTemplate.of("QC Lift", QC, 20).withFirstInTakt().withAnchor(),
-            ActionTemplate.of("QC Place", QC, 100),
-            ActionTemplate.of("TT pickup", TT, 30)
-                    .withFirstInTakt().withSyncWith(QC, "QC Place"),
-            ActionTemplate.of("TT drive", TT, 60)
+            ActionTemplate.of(QC_LIFT, QC, 20).withFirstInTakt().withAnchor(),
+            ActionTemplate.of(QC_PLACE, QC, 100),
+            ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, 30)
+                    .withFirstInTakt().withSyncWith(QC, QC_PLACE),
+            ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, 60)
     );
 
     // ── Helpers ──────────────────────────────────────────────────────────
@@ -175,7 +177,7 @@ class GraphScheduleBuilderTest {
                     .orElseThrow();
 
             assertEquals(QC, anchorSeg.deviceType());
-            assertTrue(anchorSeg.templates().stream().anyMatch(t -> t.name().equals("QC Lift")));
+            assertTrue(anchorSeg.templates().stream().anyMatch(t -> t.name().equals(QC_LIFT.displayName())));
         }
 
         @Test
@@ -218,23 +220,23 @@ class GraphScheduleBuilderTest {
                     .filter(a -> a.deviceType() == QC)
                     .map(Action::description)
                     .toList();
-            assertEquals(List.of("QC Lift", "QC Place"), qcDescs);
+            assertEquals(List.of(QC_LIFT.displayName(), QC_PLACE.displayName()), qcDescs);
         }
 
         @Test
         @DisplayName("TT sync segment is in the same takt as QC Place")
         void ttSyncedToQcPlace() {
             var takts = schedule(DISCHARGE_TEMPLATE, 1);
-            assertEquals(taktSequenceOf(takts, "QC Place"), taktSequenceOf(takts, "QC handover"),
-                    "TT 'QC handover' should be in the same takt as QC 'QC Place'");
+            assertEquals(taktSequenceOf(takts, QC_PLACE.displayName()), taktSequenceOf(takts, TT_HANDOVER_FROM_QC.displayName()),
+                    "TT 'handover from QC' should be in the same takt as QC 'QC Place'");
         }
 
         @Test
         @DisplayName("RTG sync segment is in the same takt as TT RTG handover")
         void rtgSyncedToTtHandover() {
             var takts = schedule(DISCHARGE_TEMPLATE, 1);
-            assertEquals(taktSequenceOf(takts, "RTG handover"), taktSequenceOf(takts, "RTG lift"),
-                    "RTG 'RTG lift' should be in the same takt as TT 'RTG handover'");
+            assertEquals(taktSequenceOf(takts, TT_HANDOVER_TO_RTG.displayName()), taktSequenceOf(takts, RTG_LIFT_FROM_TT.displayName()),
+                    "RTG 'lift from tt' should be in the same takt as TT 'handover to RTG'");
         }
 
         @Test
@@ -242,14 +244,14 @@ class GraphScheduleBuilderTest {
         void forwardSegmentStaysTogether() {
             var takts = schedule(DISCHARGE_TEMPLATE, 1);
             var takt = takts.stream()
-                    .filter(t -> t.actions().stream().anyMatch(a -> a.description().equals("under RTG")))
+                    .filter(t -> t.actions().stream().anyMatch(a -> a.description().equals(TT_DRIVE_TO_RTG_UNDER.displayName())))
                     .findFirst()
                     .orElseThrow();
             var ttDescs = takt.actions().stream()
                     .filter(a -> a.deviceType() == TT)
                     .map(Action::description)
                     .toList();
-            assertTrue(ttDescs.containsAll(List.of("under RTG", "RTG handover", "drive to buffer")),
+            assertTrue(ttDescs.containsAll(List.of(TT_DRIVE_TO_RTG_UNDER.displayName(), TT_HANDOVER_TO_RTG.displayName(), TT_DRIVE_TO_BUFFER.displayName())),
                     "Forward TT segment should be kept together. Got: " + ttDescs);
         }
 
@@ -296,14 +298,14 @@ class GraphScheduleBuilderTest {
         @DisplayName("TT QC handover synced to QC Lift takt")
         void ttSyncedToQcLift() {
             var takts = schedule(LOAD_TEMPLATE, 1);
-            assertEquals(taktSequenceOf(takts, "QC Lift"), taktSequenceOf(takts, "QC handover"));
+            assertEquals(taktSequenceOf(takts, QC_LIFT.displayName()), taktSequenceOf(takts, TT_HANDOVER_TO_QC.displayName()));
         }
 
         @Test
         @DisplayName("RTG deliver synced to TT RTG handover takt")
         void rtgSyncedToTtHandover() {
             var takts = schedule(LOAD_TEMPLATE, 1);
-            assertEquals(taktSequenceOf(takts, "RTG handover"), taktSequenceOf(takts, "RTG deliver"));
+            assertEquals(taktSequenceOf(takts, TT_HANDOVER_FROM_RTG.displayName()), taktSequenceOf(takts, RTG_HANDOVER_TO_TT.displayName()));
         }
     }
 
@@ -318,8 +320,8 @@ class GraphScheduleBuilderTest {
         void qcPlaceDependsOnQcLift() {
             var takts = schedule(DISCHARGE_TEMPLATE, 1);
             var all = allActions(takts);
-            var qcLift = findAction(takts, QC, "QC Lift").orElseThrow();
-            var qcPlace = findAction(takts, QC, "QC Place").orElseThrow();
+            var qcLift = findAction(takts, QC, QC_LIFT.displayName()).orElseThrow();
+            var qcPlace = findAction(takts, QC, QC_PLACE.displayName()).orElseThrow();
             assertTrue(qcPlace.dependsOn().contains(qcLift.id()));
         }
 
@@ -379,10 +381,10 @@ class GraphScheduleBuilderTest {
             var takts = schedule(DISCHARGE_TEMPLATE, 2);
             var all = allActions(takts);
             var c0QcPlace = all.stream()
-                    .filter(a -> a.deviceType() == QC && a.containerIndex() == 0 && a.description().equals("QC Place"))
+                    .filter(a -> a.deviceType() == QC && a.containerIndex() == 0 && a.description().equals(QC_PLACE.displayName()))
                     .findFirst().orElseThrow();
             var c1QcLift = all.stream()
-                    .filter(a -> a.deviceType() == QC && a.containerIndex() == 1 && a.description().equals("QC Lift"))
+                    .filter(a -> a.deviceType() == QC && a.containerIndex() == 1 && a.description().equals(QC_LIFT.displayName()))
                     .findFirst().orElseThrow();
             assertTrue(c1QcLift.dependsOn().contains(c0QcPlace.id()));
         }
@@ -530,14 +532,14 @@ class GraphScheduleBuilderTest {
             var takts = schedule(DISCHARGE_TEMPLATE, 1);
             // The forward TT segment should stay together
             var takt = takts.stream()
-                    .filter(t -> t.actions().stream().anyMatch(a -> a.description().equals("under RTG")))
+                    .filter(t -> t.actions().stream().anyMatch(a -> a.description().equals(TT_DRIVE_TO_RTG_UNDER.displayName())))
                     .findFirst()
                     .orElseThrow();
             var ttDescs = takt.actions().stream()
                     .filter(a -> a.deviceType() == TT)
                     .map(Action::description)
                     .toList();
-            assertTrue(ttDescs.containsAll(List.of("under RTG", "RTG handover", "drive to buffer")),
+            assertTrue(ttDescs.containsAll(List.of(TT_DRIVE_TO_RTG_UNDER.displayName(), TT_HANDOVER_TO_RTG.displayName(), TT_DRIVE_TO_BUFFER.displayName())),
                     "Got: " + ttDescs);
         }
 
@@ -573,14 +575,14 @@ class GraphScheduleBuilderTest {
         @DisplayName("onlyOnePerTakt prevents two containers' actions from sharing a takt")
         void onlyOnePerTaktSeparatesContainers() {
             var takts = schedule(DISCHARGE_TEMPLATE, 2);
-            // "under RTG" is onlyOnePerTakt — each container's instance should be in a different takt
+            // "drive to RTG under" is onlyOnePerTakt — each container's instance should be in a different takt
             var underRtgTakts = takts.stream()
-                    .filter(t -> t.actions().stream().anyMatch(a -> a.description().equals("under RTG")))
+                    .filter(t -> t.actions().stream().anyMatch(a -> a.description().equals(TT_DRIVE_TO_RTG_UNDER.displayName())))
                     .toList();
 
             for (var takt : underRtgTakts) {
                 long count = takt.actions().stream()
-                        .filter(a -> a.description().equals("under RTG"))
+                        .filter(a -> a.description().equals(TT_DRIVE_TO_RTG_UNDER.displayName()))
                         .count();
                 assertEquals(1, count,
                         "Each takt should have at most one 'under RTG' action, found " + count);
@@ -630,7 +632,7 @@ class GraphScheduleBuilderTest {
         @DisplayName("Sync places TT in same takt as QC")
         void syncPlacement() {
             var takts = schedule(MINIMAL_TEMPLATE, 1);
-            assertEquals(taktSequenceOf(takts, "QC Place"), taktSequenceOf(takts, "TT pickup"));
+            assertEquals(taktSequenceOf(takts, QC_PLACE.displayName()), taktSequenceOf(takts, TT_HANDOVER_FROM_QC.displayName()));
         }
 
         @Test
@@ -660,19 +662,19 @@ class GraphScheduleBuilderTest {
         @DisplayName("Template with long RTG action still places all actions")
         void longRtgAction() {
             var template = List.of(
-                    ActionTemplate.of("QC Lift", QC, 20).withFirstInTakt().withAnchor(),
-                    ActionTemplate.of("QC Place", QC, 100),
-                    ActionTemplate.of("TT pickup", TT, 30)
-                            .withFirstInTakt().withSyncWith(QC, "QC Place"),
-                    ActionTemplate.of("TT drive", TT, 60),
-                    ActionTemplate.of("RTG reposition", RTG, 1),
-                    ActionTemplate.of("RTG lift", RTG, 160)
-                            .withFirstInTakt().withSyncWith(TT, "TT pickup"),
-                    ActionTemplate.of("RTG place", RTG, 50)
+                    ActionTemplate.of(QC_LIFT, QC, 20).withFirstInTakt().withAnchor(),
+                    ActionTemplate.of(QC_PLACE, QC, 100),
+                    ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, 30)
+                            .withFirstInTakt().withSyncWith(QC, QC_PLACE),
+                    ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, 60),
+                    ActionTemplate.of(RTG_DRIVE, RTG, 1),
+                    ActionTemplate.of(RTG_LIFT_FROM_TT, RTG, 160)
+                            .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_FROM_QC),
+                    ActionTemplate.of(RTG_PLACE_ON_YARD, RTG, 50)
             );
 
             var takts = schedule(template, 1);
-            var rtgLift = findAction(takts, RTG, "RTG lift").orElseThrow();
+            var rtgLift = findAction(takts, RTG, RTG_LIFT_FROM_TT.displayName()).orElseThrow();
             assertTrue(rtgLift.durationSeconds() > 100,
                     "RTG lift should have the long duration specified in template");
         }
@@ -681,9 +683,9 @@ class GraphScheduleBuilderTest {
         @DisplayName("Single action per device creates valid schedule")
         void singleActionPerDevice() {
             var template = List.of(
-                    ActionTemplate.of("QC move", QC, 120).withFirstInTakt().withAnchor(),
-                    ActionTemplate.of("TT move", TT, 60)
-                            .withFirstInTakt().withSyncWith(QC, "QC move")
+                    ActionTemplate.of(QC_LIFT, QC, 120).withFirstInTakt().withAnchor(),
+                    ActionTemplate.of(TT_HANDOVER_TO_QC, TT, 60)
+                            .withFirstInTakt().withSyncWith(QC, QC_LIFT)
             );
             var takts = schedule(template, 1);
             assertEquals(2, allActions(takts).size());

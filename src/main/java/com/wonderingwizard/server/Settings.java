@@ -98,6 +98,15 @@ public class Settings {
         );
     }
 
+    public String terminalCode() {
+        return get("kafka.terminal-code", "UNKNOWN");
+    }
+
+    public String equipmentInstructionRtgTopic() {
+        return get("kafka.producer.equipment-instruction-rtg.topic",
+                "apmt.terminaloperations.equipmentinstruction.rubbertyredgantry.topic.confidential.dedicated.v1");
+    }
+
     public ConsumerConfiguration workInstructionConsumerConfiguration() {
         return new ConsumerConfiguration(
                 get("kafka.consumer.work-instruction.topic", "work-instruction"),

@@ -1,6 +1,7 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.ContainerWorkflow;
 import com.wonderingwizard.domain.takt.DeviceActionTemplate;
 import com.wonderingwizard.domain.takt.DeviceType;
@@ -192,7 +193,7 @@ public class WorkQueueProcessor implements EventProcessor {
     private void createTaktsForWorinstructionQc(WorkInstruction workInstruction, int qcMudaSeconds, int containerIndex, HashMap<Integer, Takt> taktsHashMap) {
 
         var qcLiftDuration = 20;
-        var qcActions = List.of(new ResourceAction("QC Lift", qcLiftDuration, true, "QC Lift"), new ResourceAction("QC Place", workInstruction.estimatedCycleTimeSeconds() - qcLiftDuration, false, "QC Lift"));
+        var qcActions = List.of(new ResourceAction(ActionType.QC_LIFT, qcLiftDuration, true, ActionType.QC_LIFT.displayName()), new ResourceAction(ActionType.QC_PLACE, workInstruction.estimatedCycleTimeSeconds() - qcLiftDuration, false, ActionType.QC_LIFT.displayName()));
 
 
         // Find previous container's last QC action for cross-container chaining
@@ -221,7 +222,7 @@ public class WorkQueueProcessor implements EventProcessor {
             if(previousAction != null) {
                 dependsOn.add(previousAction.id());
             }
-            var action = new Action(UUID.randomUUID(), QC, qcAction.actionName(), dependsOn, containerIndex, qcAction.duration());
+            var action = new Action(UUID.randomUUID(), QC, qcAction.actionType(), qcAction.actionName(), dependsOn, containerIndex, qcAction.duration());
             taktsHashMap.get(containerIndex).actions().add(action);
             previousAction = action;
         }
@@ -236,15 +237,15 @@ public class WorkQueueProcessor implements EventProcessor {
         var driveToRtgPull = driveTimeSupplier.getAsInt();
         var driveToQcPull = Math.clamp(driveToRtgPull + qcDriveTimeOffsetSupplier.getAsInt(), DRIVE_TIME_MIN_SECONDS, DRIVE_TIME_MAX_SECONDS);
         var ttActions = List.of(
-                new ResourceAction("drive to RTG pull", driveToRtgPull, false),
-                new ResourceAction("drive to RTG standby", 30, false),
-                new ResourceAction("drive to RTG under", driveToUnderRtg, true),
-                new ResourceAction("handover from RTG", rtgPlaceDuration, false, null, true),
-                new ResourceAction("drive to QC pull", driveToQcPull, false),
-                new ResourceAction("drive to QC standby", 30, false),
-                new ResourceAction("drive under QC", 30, false),
-                new ResourceAction("handover to QC", qcLiftDuration, true, "QC Lift"),
-                new ResourceAction("drive to buffer", 30, false)
+                new ResourceAction(ActionType.TT_DRIVE_TO_RTG_PULL, driveToRtgPull, false),
+                new ResourceAction(ActionType.TT_DRIVE_TO_RTG_STANDBY, 30, false),
+                new ResourceAction(ActionType.TT_DRIVE_TO_RTG_UNDER, driveToUnderRtg, true),
+                new ResourceAction(ActionType.TT_HANDOVER_FROM_RTG, rtgPlaceDuration, false, null, true),
+                new ResourceAction(ActionType.TT_DRIVE_TO_QC_PULL, driveToQcPull, false),
+                new ResourceAction(ActionType.TT_DRIVE_TO_QC_STANDBY, 30, false),
+                new ResourceAction(ActionType.TT_DRIVE_UNDER_QC, 30, false),
+                new ResourceAction(ActionType.TT_HANDOVER_TO_QC, qcLiftDuration, true, ActionType.QC_LIFT.displayName()),
+                new ResourceAction(ActionType.TT_DRIVE_TO_BUFFER, 30, false)
         );
 
         var currentActions = new LinkedList<Action>();
@@ -253,7 +254,7 @@ public class WorkQueueProcessor implements EventProcessor {
         Action previousAction = null;
         for (int i = 0; i < ttActions.size(); i++) {
             var ttActionTemplate = ttActions.reversed().get(i);
-            var action = new Action(UUID.randomUUID(), TT, ttActionTemplate.actionName(), new HashSet<>(), containerIndex, ttActionTemplate.duration());
+            var action = new Action(UUID.randomUUID(), TT, ttActionTemplate.actionType(), ttActionTemplate.actionName(), new HashSet<>(), containerIndex, ttActionTemplate.duration());
 
             if(previousAction != null) {
                 previousAction.dependsOn().add(action.id());
@@ -329,13 +330,13 @@ public class WorkQueueProcessor implements EventProcessor {
         var rtgPlaceDuration = 20;
         var driveToUnderRtg = 30;
         var rtgActions = List.of(
-                new ResourceAction("drive", 1, false),
-                new ResourceAction("fetch", (workInstruction.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration) + driveToUnderRtg, false),
-                new ResourceAction("handover to tt", driveToUnderRtg + rtgPlaceDuration, true)
+                new ResourceAction(ActionType.RTG_DRIVE, 1, false),
+                new ResourceAction(ActionType.RTG_FETCH, (workInstruction.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration) + driveToUnderRtg, false),
+                new ResourceAction(ActionType.RTG_HANDOVER_TO_TT, driveToUnderRtg + rtgPlaceDuration, true)
         );
 
         //find takt with TT action "handover from RTG" for this container index, build backwards from there
-        var foundTaktIndex = taktsHashMap.entrySet().stream().filter((entry) -> entry.getValue().actions().stream().anyMatch(b -> b.description() == "handover from RTG" && b.containerIndex() == containerIndex)).map(integerTaktEntry -> integerTaktEntry.getKey()).findFirst().orElse(0);
+        var foundTaktIndex = taktsHashMap.entrySet().stream().filter((entry) -> entry.getValue().actions().stream().anyMatch(b -> b.actionType() == ActionType.TT_HANDOVER_FROM_RTG && b.containerIndex() == containerIndex)).map(integerTaktEntry -> integerTaktEntry.getKey()).findFirst().orElse(0);
 
 
         var currentActions = new LinkedList<Action>();
@@ -343,7 +344,7 @@ public class WorkQueueProcessor implements EventProcessor {
         Action previousAction = getRtgPreviousAction(foundTaktIndex, taktsHashMap);
         for (int i = 0; i < rtgActions.size(); i++) {
             var rtgActionTemplate = rtgActions.reversed().get(i);
-            var action = new Action(UUID.randomUUID(), RTG, rtgActionTemplate.actionName(), new HashSet<>(), containerIndex, rtgActionTemplate.duration());
+            var action = new Action(UUID.randomUUID(), RTG, rtgActionTemplate.actionType(), rtgActionTemplate.actionName(), new HashSet<>(), containerIndex, rtgActionTemplate.duration());
             if(previousAction != null) {
                 previousAction.dependsOn().add(action.id());
             }

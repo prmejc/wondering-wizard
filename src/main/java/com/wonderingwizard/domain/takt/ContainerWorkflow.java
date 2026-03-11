@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.wonderingwizard.domain.takt.ActionType.*;
 import static com.wonderingwizard.domain.takt.DeviceType.*;
 
 /**
@@ -54,30 +55,30 @@ public final class ContainerWorkflow {
      */
     public static final List<DeviceActionTemplate> ACTION_TEMPLATES = List.of(
             // Takt A: RTG prep + TT approach to RTG (no QC)
-            DeviceActionTemplate.of(RTG, "rtg drive", false),
-            DeviceActionTemplate.of(RTG, "fetch", false),
-            DeviceActionTemplate.of(TT, "drive to RTG pull", false),
-            DeviceActionTemplate.of(TT, "drive to RTG standby", false),
+            DeviceActionTemplate.of(RTG, RTG_DRIVE, false),
+            DeviceActionTemplate.of(RTG, RTG_FETCH, false),
+            DeviceActionTemplate.of(TT, TT_DRIVE_TO_RTG_PULL, false),
+            DeviceActionTemplate.of(TT, TT_DRIVE_TO_RTG_STANDBY, false),
 
             // Takt B: RTG-TT handover (no QC)
-            DeviceActionTemplate.of(TT, "drive to RTG under", true),
-            DeviceActionTemplate.of(RTG, "rtg handover to TT", true, TT),
-            DeviceActionTemplate.of(TT, "handover from RTG", false),
+            DeviceActionTemplate.of(TT, TT_DRIVE_TO_RTG_UNDER, true),
+            DeviceActionTemplate.of(RTG, RTG_HANDOVER_TO_TT, true, TT),
+            DeviceActionTemplate.of(TT, TT_HANDOVER_FROM_RTG, false),
 
             // Takt C: TT transit to QC (no RTG, no QC)
-            DeviceActionTemplate.of(TT, "drive to QC pull", false),
-            DeviceActionTemplate.of(TT, "drive to QC standby", false),
+            DeviceActionTemplate.of(TT, TT_DRIVE_TO_QC_PULL, false),
+            DeviceActionTemplate.of(TT, TT_DRIVE_TO_QC_STANDBY, false),
 
             // Takt D: TT approach to QC (no RTG, no QC)
-            DeviceActionTemplate.of(TT, "drive under QC", false),
+            DeviceActionTemplate.of(TT, TT_DRIVE_UNDER_QC, false),
 
             // Takt E: TT-QC handover + QC operations
-            // "handover from TT" must come before "handover to QC" in template order
-            // so both resolve their cross-device/same-device dep to "drive under QC"
-            DeviceActionTemplate.of(QC, "handover from TT", true, TT),
-            DeviceActionTemplate.of(TT, "handover to QC", true),
-            DeviceActionTemplate.of(QC, "place on vessel", false),
-            DeviceActionTemplate.of(TT, "drive to buffer", false)
+            // QC_LIFT must come before TT_HANDOVER_TO_QC in template order
+            // so both resolve their cross-device/same-device dep to TT_DRIVE_UNDER_QC
+            DeviceActionTemplate.of(QC, QC_LIFT, true, TT),
+            DeviceActionTemplate.of(TT, TT_HANDOVER_TO_QC, true),
+            DeviceActionTemplate.of(QC, QC_PLACE, false),
+            DeviceActionTemplate.of(TT, TT_DRIVE_TO_BUFFER, false)
     );
 
     /**

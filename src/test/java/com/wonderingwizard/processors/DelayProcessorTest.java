@@ -1,6 +1,8 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionType;
+import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.TimeEvent;
@@ -48,7 +50,7 @@ class DelayProcessorTest {
         List<Takt> takts = new java.util.ArrayList<>();
         Instant startTime = BASE_TIME;
         for (int i = 0; i < taktCount; i++) {
-            Action action = Action.create("action " + i);
+            Action action = Action.create(DeviceType.QC, ActionType.QC_LIFT);
             Takt takt = new Takt(i, List.of(action.withDependencies(Set.of())), startTime, startTime, durationSeconds);
             takts.add(takt);
             startTime = startTime.plusSeconds(durationSeconds);

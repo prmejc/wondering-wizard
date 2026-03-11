@@ -30,7 +30,7 @@ Marker interface for all side effects produced by event processing. Side effects
 - `AlarmTriggered` - Indicates an alarm was triggered
 - `ScheduleCreated` - Indicates a schedule was created for a work queue (includes takts)
 - `ScheduleAborted` - Indicates a schedule was aborted for a work queue
-- `ActionActivated` - Indicates an action has been activated and is ready for execution
+- `ActionActivated` - Indicates an action has been activated and is ready for execution (includes deviceType and workInstructions)
 - `ActionCompleted` - Indicates an action has been completed
 - `TaktActivated` - Indicates a takt has been activated (also implements Event for BFS propagation)
 - `TaktCompleted` - Indicates a takt has been completed (also implements Event for BFS propagation)
@@ -216,8 +216,12 @@ com.wonderingwizard
 ├── kafka/
 │   ├── KafkaConfiguration.java      # Top-level Kafka connection config (broker, SASL, schema registry)
 │   ├── ConsumerConfiguration.java   # Per-topic consumer config (topic, group, message type)
-│   ├── EventMapper.java             # Functional interface: GenericRecord → Event
+│   ├── ProducerConfiguration.java   # Per-topic producer config (topic)
+│   ├── EventMapper.java             # Functional interface: GenericRecord → Event (inbound)
+│   ├── SideEffectMapper.java        # Functional interface: SideEffect → GenericRecord (outbound)
 │   ├── KafkaEventConsumer.java      # Generic consumer: poll → map → engine (virtual thread)
+│   ├── KafkaSideEffectPublisher.java # Generic publisher: side effects → map → Kafka
+│   ├── ActionActivatedToEquipmentInstructionMapper.java # Maps ActionActivated → EquipmentInstruction Avro
 │   ├── KafkaConsumerManager.java    # Lifecycle manager for all Kafka consumers
 │   ├── WorkQueueEventMapper.java    # Maps WorkQueue Avro → WorkQueueMessage event
 │   └── messages/
@@ -353,3 +357,38 @@ The `EventLogProcessor` records every event passing through the engine. Combined
 2. Create a mapper class in `com.wonderingwizard.kafka` implementing `EventMapper<YourEvent>`
 3. Create a `ConsumerConfiguration` with the topic name, group ID, and Avro message type
 4. Register with `KafkaConsumerManager`: `manager.register(config, new YourEventMapper())`
+
+### Adding a New Kafka Side Effect Publisher
+1. Create a mapper class in `com.wonderingwizard.kafka` implementing `SideEffectMapper<YourSideEffect>`
+2. Register with `KafkaSideEffectPublisher`: `publisher.registerMapper(YourSideEffect.class, "topic-name", new YourMapper())`
+3. Call `publisher.publish(sideEffects)` after `engine.processEvent()` returns
+
+## Kafka Side Effect Publisher Infrastructure (F-13)
+
+The `kafka` package provides a symmetric outbound framework for publishing side effects to Kafka topics.
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                   KafkaSideEffectPublisher                         │
+│                                                                    │
+│  List<SideEffect> ──▶ Match registered mappers by type             │
+│                                                                    │
+│  ┌─────────────────────────────┐  ┌─────────────────────────────┐ │
+│  │ ActionActivated mapper       │  │ (future side effect mapper)  │ │
+│  │                              │  │                              │ │
+│  │  SideEffectMapper<AA>        │  │  SideEffectMapper<?>         │ │
+│  │  → GenericRecord             │  │  → GenericRecord             │ │
+│  │  → KafkaProducer.send()      │  │  → KafkaProducer.send()      │ │
+│  │  → EquipmentInstruction topic│  │  → other topic               │ │
+│  └─────────────────────────────┘  └─────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Key Concepts
+
+- **SideEffectMapper<S>**: Functional interface that transforms a `SideEffect` to an Avro `GenericRecord` (outbound counterpart to `EventMapper`)
+- **KafkaSideEffectPublisher**: Manages registered mappers, matches side effects by type, and publishes to Kafka (outbound counterpart to `KafkaEventConsumer`)
+- **ProducerConfiguration**: Per-topic producer settings
+- **ActionActivatedToEquipmentInstructionMapper**: Maps `ActionActivated` (enriched with `DeviceType` and `List<WorkInstruction>`) to the EquipmentInstruction Avro schema
