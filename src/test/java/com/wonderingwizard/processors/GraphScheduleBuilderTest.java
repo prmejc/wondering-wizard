@@ -36,7 +36,7 @@ class GraphScheduleBuilderTest {
             ActionTemplate.of(QC_LIFT, QC, 20).withFirstInTakt().withAnchor(),
             ActionTemplate.of(QC_PLACE, QC, 100),
 
-            ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 170),
+            ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 170).withIndependentAcrossContainers(),
             ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, 30),
             ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
 
@@ -64,7 +64,7 @@ class GraphScheduleBuilderTest {
             ActionTemplate.of(QC_LIFT, QC, 20).withFirstInTakt().withAnchor(),
             ActionTemplate.of(QC_PLACE, QC, 100),
 
-            ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, 30),
+            ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, 30).withIndependentAcrossContainers(),
             ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
 
             ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, 30)
@@ -93,7 +93,7 @@ class GraphScheduleBuilderTest {
             ActionTemplate.of(QC_LIFT, QC, 20).withFirstInTakt().withAnchor(),
             ActionTemplate.of(QC_PLACE, QC, 100),
 
-            ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 170),
+            ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 170).withIndependentAcrossContainers(),
             ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, 30),
             ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
             ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, 20)
@@ -123,7 +123,7 @@ class GraphScheduleBuilderTest {
             ActionTemplate.of(QC_LIFT, QC, 20).withFirstInTakt().withAnchor(),
             ActionTemplate.of(QC_PLACE, QC, 100),
 
-            ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 170),
+            ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 170).withIndependentAcrossContainers(),
             ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, 30),
             ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
             ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, 20)
@@ -152,7 +152,7 @@ class GraphScheduleBuilderTest {
     static final List<ActionTemplate> MINIMAL_TEMPLATE = List.of(
             ActionTemplate.of(QC_LIFT, QC, 20).withFirstInTakt().withAnchor(),
             ActionTemplate.of(QC_PLACE, QC, 100),
-            ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, 30)
+            ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, 30).withIndependentAcrossContainers()
                     .withFirstInTakt().withSyncWith(QC, QC_PLACE),
             ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, 60)
     );

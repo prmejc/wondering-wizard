@@ -64,34 +64,39 @@ public class GraphScheduleBuilder {
             boolean isAnchor,
             SyncRef syncWith,
             boolean onlyOnePerTakt,
-            int deviceIndex
+            int deviceIndex,
+            boolean independentAcrossContainers
     ) {
         static ActionTemplate of(ActionType actionType, DeviceType type, int duration) {
-            return new ActionTemplate(actionType, actionType.displayName(), type, duration, false, false, null, false, 0);
+            return new ActionTemplate(actionType, actionType.displayName(), type, duration, false, false, null, false, 0, false);
         }
 
         static ActionTemplate of(ActionType actionType, String suffix, DeviceType type, int duration) {
-            return new ActionTemplate(actionType, actionType.displayName(suffix), type, duration, false, false, null, false, 0);
+            return new ActionTemplate(actionType, actionType.displayName(suffix), type, duration, false, false, null, false, 0, false);
         }
 
         ActionTemplate withFirstInTakt() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, true, isAnchor, syncWith, onlyOnePerTakt, deviceIndex);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, true, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers);
         }
 
         ActionTemplate withAnchor() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, true, syncWith, onlyOnePerTakt, deviceIndex);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, true, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers);
         }
 
         ActionTemplate withSyncWith(DeviceType type, ActionType refActionType) {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, new SyncRef(type, refActionType), onlyOnePerTakt, deviceIndex);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, new SyncRef(type, refActionType), onlyOnePerTakt, deviceIndex, independentAcrossContainers);
         }
 
         ActionTemplate withOnlyOnePerTakt() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, true, deviceIndex);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, true, deviceIndex, independentAcrossContainers);
         }
 
         ActionTemplate withDeviceIndex(int deviceIndex) {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers);
+        }
+
+        ActionTemplate withIndependentAcrossContainers() {
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, true);
         }
     }
 
@@ -168,7 +173,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(QC_PLACE, "2", QC, qcLiftDuration).withFirstInTakt(),
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, "1", TT, qcLiftDuration)
@@ -200,7 +205,7 @@ public class GraphScheduleBuilder {
 
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, "1", TT, qcLiftDuration)
@@ -240,7 +245,7 @@ public class GraphScheduleBuilder {
 
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, "1", TT, qcLiftDuration)
@@ -274,7 +279,7 @@ public class GraphScheduleBuilder {
                         .withFirstInTakt().withAnchor(),
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, qcLiftDuration)
@@ -310,7 +315,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(QC_PLACE, QC, qcLiftDuration ).withFirstInTakt().withAnchor(),
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, qcLiftDuration)
@@ -355,7 +360,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(QC_PLACE, QC,qcLiftDuration ).withFirstInTakt().withAnchor(),
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, driveToQcPull),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, qcLiftDuration)
@@ -383,7 +388,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(QC_PLACE, QC, qcLiftDuration),
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, driveToQcPull),
+                ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, driveToQcPull).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_QC_STANDBY, TT, 30),
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_FROM_QC, TT, qcLiftDuration)
@@ -413,7 +418,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(QC_PLACE, QC, qcLiftDuration),
 
                 // ── TT chain (backward from sync point) ──
-                ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, driveToRtgPull),
+                ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, driveToRtgPull).withIndependentAcrossContainers(),
                 ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
                 ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg)
                         .withFirstInTakt().withOnlyOnePerTakt(),
@@ -480,7 +485,7 @@ public class GraphScheduleBuilder {
                     if (t.actionType() == RTG_WAIT_FOR_TRUCK && waitIndex[0] < waitDurations.size()) {
                         int duration = waitDurations.get(waitIndex[0]++);
                         return new ActionTemplate(t.actionType(), t.name(), t.deviceType(), duration,
-                                t.firstInTakt(), t.isAnchor(), t.syncWith(), t.onlyOnePerTakt(), t.deviceIndex());
+                                t.firstInTakt(), t.isAnchor(), t.syncWith(), t.onlyOnePerTakt(), t.deviceIndex(), t.independentAcrossContainers());
                     }
                     return t;
                 })
@@ -545,6 +550,109 @@ public class GraphScheduleBuilder {
 
     // ── Placement algorithm (determines takt assignment, creates Actions without deps) ──
 
+    /**
+     * Bundles the mutable state used during segment placement for a single container.
+     * Provides generic forward/backward chain placement and sync resolution,
+     * eliminating the duplicated placement loops from the original algorithm.
+     */
+    private class PlacementContext {
+        final int containerIndex;
+        final Map<Integer, Takt> takts;
+        final Map<String, Integer> placementIndex;
+        final List<PlacedAction> placedActions;
+        final Map<ActionTemplate, Integer> blueprintOrder;
+        final List<WorkInstruction> workInstructions;
+        final List<Segment> remaining;
+
+        PlacementContext(int containerIndex, Map<Integer, Takt> takts,
+                         List<ActionTemplate> blueprint, List<WorkInstruction> workInstructions) {
+            this.containerIndex = containerIndex;
+            this.takts = takts;
+            this.placementIndex = new HashMap<>();
+            this.placedActions = new ArrayList<>();
+            this.blueprintOrder = new HashMap<>();
+            for (int i = 0; i < blueprint.size(); i++) {
+                this.blueprintOrder.put(blueprint.get(i), i);
+            }
+            this.workInstructions = workInstructions;
+            this.remaining = new ArrayList<>();
+        }
+
+        /** Places a segment's actions into a single takt WITHOUT wiring dependencies. */
+        void place(Segment segment, int taktIndex) {
+            var takt = takts.get(taktIndex);
+            for (var tmpl : segment.templates()) {
+                var action = new Action(UUID.randomUUID(), segment.deviceType(), tmpl.actionType(), tmpl.name(),
+                        new HashSet<>(), containerIndex, tmpl.durationSeconds(), tmpl.deviceIndex(), workInstructions);
+                takt.actions().add(action);
+                placedActions.add(new PlacedAction(tmpl, action, containerIndex, blueprintOrder.getOrDefault(tmpl, 0)));
+                placementIndex.put(placementKey(containerIndex, tmpl.deviceType(), tmpl.name()), taktIndex);
+            }
+        }
+
+        /**
+         * Places a synced segment: resolves device exclusivity, relocates sync source
+         * actions if pushed forward, and places the segment.
+         * @return the final takt index where the segment was placed
+         */
+        int placeSyncedSegment(Segment segment, int targetTakt) {
+            ensureTaktExists(takts, targetTakt, computeTaktStartTime(targetTakt, takts), DEFAULT_TAKT_DURATION);
+            int originalTakt = targetTakt;
+            targetTakt = pushForwardForDeviceExclusivity(targetTakt, segment.deviceType(),
+                    segment.deviceIndex(), containerIndex, takts);
+            if (targetTakt != originalTakt && segment.syncRef() != null) {
+                relocateSyncSourceActions(originalTakt, targetTakt,
+                        segment.syncRef().deviceType(), containerIndex, takts, placementIndex);
+            }
+            place(segment, targetTakt);
+            return targetTakt;
+        }
+
+        /**
+         * Places segments forward (increasing takt indices) from a pivot point,
+         * stopping at the first segment with a syncRef.
+         * Each segment is pushed forward until the previous chain finishes before it starts,
+         * and checked for onlyOnePerTakt conflicts.
+         */
+        void placeForwardChain(List<Segment> deviceSegs, int fromIdx, int startTakt,
+                               int startDuration, int newTaktDuration) {
+            int prevTakt = startTakt;
+            int prevDuration = startDuration;
+            for (int i = fromIdx + 1; i < deviceSegs.size(); i++) {
+                var seg = deviceSegs.get(i);
+                if (seg.syncRef() != null) break;
+                if (!remaining.contains(seg)) continue;
+                int candidate = prevTakt + 1;
+                ensureTaktExists(takts, candidate, computeTaktStartTime(candidate, takts), newTaktDuration);
+                candidate = pushForwardUntilFits(candidate, prevDuration, takts.get(prevTakt), takts);
+                candidate = resolveOverflow(seg, candidate, takts);
+                place(seg, candidate);
+                remaining.remove(seg);
+                prevTakt = candidate;
+                prevDuration = segmentDuration(seg);
+            }
+        }
+
+        /**
+         * Places segments backward (decreasing takt indices) from a pivot point.
+         * Each segment is checked for onlyOnePerTakt conflicts and pushed back
+         * until its chain duration fits within the target takt's time window.
+         */
+        void placeBackwardChain(List<Segment> deviceSegs, int fromIdx, int startTakt) {
+            int backTakt = startTakt;
+            for (int i = fromIdx - 1; i >= 0; i--) {
+                var seg = deviceSegs.get(i);
+                if (!remaining.contains(seg)) continue;
+                backTakt--;
+                ensureTaktExists(takts, backTakt, computeTaktStartTime(backTakt, takts), DEFAULT_TAKT_DURATION);
+                backTakt = resolveOverflow(seg, backTakt, takts);
+                backTakt = pushBackUntilFits(backTakt, segmentDuration(seg), takts);
+                place(seg, backTakt);
+                remaining.remove(seg);
+            }
+        }
+    }
+
     private List<PlacedAction> placeContainerActions(
             List<ActionTemplate> blueprint,
             int containerIndex,
@@ -554,14 +662,7 @@ public class GraphScheduleBuilder {
     ) {
         var wi = workInstructions.getFirst();
         var segmentsByDevice = buildSegmentsByDevice(blueprint);
-        var placementIndex = new HashMap<String, Integer>(); // (containerIdx:device:name) → taktIndex
-        var placedActions = new ArrayList<PlacedAction>();
-
-        // Build blueprint order map: template → index in blueprint list
-        var blueprintOrder = new HashMap<ActionTemplate, Integer>();
-        for (int i = 0; i < blueprint.size(); i++) {
-            blueprintOrder.put(blueprint.get(i), i);
-        }
+        var ctx = new PlacementContext(containerIndex, takts, blueprint, workInstructions);
 
         // Step 1: Place anchor segment
         Segment anchorSegment = findAnchorSegment(segmentsByDevice);
@@ -574,150 +675,43 @@ public class GraphScheduleBuilder {
             int numBackwardSegments = anchorDeviceSegments.indexOf(anchorSegment);
             anchorTaktIndex = maxAnchorDeviceTakt + numBackwardSegments;
         }
-
-        Instant anchorStartTime = computeAnchorStartTime(anchorTaktIndex, wi, takts);
         int anchorTaktDuration = wi.estimatedCycleTimeSeconds() + qcMudaSeconds;
+        ensureTaktExists(takts, anchorTaktIndex, computeAnchorStartTime(anchorTaktIndex, wi, takts), anchorTaktDuration);
+        ctx.place(anchorSegment, anchorTaktIndex);
 
-        ensureTaktExists(takts, anchorTaktIndex, anchorStartTime, anchorTaktDuration);
-        placeSegment(anchorSegment, anchorTaktIndex, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
-
-        // Step 2: Place forward segments of the anchor device (e.g., if QC had more segments after anchor)
-        var remaining = new ArrayList<Segment>();
+        // Step 2: Populate remaining and place anchor device chains
         segmentsByDevice.values().forEach(segs -> segs.stream()
                 .filter(s -> s != anchorSegment)
-                .forEach(remaining::add));
+                .forEach(ctx.remaining::add));
 
-        var deviceTaktCursor = new HashMap<DeviceType, Integer>();
-        deviceTaktCursor.put(anchorSegment.deviceType(), anchorTaktIndex);
-
-        // Forward segments of anchor device
-        boolean foundAnchor = false;
-        int forwardTakt = anchorTaktIndex;
-        int prevAnchorSegDuration = segmentDuration(anchorSegment);
-        for (var seg : anchorDeviceSegments) {
-            if (seg.isAnchor()) { foundAnchor = true; continue; }
-            if (foundAnchor && seg.syncRef() == null) {
-                int prevTaktIdx = forwardTakt;
-                forwardTakt++;
-                ensureTaktExists(takts, forwardTakt,
-                        computeTaktStartTime(forwardTakt, takts),
-                        wi.estimatedCycleTimeSeconds() + qcMudaSeconds);
-                forwardTakt = pushForwardUntilFits(forwardTakt, prevAnchorSegDuration,
-                        takts.get(prevTaktIdx), takts);
-                placeSegment(seg, forwardTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
-                deviceTaktCursor.put(anchorSegment.deviceType(), forwardTakt);
-                remaining.remove(seg);
-                prevAnchorSegDuration = segmentDuration(seg);
-            }
-        }
-
-        // Step 2b: Place backward segments of the anchor device (before the anchor)
         int anchorIdx = anchorDeviceSegments.indexOf(anchorSegment);
-        int backTakt = anchorTaktIndex;
-        for (int i = anchorIdx - 1; i >= 0; i--) {
-            var backSeg = anchorDeviceSegments.get(i);
-            backTakt--;
-            ensureTaktExists(takts, backTakt,
-                    computeTaktStartTime(backTakt, takts), DEFAULT_TAKT_DURATION);
-            placeSegment(backSeg, backTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
-            deviceTaktCursor.put(anchorSegment.deviceType(), backTakt);
-            remaining.remove(backSeg);
-        }
+        ctx.placeForwardChain(anchorDeviceSegments, anchorIdx, anchorTaktIndex,
+                segmentDuration(anchorSegment), anchorTaktDuration);
+        ctx.placeBackwardChain(anchorDeviceSegments, anchorIdx, anchorTaktIndex);
 
-        // Step 3: Resolve sync-based segments and their backward chains
+        // Step 3: Iteratively resolve sync-based segments and their device chains
         boolean progress = true;
-        while (!remaining.isEmpty() && progress) {
+        while (!ctx.remaining.isEmpty() && progress) {
             progress = false;
-            var it = remaining.iterator();
-            while (it.hasNext()) {
-                var seg = it.next();
-                Integer targetTakt = resolveSyncTarget(seg, containerIndex, placementIndex);
+            for (var seg : ctx.remaining) {
+                Integer targetTakt = resolveSyncTarget(seg, containerIndex, ctx.placementIndex);
                 if (targetTakt != null) {
-                    ensureTaktExists(takts, targetTakt,
-                            computeTaktStartTime(targetTakt, takts), DEFAULT_TAKT_DURATION);
-                    int originalSyncTakt = targetTakt;
-                    targetTakt = pushForwardForDeviceExclusivity(targetTakt, seg.deviceType(), seg.deviceIndex(), containerIndex, takts);
-                    if (targetTakt != originalSyncTakt && seg.syncRef() != null) {
-                        relocateSyncSourceActions(originalSyncTakt, targetTakt,
-                                seg.syncRef().deviceType(), containerIndex, takts, placementIndex);
-                    }
-                    placeSegment(seg, targetTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
-                    deviceTaktCursor.put(seg.deviceType(), targetTakt);
-                    it.remove();
+                    int placedTakt = ctx.placeSyncedSegment(seg, targetTakt);
+                    ctx.remaining.remove(seg);
                     progress = true;
 
-                    // Place backward segments for this device.
-                    // Each chain stays together in one takt but is pushed back to an
-                    // earlier pulse if its duration overflows the target takt's time window.
                     var deviceSegs = segmentsByDevice.getOrDefault(seg.deviceType(), List.of());
                     int syncIdx = deviceSegs.indexOf(seg);
-                    int backwardTakt = targetTakt;
-                    for (int i = syncIdx - 1; i >= 0; i--) {
-                        var backSeg = deviceSegs.get(i);
-                        if (!remaining.contains(backSeg)) continue;
-                        backwardTakt--;
-                        ensureTaktExists(takts, backwardTakt,
-                                computeTaktStartTime(backwardTakt, takts), DEFAULT_TAKT_DURATION);
-                        backwardTakt = resolveOverflow(backSeg, backwardTakt, takts);
-                        backwardTakt = pushBackUntilFits(backwardTakt, segmentDuration(backSeg), takts);
-                        placeSegment(backSeg, backwardTakt, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
-                        deviceTaktCursor.put(backSeg.deviceType(), backwardTakt);
-                        remaining.remove(backSeg);
-                    }
-
-                    // Place forward segments for this device (after the sync point).
-                    // Each forward segment must start after the previous segment's chain has finished.
-                    // Stop at segments that have their own syncRef — they will be placed by their own sync resolution.
-                    int prevFwdTaktIdx = targetTakt;
-                    int prevSegDuration = segmentDuration(seg);
-                    for (int i = syncIdx + 1; i < deviceSegs.size(); i++) {
-                        var fwdSeg = deviceSegs.get(i);
-                        if (fwdSeg.syncRef() != null) break;
-                        if (!remaining.contains(fwdSeg)) continue;
-                        int forwardTaktIdx = prevFwdTaktIdx + 1;
-                        ensureTaktExists(takts, forwardTaktIdx,
-                                computeTaktStartTime(forwardTaktIdx, takts), DEFAULT_TAKT_DURATION);
-                        forwardTaktIdx = pushForwardUntilFits(forwardTaktIdx, prevSegDuration,
-                                takts.get(prevFwdTaktIdx), takts);
-                        forwardTaktIdx = resolveOverflow(fwdSeg, forwardTaktIdx, takts);
-                        placeSegment(fwdSeg, forwardTaktIdx, containerIndex, takts, placementIndex, placedActions, blueprintOrder, workInstructions);
-                        deviceTaktCursor.put(fwdSeg.deviceType(), forwardTaktIdx);
-                        remaining.remove(fwdSeg);
-                        prevFwdTaktIdx = forwardTaktIdx;
-                        prevSegDuration = segmentDuration(fwdSeg);
-                    }
+                    ctx.placeBackwardChain(deviceSegs, syncIdx, placedTakt);
+                    ctx.placeForwardChain(deviceSegs, syncIdx, placedTakt,
+                            segmentDuration(seg), DEFAULT_TAKT_DURATION);
 
                     break; // restart iteration
                 }
             }
         }
 
-        return placedActions;
-    }
-
-    /**
-     * Places a segment's actions into a single takt WITHOUT wiring dependencies.
-     * The entire chain stays together in one takt.
-     * Dependencies are wired later in execution order.
-     */
-    private void placeSegment(
-            Segment segment,
-            int taktIndex,
-            int containerIndex,
-            Map<Integer, Takt> takts,
-            Map<String, Integer> placementIndex,
-            List<PlacedAction> placedActions,
-            Map<ActionTemplate, Integer> blueprintOrder,
-            List<WorkInstruction> workInstructions
-    ) {
-        var takt = takts.get(taktIndex);
-        for (var tmpl : segment.templates()) {
-            var action = new Action(UUID.randomUUID(), segment.deviceType(), tmpl.actionType(), tmpl.name(),
-                    new HashSet<>(), containerIndex, tmpl.durationSeconds(), tmpl.deviceIndex(), workInstructions);
-            takt.actions().add(action);
-            placedActions.add(new PlacedAction(tmpl, action, containerIndex, blueprintOrder.getOrDefault(tmpl, 0)));
-            placementIndex.put(placementKey(containerIndex, tmpl.deviceType(), tmpl.name()), taktIndex);
-        }
+        return ctx.placedActions;
     }
 
     // ── Dependency wiring (post-processing) ────────────────────────────
@@ -758,8 +752,7 @@ public class GraphScheduleBuilder {
                     placed.action().dependsOn().add(prev.id());
                 } else {
                     // First action in this container's device chain — link to previous container
-                    // TT actions are independent across containers (no cross-container chaining)
-                    if (placed.action().deviceType() != DeviceType.TT) {
+                    if (!placed.template().independentAcrossContainers()) {
                         Action crossContainerPrev = lastActionByDevice.get(placed.action().deviceType());
                         if (crossContainerPrev != null) {
                             placed.action().dependsOn().add(crossContainerPrev.id());
