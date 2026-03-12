@@ -306,9 +306,8 @@ public class GraphScheduleBuilder {
     private List<ActionTemplate> getDischargeLiftTwinsDropSinglesSameBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return withComputedRtgWaitDuration(List.of(
                 // ── QC chain (forward from anchor) ──
-                ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration)
-                       .withAnchor(),
-                ActionTemplate.of(QC_PLACE, QC, qcLiftDuration ).withFirstInTakt(),
+                ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+                ActionTemplate.of(QC_PLACE, QC, qcLiftDuration ).withFirstInTakt().withAnchor(),
 
                 // ── TT chain (backward from sync point) ──
                 ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, 30),

@@ -121,38 +121,41 @@ const WI_FIELDS = [
   { key: 'toPosition', label: 'To Position', type: 'text' },
 ];
 
-let nonWiEntries = [];
+let nonWiEntries = []; // {index, entry} pairs preserving original position
 let wiRows = [];
+let firstWiIndex = 0;
 
 function parseExport(data) {
   nonWiEntries = [];
   wiRows = [];
-  for (const entry of data) {
+  firstWiIndex = data.length;
+  for (let i = 0; i < data.length; i++) {
+    const entry = data[i];
     if (entry.event && entry.event.type === 'WorkInstructionEvent') {
+      if (wiRows.length === 0) firstWiIndex = i;
       const row = {};
       for (const f of WI_FIELDS) {
         row[f.key] = entry.event[f.key] ?? (f.type === 'checkbox' ? false : '');
       }
       wiRows.push(row);
     } else {
-      nonWiEntries.push(entry);
+      nonWiEntries.push({ index: i, entry });
     }
   }
 }
 
 function buildExport() {
-  const result = [...nonWiEntries];
-  for (const row of wiRows) {
+  const wiEntries = wiRows.map(row => {
     const event = { type: 'WorkInstructionEvent' };
     for (const f of WI_FIELDS) {
       event[f.key] = row[f.key];
     }
-    result.push({
-      description: 'WorkInstruction: ' + row.workInstructionId,
-      event
-    });
-  }
-  return result;
+    return { description: 'WorkInstruction: ' + row.workInstructionId, event };
+  });
+
+  const before = nonWiEntries.filter(e => e.index < firstWiIndex).map(e => e.entry);
+  const after = nonWiEntries.filter(e => e.index >= firstWiIndex).map(e => e.entry);
+  return [...before, ...wiEntries, ...after];
 }
 
 function renderHead() {
