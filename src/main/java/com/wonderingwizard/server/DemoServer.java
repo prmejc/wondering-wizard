@@ -834,12 +834,13 @@ public class DemoServer {
             boolean isTwinCarry = Boolean.parseBoolean(body.getOrDefault("isTwinCarry", "false"));
             long twinCompanionWorkInstruction = Long.parseLong(body.getOrDefault("twinCompanionWorkInstruction", "0"));
             String toPosition = body.getOrDefault("toPosition", "");
+            String containerId = body.getOrDefault("containerId", "");
 
             WorkInstructionEvent event = new WorkInstructionEvent(
                     workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
                     estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                     putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
-                    toPosition);
+                    toPosition, containerId);
             List<SideEffect> effects = processStep("WorkInstruction: " + workInstructionId, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
