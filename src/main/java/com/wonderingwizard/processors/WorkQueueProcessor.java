@@ -11,14 +11,17 @@ import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.WorkInstructionEvent;
+import com.wonderingwizard.events.WorkInstructionStatus;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
+import com.wonderingwizard.sideeffects.ScheduleModified;
 import com.wonderingwizard.sideeffects.WorkInstruction;
 import jdk.jfr.Timespan;
 
 import java.security.Timestamp;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.IntSupplier;
@@ -99,6 +102,9 @@ public class WorkQueueProcessor implements EventProcessor {
         long workInstructionId = event.workInstructionId();
         long workQueueId = event.workQueueId();
 
+        // Find the old instruction before removing it (for mismatch detection)
+        WorkInstruction oldInstruction = findWorkInstruction(workInstructionId);
+
         // Remove existing instruction with same ID from all queues (handles moves and updates)
         for (List<WorkInstruction> instructions : workInstructions.values()) {
             instructions.removeIf(wi -> wi.workInstructionId() == workInstructionId);
@@ -125,7 +131,102 @@ public class WorkQueueProcessor implements EventProcessor {
                 .computeIfAbsent(workQueueId, k -> new ArrayList<>())
                 .add(instruction);
 
+        // Check for FETCH_COMPLETE mismatch: if twin flags changed, trigger reschedule
+        if (event.status() == WorkInstructionStatus.FETCH_COMPLETE
+                && activeSchedules.containsKey(workQueueId)
+                && oldInstruction != null
+                && hasTwinFlagsMismatch(oldInstruction, instruction)) {
+            return handleReschedule(workQueueId, instruction);
+        }
+
         return List.of();
+    }
+
+    /**
+     * Finds a work instruction by ID across all queues.
+     */
+    private WorkInstruction findWorkInstruction(long workInstructionId) {
+        for (List<WorkInstruction> instructions : workInstructions.values()) {
+            for (WorkInstruction wi : instructions) {
+                if (wi.workInstructionId() == workInstructionId) {
+                    return wi;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Checks whether the twin flags (isTwinFetch, isTwinPut, isTwinCarry) have changed
+     * between the old and new work instruction.
+     */
+    private boolean hasTwinFlagsMismatch(WorkInstruction oldWi, WorkInstruction newWi) {
+        return oldWi.isTwinFetch() != newWi.isTwinFetch()
+                || oldWi.isTwinPut() != newWi.isTwinPut()
+                || oldWi.isTwinCarry() != newWi.isTwinCarry();
+    }
+
+    /**
+     * Handles rescheduling when a FETCH_COMPLETE event reveals that the actual container
+     * configuration differs from the plan. Rebuilds takts for the changed work instruction
+     * and all subsequent ones.
+     *
+     * @param workQueueId the work queue to reschedule
+     * @param changedWi   the work instruction whose twin flags changed
+     * @return side effects containing the ScheduleModified event
+     */
+    private List<SideEffect> handleReschedule(long workQueueId, WorkInstruction changedWi) {
+        List<WorkInstruction> allInstructions = workInstructions.getOrDefault(workQueueId, List.of());
+        if (allInstructions.isEmpty()) {
+            return List.of();
+        }
+
+        // Sort all instructions by estimated move time (same order as original schedule)
+        var sorted = allInstructions.stream()
+                .sorted(Comparator.comparing(WorkInstruction::estimatedMoveTime))
+                .toList();
+
+        // Find the index of the changed instruction — this and all after it need rebuilding
+        int changedIndex = -1;
+        int containerIdx = 0;
+        var processedTwinIds = new HashSet<Long>();
+        LoadMode loadMode = loadModeByQueue.getOrDefault(workQueueId, LoadMode.DSCH);
+
+        for (int i = 0; i < sorted.size(); i++) {
+            var wi = sorted.get(i);
+            if (loadMode == LoadMode.DSCH && wi.isTwinCarry() && processedTwinIds.contains(wi.workInstructionId())) {
+                continue;
+            }
+            if (wi.workInstructionId() == changedWi.workInstructionId()) {
+                changedIndex = i;
+                break;
+            }
+            if (loadMode == LoadMode.DSCH && wi.isTwinCarry() && wi.twinCompanionWorkInstruction() != 0) {
+                processedTwinIds.add(wi.twinCompanionWorkInstruction());
+            }
+            containerIdx++;
+        }
+
+        if (changedIndex < 0) {
+            return List.of();
+        }
+
+        // The remaining instructions to rebuild: from changedIndex onward
+        List<WorkInstruction> remainingInstructions = sorted.subList(changedIndex, sorted.size());
+
+        // Compute the takt sequence where the new takts should start.
+        // containerIdx is the 0-based container index of the changed WI.
+        // In the original schedule, container N's anchor takt is at sequence N.
+        int startTaktSequence = containerIdx;
+
+        int qcMuda = qcMudaByQueue.getOrDefault(workQueueId, 0);
+        Instant startTime = changedWi.estimatedMoveTime();
+
+        var rebuiltTakts = new GraphScheduleBuilder(driveTimeSupplier, qcDriveTimeOffsetSupplier)
+                .rebuildRemainingTakts(remainingInstructions, startTime, containerIdx,
+                        startTaktSequence, qcMuda, loadMode);
+
+        return List.of(new ScheduleModified(workQueueId, rebuiltTakts, startTaktSequence));
     }
 
     private List<SideEffect> handleWorkQueueMessage(WorkQueueMessage message) {

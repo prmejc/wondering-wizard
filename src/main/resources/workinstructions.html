@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wondering Wizard - Work Instructions</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface2: #334155;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --border: #475569;
+    --active: #3b82f6;
+    --danger: #ef4444;
+    --completed: #22c55e;
+    --success-bg: rgba(34, 197, 94, 0.15);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .header {
+    display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+  }
+  h1 { font-size: 20px; }
+  .live-indicator {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted);
+  }
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--danger);
+  }
+  .live-dot.connected { background: var(--completed); }
+  .nav-links { margin-left: auto; display: flex; gap: 12px; }
+  .nav-links a {
+    color: var(--active); text-decoration: none; font-size: 13px;
+  }
+  .nav-links a:hover { text-decoration: underline; }
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  th {
+    background: var(--surface2); padding: 8px 6px; text-align: left;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-muted); position: sticky; top: 0; white-space: nowrap;
+  }
+  td { padding: 2px 4px; border-bottom: 1px solid var(--border); }
+  td input, td select {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 6px; border-radius: 3px; font-size: 13px; width: 100%;
+    font-family: inherit;
+  }
+  td input:focus, td select:focus { outline: none; border-color: var(--active); }
+  td input[type="number"] { width: 80px; }
+  td input[type="checkbox"] { width: auto; }
+  .row-actions { white-space: nowrap; display: flex; gap: 4px; align-items: center; }
+  .row-actions button { padding: 3px 8px; font-size: 11px; }
+  button {
+    background: var(--active); color: white; border: none; padding: 8px 16px;
+    border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  button:hover { opacity: 0.9; }
+  button.secondary { background: var(--surface2); color: var(--text); }
+  button.danger { background: var(--danger); }
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+  }
+  tbody tr:hover td { background: var(--surface2); }
+  tr.send-success td { background: var(--success-bg); transition: background 0.3s; }
+  .status-PENDING { color: var(--text-muted); }
+  .status-IN_PROGRESS { color: var(--active); }
+  .status-COMPLETED { color: var(--completed); }
+  .status-CANCELLED { color: var(--danger); }
+  .status-FETCH_COMPLETE { color: #a78bfa; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Work Instructions</h1>
+  <div class="live-indicator">
+    <div class="live-dot" id="live-dot"></div>
+    <span id="live-label">Disconnected</span>
+  </div>
+  <div class="nav-links">
+    <a href="/">Schedule Viewer</a>
+    <a href="/editor">Editor</a>
+    <a href="/workqueues">Work Queues</a>
+  </div>
+</div>
+
+<div id="content">
+  <div class="empty-state">No work instructions yet. Send WorkInstruction events from the Schedule Viewer.</div>
+</div>
+
+<script>
+const WI_FIELDS = [
+  { key: 'workInstructionId', label: 'WI ID', type: 'number' },
+  { key: 'workQueueId', label: 'WQ ID', type: 'number' },
+  { key: 'fetchChe', label: 'Fetch CHE', type: 'text' },
+  { key: 'status', label: 'Status', type: 'select',
+    options: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'FETCH_COMPLETE'] },
+  { key: 'estimatedMoveTime', label: 'Est. Move Time', type: 'datetime' },
+  { key: 'estimatedCycleTimeSeconds', label: 'Cycle Time (s)', type: 'number' },
+  { key: 'estimatedRtgCycleTimeSeconds', label: 'RTG Cycle (s)', type: 'number' },
+  { key: 'putChe', label: 'Put CHE', type: 'text' },
+  { key: 'isTwinFetch', label: 'Twin Fetch', type: 'checkbox' },
+  { key: 'isTwinPut', label: 'Twin Put', type: 'checkbox' },
+  { key: 'isTwinCarry', label: 'Twin Carry', type: 'checkbox' },
+  { key: 'twinCompanionWorkInstruction', label: 'Twin Companion', type: 'number' },
+  { key: 'toPosition', label: 'To Position', type: 'text' },
+];
+
+// Map of workInstructionId -> latest field values
+let workInstructions = new Map();
+
+async function apiCall(path, body) {
+  const opts = body
+    ? { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }
+    : {};
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+function extractWorkInstructions(state) {
+  const wiMap = new Map();
+  const steps = state.steps || [];
+  for (const step of steps) {
+    const evt = step.event;
+    if (evt && evt.type === 'WorkInstructionEvent') {
+      const id = evt.workInstructionId;
+      const row = {};
+      for (const f of WI_FIELDS) {
+        if (f.type === 'checkbox') {
+          row[f.key] = evt[f.key] === true || evt[f.key] === 'true';
+        } else if (f.type === 'number') {
+          row[f.key] = evt[f.key] != null ? Number(evt[f.key]) : 0;
+        } else {
+          row[f.key] = evt[f.key] != null ? String(evt[f.key]) : '';
+        }
+      }
+      wiMap.set(id, row);
+    }
+  }
+  return wiMap;
+}
+
+function refresh(state) {
+  workInstructions = extractWorkInstructions(state);
+  render();
+}
+
+function render() {
+  const content = document.getElementById('content');
+  if (workInstructions.size === 0) {
+    content.innerHTML = '<div class="empty-state">No work instructions yet. Send WorkInstruction events from the Schedule Viewer.</div>';
+    return;
+  }
+
+  let html = '<div class="table-wrap"><table><thead><tr>';
+  for (const f of WI_FIELDS) {
+    html += '<th>' + f.label + '</th>';
+  }
+  html += '<th>Actions</th></tr></thead><tbody>';
+
+  for (const [id, row] of workInstructions) {
+    html += '<tr data-wi-id="' + id + '">';
+    for (const f of WI_FIELDS) {
+      html += '<td>' + inputFor(f, row, id) + '</td>';
+    }
+    html += '<td class="row-actions">';
+    html += '<button data-send="' + id + '">Send</button>';
+    html += '</td></tr>';
+  }
+
+  html += '</tbody></table></div>';
+  content.innerHTML = html;
+
+  // Bind change handlers
+  content.querySelectorAll('[data-field]').forEach(el => {
+    const wiId = Number(el.dataset.wiId);
+    const key = el.dataset.field;
+    const field = WI_FIELDS.find(f => f.key === key);
+    el.addEventListener('change', () => {
+      const row = workInstructions.get(wiId);
+      if (!row) return;
+      if (field.type === 'checkbox') {
+        row[key] = el.checked;
+      } else if (field.type === 'number') {
+        row[key] = el.value === '' ? 0 : Number(el.value);
+      } else {
+        row[key] = el.value;
+      }
+    });
+  });
+
+  // Bind send buttons
+  content.querySelectorAll('[data-send]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const wiId = Number(btn.dataset.send);
+      const row = workInstructions.get(wiId);
+      if (!row) return;
+
+      const data = {};
+      for (const f of WI_FIELDS) {
+        if (f.type === 'checkbox') {
+          data[f.key] = String(row[f.key]);
+        } else {
+          data[f.key] = String(row[f.key]);
+        }
+      }
+
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        await apiCall('/api/work-instruction', data);
+        const tr = btn.closest('tr');
+        tr.classList.add('send-success');
+        setTimeout(() => tr.classList.remove('send-success'), 1500);
+      } catch (err) {
+        alert('Failed to send: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send';
+      }
+    });
+  });
+}
+
+function inputFor(field, row, wiId) {
+  const attrs = 'data-field="' + field.key + '" data-wi-id="' + wiId + '"';
+  if (field.key === 'workInstructionId') {
+    return '<span class="status-' + (row.status || '') + '">' + row[field.key] + '</span>';
+  }
+  if (field.type === 'select') {
+    const opts = field.options.map(o =>
+      '<option value="' + o + '"' + (row[field.key] === o ? ' selected' : '') + '>' + o + '</option>'
+    ).join('');
+    return '<select ' + attrs + '>' + opts + '</select>';
+  }
+  if (field.type === 'checkbox') {
+    return '<input type="checkbox" ' + attrs + (row[field.key] ? ' checked' : '') + '>';
+  }
+  if (field.type === 'number') {
+    return '<input type="number" ' + attrs + ' value="' + (row[field.key] ?? '') + '">';
+  }
+  if (field.type === 'datetime') {
+    return '<input type="text" ' + attrs + ' value="' + (row[field.key] ?? '') + '" placeholder="2026-03-11T09:00:00Z">';
+  }
+  return '<input type="text" ' + attrs + ' value="' + (row[field.key] ?? '') + '">';
+}
+
+// --- SSE live connection ---
+function connectSSE() {
+  const es = new EventSource('/api/events');
+  es.onopen = () => {
+    document.getElementById('live-dot').classList.add('connected');
+    document.getElementById('live-label').textContent = 'Live';
+  };
+  es.addEventListener('state', (e) => {
+    try {
+      const state = JSON.parse(e.data);
+      refresh(state);
+    } catch (err) { /* ignore parse errors */ }
+  });
+  es.onerror = () => {
+    document.getElementById('live-dot').classList.remove('connected');
+    document.getElementById('live-label').textContent = 'Reconnecting...';
+  };
+}
+
+// Initial load
+async function init() {
+  try {
+    const state = await apiCall('/api/state');
+    refresh(state);
+  } catch (err) { /* will get state via SSE */ }
+  connectSSE();
+}
+
+init();
+</script>
+</body>
+</html>

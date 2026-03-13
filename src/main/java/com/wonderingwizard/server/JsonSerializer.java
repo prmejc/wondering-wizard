@@ -20,6 +20,7 @@ import com.wonderingwizard.sideeffects.AlarmTriggered;
 import com.wonderingwizard.sideeffects.DelayUpdated;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
+import com.wonderingwizard.sideeffects.ScheduleModified;
 import com.wonderingwizard.sideeffects.TaktActivated;
 import com.wonderingwizard.sideeffects.TaktCompleted;
 import com.wonderingwizard.sideeffects.WorkInstruction;
@@ -317,6 +318,14 @@ public final class JsonSerializer {
                 writeField(sb, "type", "DelayUpdated", true);
                 writeField(sb, "workQueueId", e.workQueueId(), false);
                 writeField(sb, "totalDelaySeconds", e.totalDelaySeconds(), false);
+                sb.append('}');
+            }
+            case ScheduleModified e -> {
+                sb.append('{');
+                writeField(sb, "type", "ScheduleModified", true);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "firstNewTaktSequence", e.firstNewTaktSequence(), false);
+                writeField(sb, "newTakts", e.newTakts(), false);
                 sb.append('}');
             }
         }

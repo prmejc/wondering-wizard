@@ -171,6 +171,8 @@ public class DemoServer {
         httpServer.createContext("/api/event-log/import", this::handleImportEventLog);
         httpServer.createContext("/api/events", this::handleSseConnection);
         httpServer.createContext("/editor", this::handleEditor);
+        httpServer.createContext("/workinstructions", this::handleWorkInstructions);
+        httpServer.createContext("/workqueues", this::handleWorkQueues);
         httpServer.start();
         sseManager.startKeepalive();
         logger.info("Demo server started on port " + port);
@@ -738,6 +740,46 @@ public class DemoServer {
         try (InputStream is = getClass().getResourceAsStream("/editor.html")) {
             if (is == null) {
                 sendResponse(exchange, 404, "Editor not found");
+                return;
+            }
+            byte[] html = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, html.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html);
+            }
+        }
+    }
+
+    private void handleWorkInstructions(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try (InputStream is = getClass().getResourceAsStream("/workinstructions.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "Work instructions page not found");
+                return;
+            }
+            byte[] html = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, html.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html);
+            }
+        }
+    }
+
+    private void handleWorkQueues(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try (InputStream is = getClass().getResourceAsStream("/workqueues.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "Work queues page not found");
                 return;
             }
             byte[] html = is.readAllBytes();

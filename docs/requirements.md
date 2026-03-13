@@ -1016,3 +1016,38 @@ mvn test -Dtest="AssetEventMapperTest,KafkaJsonEventConsumerTest,KafkaConsumerMa
 - `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — registers 3 AssetEvent consumers)
 - `src/test/java/com/wonderingwizard/kafka/AssetEventMapperTest.java`
 - `src/test/java/com/wonderingwizard/kafka/KafkaJsonEventConsumerTest.java`
+
+### F-15: Work Instructions Page
+
+**Status:** Implemented
+
+**Description:**
+Add a standalone web page at `/workinstructions` that displays all distinct work instructions with their latest state, updated in real time via SSE. Users can edit any field inline and re-send the work instruction event.
+
+**Requested Behavior:**
+
+1. Navigate to `/workinstructions` in the browser
+2. The page shows a table of all `WorkInstructionEvent` events that have been processed, deduplicated by `workInstructionId` (only the latest state is shown)
+3. Each field in the table is editable (same fields as the Export Editor: WI ID, WQ ID, Fetch CHE, Status, Est. Move Time, Cycle Time, RTG Cycle Time, Put CHE, Twin Fetch/Put/Carry, Twin Companion, To Position)
+4. Each row has a "Send" button that POSTs the (potentially edited) row to `/api/work-instruction`
+5. The table updates live as new events arrive via SSE
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Navigate to `/workinstructions` | Page loads with empty state message |
+| 2 | Send a WorkInstructionEvent from the main view | Table shows 1 row with the WI data |
+| 3 | Send another event for the same WI ID with different status | Table still shows 1 row with the updated status |
+| 4 | Send a WorkInstructionEvent for a different WI ID | Table shows 2 rows |
+| 5 | Edit a field in the table and click Send | WorkInstructionEvent is sent with edited values |
+
+**Test Execution:**
+```bash
+mvn test -Dtest="DemoServerTest"
+```
+
+**Implementation Files:**
+- `src/main/resources/workinstructions.html` (new — Work Instructions UI page)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — added `/workinstructions` route)
+- `src/test/java/com/wonderingwizard/server/DemoServerTest.java` (modified — added HTTP endpoint tests)
