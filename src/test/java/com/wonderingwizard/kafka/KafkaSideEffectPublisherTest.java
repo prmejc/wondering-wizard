@@ -5,7 +5,7 @@ import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.sideeffects.ActionActivated;
 import com.wonderingwizard.sideeffects.ActionCompleted;
-import com.wonderingwizard.sideeffects.WorkInstruction;
+import com.wonderingwizard.events.WorkInstructionEvent;
 import org.apache.avro.generic.GenericRecord;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -71,7 +71,7 @@ class KafkaSideEffectPublisherTest {
     @Test
     @DisplayName("ActionActivated enriched record should contain deviceType and workInstructions")
     void actionActivatedContainsEnrichedFields() {
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", PENDING, Instant.now(), 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );

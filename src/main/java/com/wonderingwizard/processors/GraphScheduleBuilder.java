@@ -6,7 +6,7 @@ import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.events.LoadMode;
-import com.wonderingwizard.sideeffects.WorkInstruction;
+import com.wonderingwizard.events.WorkInstructionEvent;
 
 import java.time.Instant;
 import java.util.*;
@@ -118,7 +118,7 @@ public class GraphScheduleBuilder {
 
     // ── Blueprint ──────────────────────────────────────────────────────
 
-    List<ActionTemplate> buildContainerBlueprint(WorkInstruction wi, HashMap<Long, WorkInstruction> workInstructionHashMap, int qcMudaSeconds, LoadMode loadMode) {
+    List<ActionTemplate> buildContainerBlueprint(WorkInstructionEvent wi, HashMap<Long, WorkInstructionEvent> workInstructionHashMap, int qcMudaSeconds, LoadMode loadMode) {
         int qcLiftDuration = 20;
         int rtgPlaceDuration = 20;
         int driveToUnderRtg = 30;
@@ -164,7 +164,7 @@ public class GraphScheduleBuilder {
         };
     }
 
-    private List<ActionTemplate> getDischargeLiftSinglesDropTwin(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+    private List<ActionTemplate> getDischargeLiftSinglesDropTwin(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return withComputedRtgWaitDuration(List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, "1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
@@ -195,7 +195,7 @@ public class GraphScheduleBuilder {
         ));
     }
 
-    private List<ActionTemplate> getDischargeLiftSinglesDropSinglesDifferentBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+    private List<ActionTemplate> getDischargeLiftSinglesDropSinglesDifferentBay(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return withComputedRtgWaitDuration(List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, "1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
@@ -235,7 +235,7 @@ public class GraphScheduleBuilder {
         ));
     }
 
-    private List<ActionTemplate> getDischargeLiftSinglesDropSinglesSameBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+    private List<ActionTemplate> getDischargeLiftSinglesDropSinglesSameBay(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return withComputedRtgWaitDuration(List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, "1", QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
@@ -271,7 +271,7 @@ public class GraphScheduleBuilder {
         ));
     }
 
-    private List<ActionTemplate> getDischargeLiftTwinsDropSinglesDifferentBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+    private List<ActionTemplate> getDischargeLiftTwinsDropSinglesDifferentBay(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return withComputedRtgWaitDuration(List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
@@ -308,7 +308,7 @@ public class GraphScheduleBuilder {
         ));
     }
 
-    private List<ActionTemplate> getDischargeLiftTwinsDropSinglesSameBay(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+    private List<ActionTemplate> getDischargeLiftTwinsDropSinglesSameBay(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return withComputedRtgWaitDuration(List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
@@ -339,10 +339,10 @@ public class GraphScheduleBuilder {
         ));
     }
 
-    private boolean isDifferentBay(WorkInstruction wi, HashMap<Long, WorkInstruction> workInstructionHashMap) {
+    private boolean isDifferentBay(WorkInstructionEvent wi, HashMap<Long, WorkInstructionEvent> workInstructionHashMap) {
         if (wi.twinCompanionWorkInstruction() < 1) return false;
 
-        WorkInstruction companion = workInstructionHashMap.get(wi.twinCompanionWorkInstruction());
+        WorkInstructionEvent companion = workInstructionHashMap.get(wi.twinCompanionWorkInstruction());
         if (companion == null) return false;
 
         YardLocation yardLocation = YardLocation.parse(wi.toPosition());
@@ -353,7 +353,7 @@ public class GraphScheduleBuilder {
         return !yardLocation.bay().equals(companionYardLocation.bay());
     }
 
-    private static List<ActionTemplate> getDischargeTwinTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+    private static List<ActionTemplate> getDischargeTwinTemplate(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return withComputedRtgWaitDuration(List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
@@ -380,7 +380,7 @@ public class GraphScheduleBuilder {
         ));
     }
 
-    private static List<ActionTemplate> getDischargeSingleTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+    private static List<ActionTemplate> getDischargeSingleTemplate(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration)
@@ -410,7 +410,7 @@ public class GraphScheduleBuilder {
         );
     }
 
-    private static List<ActionTemplate> getLoadSingleTemplate(WorkInstruction wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
+    private static List<ActionTemplate> getLoadSingleTemplate(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
         return List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration)
@@ -494,21 +494,21 @@ public class GraphScheduleBuilder {
 
     // ── Public entry point ─────────────────────────────────────────────
 
-    public List<Takt> createTakts(List<WorkInstruction> instructions, Instant estimatedMoveTime, int qcMudaSeconds, LoadMode loadMode) {
+    public List<Takt> createTakts(List<WorkInstructionEvent> instructions, Instant estimatedMoveTime, int qcMudaSeconds, LoadMode loadMode) {
         var takts = new HashMap<Integer, Takt>();
         // Ordered list of all placed actions across all containers, in blueprint order per container
         var allPlacedActions = new ArrayList<PlacedAction>();
 
         // Sort by estimated move time, then deduplicate twin pairs by companion ID
         var sorted = instructions.stream()
-                .sorted(Comparator.comparing(WorkInstruction::estimatedMoveTime))
+                .sorted(Comparator.comparing(WorkInstructionEvent::estimatedMoveTime))
                 .toList();
 
         var processedTwinIds = new HashSet<Long>();
         int containerIdx = 0;
 
         // Index WIs by ID for twin companion lookup
-        var wiById = new HashMap<Long, WorkInstruction>();
+        var wiById = new HashMap<Long, WorkInstructionEvent>();
         for (var wi : sorted) {
             wiById.put(wi.workInstructionId(), wi);
         }
@@ -520,7 +520,7 @@ public class GraphScheduleBuilder {
             }
 
             // Build the list of WIs for this action — twin pairs include both WIs
-            List<WorkInstruction> actionWis;
+            List<WorkInstructionEvent> actionWis;
             if (isTwinDischarge(wi, loadMode) && wi.twinCompanionWorkInstruction() != 0) {
                 var companion = wiById.get(wi.twinCompanionWorkInstruction());
                 actionWis = companion != null ? List.of(wi, companion) : List.of(wi);
@@ -544,7 +544,7 @@ public class GraphScheduleBuilder {
                 .toList();
     }
 
-    private static boolean isTwinDischarge(WorkInstruction wi, LoadMode loadMode) {
+    private static boolean isTwinDischarge(WorkInstructionEvent wi, LoadMode loadMode) {
         return loadMode == LoadMode.DSCH && wi.isTwinCarry();
     }
 
@@ -561,11 +561,11 @@ public class GraphScheduleBuilder {
         final Map<String, Integer> placementIndex;
         final List<PlacedAction> placedActions;
         final Map<ActionTemplate, Integer> blueprintOrder;
-        final List<WorkInstruction> workInstructions;
+        final List<WorkInstructionEvent> workInstructions;
         final List<Segment> remaining;
 
         PlacementContext(int containerIndex, Map<Integer, Takt> takts,
-                         List<ActionTemplate> blueprint, List<WorkInstruction> workInstructions) {
+                         List<ActionTemplate> blueprint, List<WorkInstructionEvent> workInstructions) {
             this.containerIndex = containerIndex;
             this.takts = takts;
             this.placementIndex = new HashMap<>();
@@ -656,7 +656,7 @@ public class GraphScheduleBuilder {
     private List<PlacedAction> placeContainerActions(
             List<ActionTemplate> blueprint,
             int containerIndex,
-            List<WorkInstruction> workInstructions,
+            List<WorkInstructionEvent> workInstructions,
             int qcMudaSeconds,
             Map<Integer, Takt> takts
     ) {
@@ -1006,7 +1006,7 @@ public class GraphScheduleBuilder {
 
     // ── Takt management helpers ────────────────────────────────────────
 
-    private Instant computeAnchorStartTime(int anchorTaktIndex, WorkInstruction wi, Map<Integer, Takt> takts) {
+    private Instant computeAnchorStartTime(int anchorTaktIndex, WorkInstructionEvent wi, Map<Integer, Takt> takts) {
         var prevTakt = takts.get(anchorTaktIndex - 1);
         if (prevTakt != null) {
             return prevTakt.plannedStartTime().plusSeconds(prevTakt.durationSeconds());
@@ -1060,7 +1060,7 @@ public class GraphScheduleBuilder {
      * @return list of rebuilt takts with sequences starting at startTaktSequence
      */
     public List<Takt> rebuildRemainingTakts(
-            List<WorkInstruction> remainingInstructions,
+            List<WorkInstructionEvent> remainingInstructions,
             Instant startTime,
             int startContainerIndex,
             int startTaktSequence,
@@ -1075,13 +1075,13 @@ public class GraphScheduleBuilder {
         var allPlacedActions = new ArrayList<PlacedAction>();
 
         var sorted = remainingInstructions.stream()
-                .sorted(Comparator.comparing(WorkInstruction::estimatedMoveTime))
+                .sorted(Comparator.comparing(WorkInstructionEvent::estimatedMoveTime))
                 .toList();
 
         var processedTwinIds = new HashSet<Long>();
         int containerIdx = startContainerIndex;
 
-        var wiById = new HashMap<Long, WorkInstruction>();
+        var wiById = new HashMap<Long, WorkInstructionEvent>();
         for (var wi : sorted) {
             wiById.put(wi.workInstructionId(), wi);
         }
@@ -1091,7 +1091,7 @@ public class GraphScheduleBuilder {
                 continue;
             }
 
-            List<WorkInstruction> actionWis;
+            List<WorkInstructionEvent> actionWis;
             if (isTwinDischarge(wi, loadMode) && wi.twinCompanionWorkInstruction() != 0) {
                 var companion = wiById.get(wi.twinCompanionWorkInstruction());
                 actionWis = companion != null ? List.of(wi, companion) : List.of(wi);

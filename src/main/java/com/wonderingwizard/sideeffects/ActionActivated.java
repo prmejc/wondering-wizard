@@ -3,6 +3,7 @@ package com.wonderingwizard.sideeffects;
 import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.engine.SideEffect;
+import com.wonderingwizard.events.WorkInstructionEvent;
 
 import java.time.Instant;
 import java.util.List;
@@ -32,7 +33,7 @@ public record ActionActivated(
         String actionDescription,
         Instant activatedAt,
         DeviceType deviceType,
-        List<WorkInstruction> workInstructions
+        List<WorkInstructionEvent> workInstructions
 ) implements SideEffect {
 
     /**

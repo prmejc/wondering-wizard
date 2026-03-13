@@ -6,7 +6,7 @@ import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.processors.GraphScheduleBuilder.ActionTemplate;
-import com.wonderingwizard.sideeffects.WorkInstruction;
+import com.wonderingwizard.events.WorkInstructionEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 import static com.wonderingwizard.domain.takt.DeviceActionTemplate.DEFAULT_DURATION_SECONDS;
 import static com.wonderingwizard.domain.takt.ActionType.*;
 import static com.wonderingwizard.domain.takt.DeviceType.*;
-import static com.wonderingwizard.events.WorkInstructionStatus.PENDING;
+import static com.wonderingwizard.events.WorkInstructionEventStatus.PENDING;
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("GraphScheduleBuilder Tests")
@@ -162,18 +162,18 @@ class GraphScheduleBuilderTest {
     private static GraphScheduleBuilder builderWith(List<ActionTemplate> template) {
         return new GraphScheduleBuilder(() -> DEFAULT_DURATION_SECONDS, () -> 0) {
             @Override
-            List<ActionTemplate> buildContainerBlueprint(WorkInstruction wi, HashMap<Long, WorkInstruction> workInstructionHashMap, int qcMudaSeconds, LoadMode loadMode) {
+            List<ActionTemplate> buildContainerBlueprint(WorkInstructionEvent wi, HashMap<Long, WorkInstructionEvent> workInstructionHashMap, int qcMudaSeconds, LoadMode loadMode) {
                 return template;
             }
         };
     }
 
-    private static WorkInstruction wi(long id) {
-        return new WorkInstruction(id, 1L, "CHE-001", PENDING, EMT, 120, 60, "", false, false, false, 0L, "");
+    private static WorkInstructionEvent wi(long id) {
+        return new WorkInstructionEvent(id, 1L, "CHE-001", PENDING, EMT, 120, 60, "", false, false, false, 0L, "");
     }
 
     private static List<Takt> schedule(List<ActionTemplate> template, int containerCount) {
-        var instructions = new ArrayList<WorkInstruction>();
+        var instructions = new ArrayList<WorkInstructionEvent>();
         for (int i = 0; i < containerCount; i++) {
             instructions.add(wi(i + 1));
         }

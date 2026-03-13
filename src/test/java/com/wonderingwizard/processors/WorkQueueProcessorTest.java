@@ -9,7 +9,7 @@ import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
-import com.wonderingwizard.sideeffects.WorkInstruction;
+
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -1206,11 +1206,11 @@ class WorkQueueProcessorTest {
         void singleWorkInstruction_createsOneTakt() {
             var processor = new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS);
             var instructions = List.of(
-                    new WorkInstruction(1L, 1L, "CHE-001", PENDING,
+                    new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING,
                             Instant.parse("2024-01-01T10:00:00Z"), 120, 60, "", false, false, false, 0L, ""),
-                    new WorkInstruction(2L, 1L, "CHE-002", PENDING,
+                    new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING,
                             Instant.parse("2024-01-01T10:00:00Z"), 120, 60, "", false, false, false, 0L, ""),
-                    new WorkInstruction(3L, 1L, "CHE-003", PENDING,
+                    new WorkInstructionEvent(3L, 1L, "CHE-003", PENDING,
                             Instant.parse("2024-01-01T10:00:00Z"), 120, 60, "", false, false, false, 0L, "")
             );
 
