@@ -102,6 +102,10 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 ? kafkaMessage.toPosition()
                 : "";
 
+        String containerId = kafkaMessage.containerId() != null
+                ? kafkaMessage.containerId()
+                : "";
+
         logger.fine("Mapped WorkInstruction Kafka message: workInstructionId=" + workInstructionId
                 + ", workQueueId=" + workQueueId + ", status=" + status
                 + ", fetchChe=" + fetchChe + ", putChe=" + putChe);
@@ -110,7 +114,7 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 workInstructionId, workQueueId, fetchChe, status,
                 estimatedMoveTime, estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                 putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
-                toPosition);
+                toPosition, containerId);
     }
 
     private WorkInstructionStatus mapStatus(String moveStage) {

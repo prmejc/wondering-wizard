@@ -372,6 +372,7 @@ public final class JsonSerializer {
         writeField(sb, "isTwinCarry", wi.isTwinCarry(), false);
         writeField(sb, "twinCompanionWorkInstruction", wi.twinCompanionWorkInstruction(), false);
         writeField(sb, "toPosition", wi.toPosition(), false);
+        writeField(sb, "containerId", wi.containerId(), false);
         sb.append('}');
     }
 
@@ -436,6 +437,8 @@ public final class JsonSerializer {
         writeField(sb, "deviceIndex", view.deviceIndex(), false);
         writeFieldKey(sb, "conditions", false);
         writeValue(sb, view.conditions() != null ? view.conditions() : List.of());
+        writeFieldKey(sb, "containerIds", false);
+        writeValue(sb, view.containerIds() != null ? view.containerIds() : List.of());
         sb.append('}');
     }
 

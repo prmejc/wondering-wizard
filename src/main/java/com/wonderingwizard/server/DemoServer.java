@@ -128,7 +128,8 @@ public class DemoServer {
     /** Action view within a takt. */
     public record ActionView(UUID id, DeviceType deviceType, String description,
                               ActionState status, Set<UUID> dependsOn, int containerIndex,
-                              int durationSeconds, int deviceIndex, List<ConditionView> conditions) {}
+                              int durationSeconds, int deviceIndex, List<ConditionView> conditions,
+                              List<String> containerIds) {}
 
     public DemoServer() {
         this(Settings.load());
@@ -390,10 +391,14 @@ public class DemoServer {
                         for (Takt takt : created.takts()) {
                             List<ActionView> actionViews = new ArrayList<>();
                             for (Action action : takt.actions()) {
-                                actionViews.add(new ActionView(
+                                List<String> cIds = action.workInstructions().stream()
+                                    .map(wi -> wi.containerId() != null ? wi.containerId() : "")
+                                    .filter(id -> !id.isEmpty())
+                                    .toList();
+                            actionViews.add(new ActionView(
                                         action.id(), action.deviceType(), action.description(),
                                         ActionState.PENDING, action.dependsOn(), action.containerIndex(),
-                                        action.durationSeconds(), action.deviceIndex(), List.of()));
+                                        action.durationSeconds(), action.deviceIndex(), List.of(), cIds));
                             }
                             builder.takts.add(new TaktView(takt.name(), TaktState.WAITING,
                                     takt.plannedStartTime(), takt.estimatedStartTime(), null,
@@ -570,7 +575,8 @@ public class DemoServer {
                     updatedActions.add(new ActionView(
                             action.id(), action.deviceType(), action.description(),
                             actionState, action.dependsOn(), action.containerIndex(),
-                            action.durationSeconds(), action.deviceIndex(), actionConditions));
+                            action.durationSeconds(), action.deviceIndex(), actionConditions,
+                            action.containerIds()));
                 }
 
                 // Build conditions for WAITING takts
