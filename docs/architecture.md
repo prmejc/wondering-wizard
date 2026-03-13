@@ -236,7 +236,9 @@ com.wonderingwizard
 │   └── EventDeserializer.java       # Event deserialization from JSON (for import)
 ├── Main.java                        # Entry point (starts DemoServer or runs demo)
 └── resources/
-    └── index.html                   # Schedule Viewer UI (Web Components, vanilla JS)
+    ├── index.html                   # Schedule Viewer UI (Web Components, vanilla JS)
+    ├── editor.html                  # Export Editor UI (bulk edit WorkInstruction exports)
+    └── workinstructions.html        # Work Instructions UI (live view/edit of all WIs)
 ```
 
 ## HTTP Demo Server (F-7)
@@ -262,6 +264,14 @@ A single `index.html` file using Web Components (extending `HTMLElement`) with v
 - `<schedule-view>` — Takt/action visualization with color-coded status
 - `<timeline-panel>` — Clickable event history for time travel
 - `<side-effects-log>` — Color-coded side effects log
+
+### Work Instructions UI (F-15)
+
+A standalone page at `/workinstructions` that displays all distinct work instructions with their latest state, updated live via SSE. The page:
+- Extracts `WorkInstructionEvent` events from the step history
+- Deduplicates by `workInstructionId`, keeping only the latest state
+- Displays all fields in an editable table (same field set as the Export Editor)
+- Each row has a "Send" button that POSTs to `/api/work-instruction` to re-send the (potentially edited) work instruction
 
 ## Kafka Event Consumer Infrastructure (F-11)
 

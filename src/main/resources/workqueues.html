@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wondering Wizard - Work Queues</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface2: #334155;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --border: #475569;
+    --active: #3b82f6;
+    --danger: #ef4444;
+    --completed: #22c55e;
+    --success-bg: rgba(34, 197, 94, 0.15);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .header {
+    display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+  }
+  h1 { font-size: 20px; }
+  .live-indicator {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted);
+  }
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--danger);
+  }
+  .live-dot.connected { background: var(--completed); }
+  .nav-links { margin-left: auto; display: flex; gap: 12px; }
+  .nav-links a {
+    color: var(--active); text-decoration: none; font-size: 13px;
+  }
+  .nav-links a:hover { text-decoration: underline; }
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  th {
+    background: var(--surface2); padding: 8px 6px; text-align: left;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-muted); position: sticky; top: 0; white-space: nowrap;
+  }
+  td { padding: 2px 4px; border-bottom: 1px solid var(--border); }
+  td input, td select {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 6px; border-radius: 3px; font-size: 13px; width: 100%;
+    font-family: inherit;
+  }
+  td input:focus, td select:focus { outline: none; border-color: var(--active); }
+  td input[type="number"] { width: 80px; }
+  .row-actions { white-space: nowrap; display: flex; gap: 4px; align-items: center; }
+  .row-actions button { padding: 3px 8px; font-size: 11px; }
+  button {
+    background: var(--active); color: white; border: none; padding: 8px 16px;
+    border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  button:hover { opacity: 0.9; }
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+  }
+  tbody tr:hover td { background: var(--surface2); }
+  tr.send-success td { background: var(--success-bg); transition: background 0.3s; }
+  .status-ACTIVE { color: var(--active); }
+  .status-INACTIVE { color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Work Queues</h1>
+  <div class="live-indicator">
+    <div class="live-dot" id="live-dot"></div>
+    <span id="live-label">Disconnected</span>
+  </div>
+  <div class="nav-links">
+    <a href="/">Schedule Viewer</a>
+    <a href="/editor">Editor</a>
+    <a href="/workinstructions">Work Instructions</a>
+  </div>
+</div>
+
+<div id="content">
+  <div class="empty-state">No work queues yet. Send WorkQueue events from the Schedule Viewer.</div>
+</div>
+
+<script>
+const WQ_FIELDS = [
+  { key: 'workQueueId', label: 'WQ ID', type: 'number' },
+  { key: 'status', label: 'Status', type: 'select', options: ['ACTIVE', 'INACTIVE'] },
+  { key: 'qcMudaSeconds', label: 'QC Muda (s)', type: 'number' },
+  { key: 'loadMode', label: 'Load Mode', type: 'select', options: ['LOAD', 'DSCH'] },
+];
+
+let workQueues = new Map();
+
+async function apiCall(path, body) {
+  const opts = body
+    ? { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }
+    : {};
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+function extractWorkQueues(state) {
+  const wqMap = new Map();
+  const steps = state.steps || [];
+  for (const step of steps) {
+    const evt = step.event;
+    if (evt && evt.type === 'WorkQueueMessage') {
+      const id = evt.workQueueId;
+      const row = {};
+      for (const f of WQ_FIELDS) {
+        if (f.type === 'number') {
+          row[f.key] = evt[f.key] != null ? Number(evt[f.key]) : 0;
+        } else {
+          row[f.key] = evt[f.key] != null ? String(evt[f.key]) : '';
+        }
+      }
+      wqMap.set(id, row);
+    }
+  }
+  return wqMap;
+}
+
+function refresh(state) {
+  workQueues = extractWorkQueues(state);
+  render();
+}
+
+function render() {
+  const content = document.getElementById('content');
+  if (workQueues.size === 0) {
+    content.innerHTML = '<div class="empty-state">No work queues yet. Send WorkQueue events from the Schedule Viewer.</div>';
+    return;
+  }
+
+  let html = '<div class="table-wrap"><table><thead><tr>';
+  for (const f of WQ_FIELDS) {
+    html += '<th>' + f.label + '</th>';
+  }
+  html += '<th>Actions</th></tr></thead><tbody>';
+
+  for (const [id, row] of workQueues) {
+    html += '<tr data-wq-id="' + id + '">';
+    for (const f of WQ_FIELDS) {
+      html += '<td>' + inputFor(f, row, id) + '</td>';
+    }
+    html += '<td class="row-actions">';
+    html += '<button data-send="' + id + '">Send</button>';
+    html += '</td></tr>';
+  }
+
+  html += '</tbody></table></div>';
+  content.innerHTML = html;
+
+  content.querySelectorAll('[data-field]').forEach(el => {
+    const wqId = Number(el.dataset.wqId);
+    const key = el.dataset.field;
+    const field = WQ_FIELDS.find(f => f.key === key);
+    el.addEventListener('change', () => {
+      const row = workQueues.get(wqId);
+      if (!row) return;
+      if (field.type === 'number') {
+        row[key] = el.value === '' ? 0 : Number(el.value);
+      } else {
+        row[key] = el.value;
+      }
+    });
+  });
+
+  content.querySelectorAll('[data-send]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const wqId = Number(btn.dataset.send);
+      const row = workQueues.get(wqId);
+      if (!row) return;
+
+      const data = {};
+      for (const f of WQ_FIELDS) {
+        data[f.key] = String(row[f.key]);
+      }
+
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        await apiCall('/api/work-queue', data);
+        const tr = btn.closest('tr');
+        tr.classList.add('send-success');
+        setTimeout(() => tr.classList.remove('send-success'), 1500);
+      } catch (err) {
+        alert('Failed to send: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send';
+      }
+    });
+  });
+}
+
+function inputFor(field, row, wqId) {
+  const attrs = 'data-field="' + field.key + '" data-wq-id="' + wqId + '"';
+  if (field.key === 'workQueueId') {
+    return '<span class="status-' + (row.status || '') + '">' + row[field.key] + '</span>';
+  }
+  if (field.type === 'select') {
+    const opts = field.options.map(o =>
+      '<option value="' + o + '"' + (row[field.key] === o ? ' selected' : '') + '>' + o + '</option>'
+    ).join('');
+    return '<select ' + attrs + '>' + opts + '</select>';
+  }
+  if (field.type === 'number') {
+    return '<input type="number" ' + attrs + ' value="' + (row[field.key] ?? '') + '">';
+  }
+  return '<input type="text" ' + attrs + ' value="' + (row[field.key] ?? '') + '">';
+}
+
+function connectSSE() {
+  const es = new EventSource('/api/events');
+  es.onopen = () => {
+    document.getElementById('live-dot').classList.add('connected');
+    document.getElementById('live-label').textContent = 'Live';
+  };
+  es.addEventListener('state', (e) => {
+    try {
+      const state = JSON.parse(e.data);
+      refresh(state);
+    } catch (err) { /* ignore parse errors */ }
+  });
+  es.onerror = () => {
+    document.getElementById('live-dot').classList.remove('connected');
+    document.getElementById('live-label').textContent = 'Reconnecting...';
+  };
+}
+
+async function init() {
+  try {
+    const state = await apiCall('/api/state');
+    refresh(state);
+  } catch (err) { /* will get state via SSE */ }
+  connectSSE();
+}
+
+init();
+</script>
+</body>
+</html>

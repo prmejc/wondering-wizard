@@ -14,11 +14,14 @@ import com.wonderingwizard.processors.WorkQueueProcessor;
 import com.wonderingwizard.sideeffects.ActionActivated;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
 
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.net.HttpURLConnection;
+import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -284,6 +287,79 @@ class DemoServerTest {
             state = server.getState();
             List<DemoServer.ScheduleView> schedules = (List<DemoServer.ScheduleView>) state.get("schedules");
             assertFalse(schedules.isEmpty());
+        }
+    }
+
+    @Nested
+    @DisplayName("HTTP Endpoints")
+    class HttpEndpointTests {
+
+        private DemoServer httpServer;
+
+        @BeforeEach
+        void startServer() throws Exception {
+            httpServer = new DemoServer();
+            httpServer.start(0); // random available port
+        }
+
+        @AfterEach
+        void stopServer() {
+            httpServer.stop();
+        }
+
+        private int getPort() throws Exception {
+            var field = DemoServer.class.getDeclaredField("httpServer");
+            field.setAccessible(true);
+            var server = (com.sun.net.httpserver.HttpServer) field.get(httpServer);
+            return server.getAddress().getPort();
+        }
+
+        @Test
+        @DisplayName("Should serve work instructions page at /workinstructions")
+        void servesWorkInstructionsPage() throws Exception {
+            int port = getPort();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(
+                    "http://localhost:" + port + "/workinstructions").toURL().openConnection();
+            conn.setRequestMethod("GET");
+            assertEquals(200, conn.getResponseCode());
+            assertEquals("text/html; charset=UTF-8", conn.getHeaderField("Content-Type"));
+            String body = new String(conn.getInputStream().readAllBytes());
+            assertTrue(body.contains("Work Instructions"));
+            assertTrue(body.contains("WorkInstructionEvent"));
+        }
+
+        @Test
+        @DisplayName("Should serve main page at /")
+        void servesMainPage() throws Exception {
+            int port = getPort();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(
+                    "http://localhost:" + port + "/").toURL().openConnection();
+            conn.setRequestMethod("GET");
+            assertEquals(200, conn.getResponseCode());
+        }
+
+        @Test
+        @DisplayName("Should serve editor page at /editor")
+        void servesEditorPage() throws Exception {
+            int port = getPort();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(
+                    "http://localhost:" + port + "/editor").toURL().openConnection();
+            conn.setRequestMethod("GET");
+            assertEquals(200, conn.getResponseCode());
+        }
+
+        @Test
+        @DisplayName("Should serve work queues page at /workqueues")
+        void servesWorkQueuesPage() throws Exception {
+            int port = getPort();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(
+                    "http://localhost:" + port + "/workqueues").toURL().openConnection();
+            conn.setRequestMethod("GET");
+            assertEquals(200, conn.getResponseCode());
+            assertEquals("text/html; charset=UTF-8", conn.getHeaderField("Content-Type"));
+            String body = new String(conn.getInputStream().readAllBytes());
+            assertTrue(body.contains("Work Queues"));
+            assertTrue(body.contains("WorkQueueMessage"));
         }
     }
 }
