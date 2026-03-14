@@ -189,10 +189,10 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
 
                 // ── RTG chain (backward from sync point) ──
-                ActionTemplate.of(RTG_DRIVE, 1, RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL),
-                ActionTemplate.of(RTG_WAIT_FOR_TRUCK, 1, RTG, 0),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, 1, RTG, rtgPlaceDuration),
-                ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, driveToUnderRtg + rtgPlaceDuration)
+                ActionTemplate.of(RTG_DRIVE, RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL),
+                ActionTemplate.of(RTG_WAIT_FOR_TRUCK,  RTG, 0),
+                ActionTemplate.of(RTG_LIFT_FROM_TT,  RTG, rtgPlaceDuration),
+                ActionTemplate.of(RTG_PLACE_ON_YARD,  RTG, driveToUnderRtg + rtgPlaceDuration)
         ));
     }
 
