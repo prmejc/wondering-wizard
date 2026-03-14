@@ -17,7 +17,6 @@ import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
 import com.wonderingwizard.sideeffects.ScheduleModified;
-import com.wonderingwizard.sideeffects.WorkInstruction;
 import jdk.jfr.Timespan;
 
 import java.security.Timestamp;
@@ -58,7 +57,7 @@ public class WorkQueueProcessor implements EventProcessor {
     private static final int QC_DRIVE_TIME_OFFSET_RANGE = 30;
 
     private final Map<Long, Boolean> activeSchedules = new HashMap<>();
-    private final Map<Long, List<WorkInstruction>> workInstructions = new HashMap<>();
+    private final Map<Long, List<WorkInstructionEvent>> workInstructions = new HashMap<>();
     private final Map<Long, Integer> qcMudaByQueue = new HashMap<>();
     private final Map<Long, LoadMode> loadModeByQueue = new HashMap<>();
     private final IntSupplier driveTimeSupplier;
@@ -103,40 +102,24 @@ public class WorkQueueProcessor implements EventProcessor {
         long workQueueId = event.workQueueId();
 
         // Find the old instruction before removing it (for mismatch detection)
-        WorkInstruction oldInstruction = findWorkInstruction(workInstructionId);
+        WorkInstructionEvent oldInstruction = findWorkInstruction(workInstructionId);
 
         // Remove existing instruction with same ID from all queues (handles moves and updates)
-        for (List<WorkInstruction> instructions : workInstructions.values()) {
+        for (List<WorkInstructionEvent> instructions : workInstructions.values()) {
             instructions.removeIf(wi -> wi.workInstructionId() == workInstructionId);
         }
 
         // Add the instruction to the target queue
-        WorkInstruction instruction = new WorkInstruction(
-                workInstructionId,
-                workQueueId,
-                event.fetchChe(),
-                event.status(),
-                event.estimatedMoveTime(),
-                event.estimatedCycleTimeSeconds(),
-                event.estimatedRtgCycleTimeSeconds(),
-                event.putChe(),
-                event.isTwinFetch(),
-                event.isTwinPut(),
-                event.isTwinCarry(),
-                event.twinCompanionWorkInstruction(),
-                event.toPosition()
-        );
-
         workInstructions
                 .computeIfAbsent(workQueueId, k -> new ArrayList<>())
-                .add(instruction);
+                .add(event);
 
         // Check for FETCH_COMPLETE mismatch: if twin flags changed, trigger reschedule
         if (event.status() == WorkInstructionStatus.FETCH_COMPLETE
                 && activeSchedules.containsKey(workQueueId)
                 && oldInstruction != null
-                && hasTwinFlagsMismatch(oldInstruction, instruction)) {
-            return handleReschedule(workQueueId, instruction);
+                && hasTwinFlagsMismatch(oldInstruction, event)) {
+            return handleReschedule(workQueueId, event);
         }
 
         return List.of();
@@ -145,9 +128,9 @@ public class WorkQueueProcessor implements EventProcessor {
     /**
      * Finds a work instruction by ID across all queues.
      */
-    private WorkInstruction findWorkInstruction(long workInstructionId) {
-        for (List<WorkInstruction> instructions : workInstructions.values()) {
-            for (WorkInstruction wi : instructions) {
+    private WorkInstructionEvent findWorkInstruction(long workInstructionId) {
+        for (List<WorkInstructionEvent> instructions : workInstructions.values()) {
+            for (WorkInstructionEvent wi : instructions) {
                 if (wi.workInstructionId() == workInstructionId) {
                     return wi;
                 }
@@ -160,7 +143,7 @@ public class WorkQueueProcessor implements EventProcessor {
      * Checks whether the twin flags (isTwinFetch, isTwinPut, isTwinCarry) have changed
      * between the old and new work instruction.
      */
-    private boolean hasTwinFlagsMismatch(WorkInstruction oldWi, WorkInstruction newWi) {
+    private boolean hasTwinFlagsMismatch(WorkInstructionEvent oldWi, WorkInstructionEvent newWi) {
         return oldWi.isTwinFetch() != newWi.isTwinFetch()
                 || oldWi.isTwinPut() != newWi.isTwinPut()
                 || oldWi.isTwinCarry() != newWi.isTwinCarry();
@@ -175,15 +158,15 @@ public class WorkQueueProcessor implements EventProcessor {
      * @param changedWi   the work instruction whose twin flags changed
      * @return side effects containing the ScheduleModified event
      */
-    private List<SideEffect> handleReschedule(long workQueueId, WorkInstruction changedWi) {
-        List<WorkInstruction> allInstructions = workInstructions.getOrDefault(workQueueId, List.of());
+    private List<SideEffect> handleReschedule(long workQueueId, WorkInstructionEvent changedWi) {
+        List<WorkInstructionEvent> allInstructions = workInstructions.getOrDefault(workQueueId, List.of());
         if (allInstructions.isEmpty()) {
             return List.of();
         }
 
         // Sort all instructions by estimated move time (same order as original schedule)
         var sorted = allInstructions.stream()
-                .sorted(Comparator.comparing(WorkInstruction::estimatedMoveTime))
+                .sorted(Comparator.comparing(WorkInstructionEvent::estimatedMoveTime))
                 .toList();
 
         // Find the index of the changed instruction — this and all after it need rebuilding
@@ -212,7 +195,7 @@ public class WorkQueueProcessor implements EventProcessor {
         }
 
         // The remaining instructions to rebuild: from changedIndex onward
-        List<WorkInstruction> remainingInstructions = sorted.subList(changedIndex, sorted.size());
+        List<WorkInstructionEvent> remainingInstructions = sorted.subList(changedIndex, sorted.size());
 
         // Compute the takt sequence where the new takts should start.
         // containerIdx is the 0-based container index of the changed WI.
@@ -252,10 +235,10 @@ public class WorkQueueProcessor implements EventProcessor {
 
         // Create new schedule with takts generated from work instructions
         activeSchedules.put(workQueueId, true);
-        List<WorkInstruction> instructions = workInstructions.getOrDefault(workQueueId, List.of());
+        List<WorkInstructionEvent> instructions = workInstructions.getOrDefault(workQueueId, List.of());
         // Find earliest estimated move time from work instructions
         var estimatedMoveTime = instructions.stream()
-                .map(WorkInstruction::estimatedMoveTime)
+                .map(WorkInstructionEvent::estimatedMoveTime)
                 .filter(t -> t != null)
                 .min(java.time.Instant::compareTo)
                 .orElse(null);
@@ -270,7 +253,7 @@ public class WorkQueueProcessor implements EventProcessor {
         return List.of(new ScheduleCreated(workQueueId, takts.stream().sorted( (a, b) -> a.sequence() - b.sequence()).toList(), estimatedMoveTime));
     }
 
-    public List<Takt> createTaktsFromWorkInstructionsPrimvs(List<WorkInstruction> instructions, java.time.Instant estimatedMoveTime, int qcMudaSeconds) {
+    public List<Takt> createTaktsFromWorkInstructionsPrimvs(List<WorkInstructionEvent> instructions, java.time.Instant estimatedMoveTime, int qcMudaSeconds) {
         var taktsHashMap = new HashMap<Integer, Takt>();
 
         for (int i = 0;  i < instructions.size(); i++) {
@@ -291,7 +274,7 @@ public class WorkQueueProcessor implements EventProcessor {
                 .toList();
     }
 
-    private void createTaktsForWorinstructionQc(WorkInstruction workInstruction, int qcMudaSeconds, int containerIndex, HashMap<Integer, Takt> taktsHashMap) {
+    private void createTaktsForWorinstructionQc(WorkInstructionEvent workInstruction, int qcMudaSeconds, int containerIndex, HashMap<Integer, Takt> taktsHashMap) {
 
         var qcLiftDuration = 20;
         var qcActions = List.of(new ResourceAction(ActionType.QC_LIFT, qcLiftDuration, true, ActionType.QC_LIFT.displayName()), new ResourceAction(ActionType.QC_PLACE, workInstruction.estimatedCycleTimeSeconds() - qcLiftDuration, false, ActionType.QC_LIFT.displayName()));
@@ -329,7 +312,7 @@ public class WorkQueueProcessor implements EventProcessor {
         }
     }
 
-    private void createTaktsForWorinstructionTT(WorkInstruction workInstruction, int qcMudaSeconds, int containerIndex, HashMap<Integer, Takt> taktsHashMap) {
+    private void createTaktsForWorinstructionTT(WorkInstructionEvent workInstruction, int qcMudaSeconds, int containerIndex, HashMap<Integer, Takt> taktsHashMap) {
 
         var qcLiftDuration = 20;
         var rtgPlaceDuration = 20;
@@ -427,7 +410,7 @@ public class WorkQueueProcessor implements EventProcessor {
                 .anyMatch(a -> onlyOnePerTaktNames.contains(a.description()));
     }
 
-    private void createTaktsForWorinstructionRTG(WorkInstruction workInstruction, int qcMudaSeconds, int containerIndex, HashMap<Integer, Takt> taktsHashMap) {
+    private void createTaktsForWorinstructionRTG(WorkInstructionEvent workInstruction, int qcMudaSeconds, int containerIndex, HashMap<Integer, Takt> taktsHashMap) {
         var rtgPlaceDuration = 20;
         var driveToUnderRtg = 30;
         var rtgActions = List.of(
@@ -524,8 +507,8 @@ public class WorkQueueProcessor implements EventProcessor {
         state.put("activeSchedules", new HashMap<>(activeSchedules));
 
         // Deep copy of work instructions
-        Map<Long, List<WorkInstruction>> instructionsCopy = new HashMap<>();
-        for (Map.Entry<Long, List<WorkInstruction>> entry : workInstructions.entrySet()) {
+        Map<Long, List<WorkInstructionEvent>> instructionsCopy = new HashMap<>();
+        for (Map.Entry<Long, List<WorkInstructionEvent>> entry : workInstructions.entrySet()) {
             instructionsCopy.put(entry.getKey(), new ArrayList<>(entry.getValue()));
         }
         state.put("workInstructions", instructionsCopy);
@@ -553,8 +536,8 @@ public class WorkQueueProcessor implements EventProcessor {
         workInstructions.clear();
         Object instructionsState = stateMap.get("workInstructions");
         if (instructionsState instanceof Map) {
-            Map<Long, List<WorkInstruction>> instructionsMap = (Map<Long, List<WorkInstruction>>) instructionsState;
-            for (Map.Entry<Long, List<WorkInstruction>> entry : instructionsMap.entrySet()) {
+            Map<Long, List<WorkInstructionEvent>> instructionsMap = (Map<Long, List<WorkInstructionEvent>>) instructionsState;
+            for (Map.Entry<Long, List<WorkInstructionEvent>> entry : instructionsMap.entrySet()) {
                 workInstructions.put(entry.getKey(), new ArrayList<>(entry.getValue()));
             }
         }

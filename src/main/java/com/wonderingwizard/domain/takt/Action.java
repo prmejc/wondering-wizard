@@ -1,6 +1,6 @@
 package com.wonderingwizard.domain.takt;
 
-import com.wonderingwizard.sideeffects.WorkInstruction;
+import com.wonderingwizard.events.WorkInstructionEvent;
 
 import java.util.List;
 import java.util.Set;
@@ -23,7 +23,7 @@ import java.util.UUID;
  * @param workInstructions the work instructions associated with this action
  */
 public record Action(UUID id, DeviceType deviceType, ActionType actionType, String description, Set<UUID> dependsOn,
-                     int containerIndex, int durationSeconds, int deviceIndex, List<WorkInstruction> workInstructions) {
+                     int containerIndex, int durationSeconds, int deviceIndex, List<WorkInstructionEvent> workInstructions) {
 
     /**
      * Constructor without deviceIndex and workInstructions.
@@ -64,8 +64,8 @@ public record Action(UUID id, DeviceType deviceType, ActionType actionType, Stri
     /**
      * Creates an action with a generated UUID, no dependencies, a container index, custom duration, and display suffix.
      */
-    public static Action create(DeviceType deviceType, ActionType actionType, String suffix, int containerIndex, int durationSeconds) {
-        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(suffix), Set.of(), containerIndex, durationSeconds, 0, List.of());
+    public static Action create(DeviceType deviceType, ActionType actionType, int containerSuffix, int containerIndex, int durationSeconds) {
+        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(containerSuffix), Set.of(), containerIndex, durationSeconds, 0, List.of());
     }
 
     /**
@@ -78,7 +78,7 @@ public record Action(UUID id, DeviceType deviceType, ActionType actionType, Stri
     /**
      * Creates a copy of this action with the specified work instructions.
      */
-    public Action withWorkInstructions(List<WorkInstruction> workInstructions) {
+    public Action withWorkInstructions(List<WorkInstructionEvent> workInstructions) {
         return new Action(this.id, this.deviceType, this.actionType, this.description, this.dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, workInstructions);
     }
 

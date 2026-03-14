@@ -88,11 +88,7 @@
     <div class="live-dot" id="live-dot"></div>
     <span id="live-label">Disconnected</span>
   </div>
-  <div class="nav-links">
-    <a href="/">Schedule Viewer</a>
-    <a href="/editor">Editor</a>
-    <a href="/workqueues">Work Queues</a>
-  </div>
+  <div class="nav-links" id="nav-links"></div>
 </div>
 
 <div id="content">
@@ -100,6 +96,12 @@
 </div>
 
 <script>
+const API = window.location.pathname.replace(/\/workinstructions\/?$/, '');
+document.getElementById('nav-links').innerHTML =
+  '<a href="' + (API || '/') + '">Schedule Viewer</a>' +
+  '<a href="' + API + '/editor">Editor</a>' +
+  '<a href="' + API + '/workqueues">Work Queues</a>';
+
 const WI_FIELDS = [
   { key: 'workInstructionId', label: 'WI ID', type: 'number' },
   { key: 'workQueueId', label: 'WQ ID', type: 'number' },
@@ -115,6 +117,7 @@ const WI_FIELDS = [
   { key: 'isTwinCarry', label: 'Twin Carry', type: 'checkbox' },
   { key: 'twinCompanionWorkInstruction', label: 'Twin Companion', type: 'number' },
   { key: 'toPosition', label: 'To Position', type: 'text' },
+  { key: 'containerId', label: 'Container ID', type: 'text' },
 ];
 
 // Map of workInstructionId -> latest field values
@@ -219,7 +222,7 @@ function render() {
       btn.disabled = true;
       btn.textContent = '...';
       try {
-        await apiCall('/api/work-instruction', data);
+        await apiCall(API + '/api/work-instruction', data);
         const tr = btn.closest('tr');
         tr.classList.add('send-success');
         setTimeout(() => tr.classList.remove('send-success'), 1500);
@@ -258,7 +261,7 @@ function inputFor(field, row, wiId) {
 
 // --- SSE live connection ---
 function connectSSE() {
-  const es = new EventSource('/api/events');
+  const es = new EventSource(API + '/api/events');
   es.onopen = () => {
     document.getElementById('live-dot').classList.add('connected');
     document.getElementById('live-label').textContent = 'Live';
@@ -278,7 +281,7 @@ function connectSSE() {
 // Initial load
 async function init() {
   try {
-    const state = await apiCall('/api/state');
+    const state = await apiCall(API + '/api/state');
     refresh(state);
   } catch (err) { /* will get state via SSE */ }
   connectSSE();

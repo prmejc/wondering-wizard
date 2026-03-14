@@ -23,7 +23,6 @@ import com.wonderingwizard.sideeffects.ScheduleCreated;
 import com.wonderingwizard.sideeffects.ScheduleModified;
 import com.wonderingwizard.sideeffects.TaktActivated;
 import com.wonderingwizard.sideeffects.TaktCompleted;
-import com.wonderingwizard.sideeffects.WorkInstruction;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -72,8 +71,8 @@ public final class JsonSerializer {
             writeTakt(sb, takt);
         } else if (obj instanceof Action action) {
             writeAction(sb, action);
-        } else if (obj instanceof WorkInstruction wi) {
-            writeWorkInstruction(sb, wi);
+        } else if (obj instanceof WebViewWorkInstruction wvwi) {
+            writeWebViewWorkInstruction(sb, wvwi);
         } else if (obj instanceof List<?> list) {
             writeList(sb, list);
         } else if (obj instanceof Set<?> set) {
@@ -185,6 +184,7 @@ public final class JsonSerializer {
                 writeField(sb, "isTwinCarry", e.isTwinCarry(), false);
                 writeField(sb, "twinCompanionWorkInstruction", e.twinCompanionWorkInstruction(), false);
                 writeField(sb, "toPosition", e.toPosition(), false);
+                writeField(sb, "containerId", e.containerId(), false);
                 sb.append('}');
             }
             case ActionCompletedEvent e -> {
@@ -283,7 +283,9 @@ public final class JsonSerializer {
                 }
                 if (e.workInstructions() != null && !e.workInstructions().isEmpty()) {
                     writeFieldKey(sb, "workInstructions", false);
-                    writeValue(sb, e.workInstructions());
+                    writeValue(sb, e.workInstructions().stream()
+                            .map(WebViewWorkInstruction::new)
+                            .toList());
                 }
                 sb.append('}');
             }
@@ -355,7 +357,8 @@ public final class JsonSerializer {
         sb.append('}');
     }
 
-    private static void writeWorkInstruction(StringBuilder sb, WorkInstruction wi) {
+    private static void writeWebViewWorkInstruction(StringBuilder sb, WebViewWorkInstruction wvwi) {
+        var wi = wvwi.workInstruction();
         sb.append('{');
         writeField(sb, "workInstructionId", wi.workInstructionId(), true);
         writeField(sb, "workQueueId", wi.workQueueId(), false);
@@ -364,6 +367,13 @@ public final class JsonSerializer {
         writeField(sb, "estimatedMoveTime", wi.estimatedMoveTime(), false);
         writeField(sb, "estimatedCycleTimeSeconds", wi.estimatedCycleTimeSeconds(), false);
         writeField(sb, "estimatedRtgCycleTimeSeconds", wi.estimatedRtgCycleTimeSeconds(), false);
+        writeField(sb, "putChe", wi.putChe(), false);
+        writeField(sb, "isTwinFetch", wi.isTwinFetch(), false);
+        writeField(sb, "isTwinPut", wi.isTwinPut(), false);
+        writeField(sb, "isTwinCarry", wi.isTwinCarry(), false);
+        writeField(sb, "twinCompanionWorkInstruction", wi.twinCompanionWorkInstruction(), false);
+        writeField(sb, "toPosition", wi.toPosition(), false);
+        writeField(sb, "containerId", wi.containerId(), false);
         sb.append('}');
     }
 
@@ -428,6 +438,8 @@ public final class JsonSerializer {
         writeField(sb, "deviceIndex", view.deviceIndex(), false);
         writeFieldKey(sb, "conditions", false);
         writeValue(sb, view.conditions() != null ? view.conditions() : List.of());
+        writeFieldKey(sb, "containerIds", false);
+        writeValue(sb, view.containerIds() != null ? view.containerIds() : List.of());
         sb.append('}');
     }
 

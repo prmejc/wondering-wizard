@@ -65,7 +65,8 @@ public final class EventDeserializer {
                     Boolean.parseBoolean(fields.getOrDefault("isTwinPut", "false")),
                     Boolean.parseBoolean(fields.getOrDefault("isTwinCarry", "false")),
                     Long.parseLong(fields.getOrDefault("twinCompanionWorkInstruction", "0")),
-                    fields.getOrDefault("toPosition", ""));
+                    fields.getOrDefault("toPosition", ""),
+                    fields.getOrDefault("containerId", ""));
 
             case "ActionCompletedEvent" -> new ActionCompletedEvent(
                     UUID.fromString(requireField(fields, "actionId")),

@@ -3,8 +3,8 @@ package com.wonderingwizard.kafka;
 import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.kafka.messages.EquipmentInstructionKafkaMessage;
 import com.wonderingwizard.kafka.messages.EquipmentInstructionKafkaMessage.Container;
+import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.sideeffects.ActionActivated;
-import com.wonderingwizard.sideeffects.WorkInstruction;
 import org.apache.avro.generic.GenericRecord;
 
 import java.util.ArrayList;
@@ -52,7 +52,7 @@ public class ActionActivatedToEquipmentInstructionMapper implements SideEffectMa
             return null;
         }
 
-        WorkInstruction firstWi = activated.workInstructions().getFirst();
+        WorkInstructionEvent firstWi = activated.workInstructions().getFirst();
         String recipientChe = resolveRecipientChe(activated);
 
         return new EquipmentInstructionKafkaMessage(
@@ -81,7 +81,7 @@ public class ActionActivatedToEquipmentInstructionMapper implements SideEffectMa
         if (activated.workInstructions().isEmpty()) {
             return "";
         }
-        WorkInstruction wi = activated.workInstructions().getFirst();
+        WorkInstructionEvent wi = activated.workInstructions().getFirst();
         return switch (activated.deviceType()) {
             case QC -> wi.fetchChe() != null ? wi.fetchChe() : "";
             case TT -> wi.fetchChe() != null ? wi.fetchChe() : "";
@@ -94,7 +94,7 @@ public class ActionActivatedToEquipmentInstructionMapper implements SideEffectMa
         List<Container> containers = new ArrayList<>();
         long sequence = 1;
 
-        for (WorkInstruction wi : activated.workInstructions()) {
+        for (WorkInstructionEvent wi : activated.workInstructions()) {
             containers.add(new Container(
                     sequence++,
                     "",

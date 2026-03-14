@@ -298,7 +298,9 @@ class DemoServerTest {
 
         @BeforeEach
         void startServer() throws Exception {
-            httpServer = new DemoServer();
+            var props = new java.util.Properties();
+            props.setProperty("kafka.enabled", "false");
+            httpServer = new DemoServer(Settings.of(props));
             httpServer.start(0); // random available port
         }
 

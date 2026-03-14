@@ -415,12 +415,12 @@ class ScheduleView extends HTMLElement {
       const ttContainerIndices = new Set();
       for (const takt of takts) {
         for (const action of takt.actions || []) {
+          const ci = action.containerIndex != null ? action.containerIndex : 0;
           if (action.deviceType === 'RTG') {
             const di = action.deviceIndex != null ? action.deviceIndex : 0;
-            const ci = action.containerIndex != null ? action.containerIndex : 0;
             rtgKeys.add(di + ':' + ci);
           } else if (action.deviceType === 'TT') {
-            ttContainerIndices.add(action.containerIndex != null ? action.containerIndex : 0);
+            ttContainerIndices.add(ci);
           }
         }
       }
@@ -434,9 +434,7 @@ class ScheduleView extends HTMLElement {
         { label: 'QC', color: deviceColors.QC, match: a => a.deviceType === 'QC' },
       ];
       for (const { di, ci } of rtgRows) {
-        const label = rtgRows.length > 1
-          ? 'RTG' + (numRtgDevices > 1 ? di : '') + '\u00a0C' + ci
-          : 'RTG';
+        const label = numRtgDevices > 1 ? 'RTG' + di : 'RTG';
         rows.push({
           label,
           color: deviceColors.RTG,
@@ -447,7 +445,7 @@ class ScheduleView extends HTMLElement {
       }
       for (const ci of ttContainers) {
         rows.push({
-          label: ttContainers.length > 1 ? 'TT\u00a0C' + ci : 'TT',
+          label: 'TT',
           color: deviceColors.TT,
           match: a => a.deviceType === 'TT' && (a.containerIndex != null ? a.containerIndex : 0) === ci
         });
@@ -545,7 +543,8 @@ class ScheduleView extends HTMLElement {
               conditionsIcon = ' <span class="action-conditions-btn" data-action-id="' + action.id + '" data-action-desc="' + action.description.replace(/"/g, '&quot;') + '" data-wq="' + schedule.workQueueId + '" data-conditions="' + encodeURIComponent(JSON.stringify(actionConditions)) + '" style="cursor:pointer;font-size:10px;color:' + acondColor + '" title="' + actionUnsatisfied.length + ' condition(s) blocking">&#9881;</span>';
             }
 
-            let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600">' + statusLabel + ' <span style="color:' + containerColor + '">C' + ci + '</span>' + conditionsIcon + '</div><div>' + action.description + '</div>';
+            const containerLabel = (action.containerIds && action.containerIds.length > 0) ? action.containerIds.join(', ') : 'C' + ci;
+            let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600;min-width:0">' + statusLabel + ' <span title="' + containerLabel + '" style="color:' + containerColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + containerLabel + '</span>' + conditionsIcon + '</div><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + action.description + '</div>';
             if (action.status === 'ACTIVE') {
               innerHtml += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + schedule.workQueueId + '">Complete</button>';
             }

@@ -82,11 +82,7 @@
     <div class="live-dot" id="live-dot"></div>
     <span id="live-label">Disconnected</span>
   </div>
-  <div class="nav-links">
-    <a href="/">Schedule Viewer</a>
-    <a href="/editor">Editor</a>
-    <a href="/workinstructions">Work Instructions</a>
-  </div>
+  <div class="nav-links" id="nav-links"></div>
 </div>
 
 <div id="content">
@@ -94,6 +90,12 @@
 </div>
 
 <script>
+const API = window.location.pathname.replace(/\/workqueues\/?$/, '');
+document.getElementById('nav-links').innerHTML =
+  '<a href="' + (API || '/') + '">Schedule Viewer</a>' +
+  '<a href="' + API + '/editor">Editor</a>' +
+  '<a href="' + API + '/workinstructions">Work Instructions</a>';
+
 const WQ_FIELDS = [
   { key: 'workQueueId', label: 'WQ ID', type: 'number' },
   { key: 'status', label: 'Status', type: 'select', options: ['ACTIVE', 'INACTIVE'] },
@@ -192,7 +194,7 @@ function render() {
       btn.disabled = true;
       btn.textContent = '...';
       try {
-        await apiCall('/api/work-queue', data);
+        await apiCall(API + '/api/work-queue', data);
         const tr = btn.closest('tr');
         tr.classList.add('send-success');
         setTimeout(() => tr.classList.remove('send-success'), 1500);
@@ -224,7 +226,7 @@ function inputFor(field, row, wqId) {
 }
 
 function connectSSE() {
-  const es = new EventSource('/api/events');
+  const es = new EventSource(API + '/api/events');
   es.onopen = () => {
     document.getElementById('live-dot').classList.add('connected');
     document.getElementById('live-label').textContent = 'Live';
@@ -243,7 +245,7 @@ function connectSSE() {
 
 async function init() {
   try {
-    const state = await apiCall('/api/state');
+    const state = await apiCall(API + '/api/state');
     refresh(state);
   } catch (err) { /* will get state via SSE */ }
   connectSSE();

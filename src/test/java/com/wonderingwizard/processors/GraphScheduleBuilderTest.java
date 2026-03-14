@@ -6,7 +6,7 @@ import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.processors.GraphScheduleBuilder.ActionTemplate;
-import com.wonderingwizard.sideeffects.WorkInstruction;
+import com.wonderingwizard.events.WorkInstructionEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -103,16 +103,16 @@ class GraphScheduleBuilderTest {
             ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
             ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, 30)
                     .withFirstInTakt().withOnlyOnePerTakt(),
-            ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, 20).withFirstInTakt(),
-            ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, 20).withFirstInTakt(),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, 1, TT, 20).withFirstInTakt(),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, 2, TT, 20).withFirstInTakt(),
             ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, 30),
 
-            ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, 40)
+            ActionTemplate.of(RTG_LIFT_FROM_TT, 1, RTG, 40)
                     .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
-            ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, 50),
-            ActionTemplate.of(RTG_LIFT_FROM_TT, "2", RTG, 40)
+            ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, 50),
+            ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, 40)
                     .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
-            ActionTemplate.of(RTG_PLACE_ON_YARD, "2", RTG, 50)
+            ActionTemplate.of(RTG_PLACE_ON_YARD, 2, RTG, 50)
     );
 
     /**
@@ -133,16 +133,16 @@ class GraphScheduleBuilderTest {
             ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
             ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, 30)
                     .withFirstInTakt().withOnlyOnePerTakt(),
-            ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, 20).withFirstInTakt(),
-            ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, 20).withFirstInTakt(),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, 1, TT, 20).withFirstInTakt(),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, 2, TT, 20).withFirstInTakt(),
             ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, 30),
 
-            ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, 40)
+            ActionTemplate.of(RTG_LIFT_FROM_TT, 1, RTG, 40)
                     .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
-            ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, 50),
-            ActionTemplate.of(RTG_LIFT_FROM_TT, "2", RTG, 40)
+            ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, 50),
+            ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, 40)
                     .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
-            ActionTemplate.of(RTG_PLACE_ON_YARD, "2", RTG, 50)
+            ActionTemplate.of(RTG_PLACE_ON_YARD, 2, RTG, 50)
     );
 
     /**
@@ -162,18 +162,18 @@ class GraphScheduleBuilderTest {
     private static GraphScheduleBuilder builderWith(List<ActionTemplate> template) {
         return new GraphScheduleBuilder(() -> DEFAULT_DURATION_SECONDS, () -> 0) {
             @Override
-            List<ActionTemplate> buildContainerBlueprint(WorkInstruction wi, HashMap<Long, WorkInstruction> workInstructionHashMap, int qcMudaSeconds, LoadMode loadMode) {
+            List<ActionTemplate> buildContainerBlueprint(WorkInstructionEvent wi, HashMap<Long, WorkInstructionEvent> workInstructionHashMap, int qcMudaSeconds, LoadMode loadMode) {
                 return template;
             }
         };
     }
 
-    private static WorkInstruction wi(long id) {
-        return new WorkInstruction(id, 1L, "CHE-001", PENDING, EMT, 120, 60, "", false, false, false, 0L, "");
+    private static WorkInstructionEvent wi(long id) {
+        return new WorkInstructionEvent(id, 1L, "CHE-001", PENDING, EMT, 120, 60, "", false, false, false, 0L, "");
     }
 
     private static List<Takt> schedule(List<ActionTemplate> template, int containerCount) {
-        var instructions = new ArrayList<WorkInstruction>();
+        var instructions = new ArrayList<WorkInstructionEvent>();
         for (int i = 0; i < containerCount; i++) {
             instructions.add(wi(i + 1));
         }

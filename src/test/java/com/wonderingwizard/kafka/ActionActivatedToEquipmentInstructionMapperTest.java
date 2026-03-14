@@ -5,8 +5,8 @@ import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.events.WorkInstructionStatus;
 import com.wonderingwizard.kafka.messages.EquipmentInstructionKafkaMessage;
 import com.wonderingwizard.kafka.messages.EquipmentInstructionKafkaMessage.Container;
+import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.sideeffects.ActionActivated;
-import com.wonderingwizard.sideeffects.WorkInstruction;
 import org.apache.avro.generic.GenericRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -82,7 +82,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("Should map RTG_DRIVE with single work instruction to typed record")
     void mapsSingleWorkInstruction() {
         UUID actionId = UUID.randomUUID();
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -110,12 +110,12 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @Test
     @DisplayName("Should populate container records from work instructions")
     void populatesContainerRecords() {
-        WorkInstruction wi1 = new WorkInstruction(
+        WorkInstructionEvent wi1 = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
-        WorkInstruction wi2 = new WorkInstruction(
+        WorkInstructionEvent wi2 = new WorkInstructionEvent(
                 101L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 true, true, true, 100, "Y01.01.02"
@@ -146,7 +146,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @Test
     @DisplayName("Should use putChe as recipientCHE for RTG device type")
     void usePutCheForRtg() {
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -166,7 +166,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("RTG mapper should map RTG_FETCH action")
     void rtgMapperMapsRtgFetch() {
         UUID actionId = UUID.randomUUID();
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -189,7 +189,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("RTG mapper should map RTG_PLACE_ON_YARD action")
     void rtgMapperMapsPlaceOnYard() {
         UUID actionId = UUID.randomUUID();
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -209,7 +209,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @Test
     @DisplayName("RTG mapper should return null for QC_LIFT action types")
     void returnsNullForNonRtgDriveActionType() {
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -227,7 +227,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("Should produce valid Avro GenericRecord via toAvro()")
     void producesValidAvroRecord() {
         UUID actionId = UUID.randomUUID();
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -252,7 +252,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("TT mapper should map TT_DRIVE_TO_RTG_PULL action")
     void ttMapperMapsDriveToRtgPull() {
         UUID actionId = UUID.randomUUID();
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -277,7 +277,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("TT mapper should map TT_HANDOVER_TO_QC action")
     void ttMapperMapsHandoverToQc() {
         UUID actionId = UUID.randomUUID();
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -297,7 +297,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @Test
     @DisplayName("TT mapper should return null for RTG_DRIVE action types")
     void ttMapperReturnsNullForRtgDrive() {
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -325,7 +325,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @Test
     @DisplayName("TT mapper should use fetchChe as recipientCHE for TT device type")
     void ttMapperUsesFetchCheAsRecipient() {
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -345,7 +345,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("TT mapper should produce valid Avro GenericRecord")
     void ttMapperProducesValidAvroRecord() {
         UUID actionId = UUID.randomUUID();
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -370,7 +370,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("QC mapper should map QC_LIFT action")
     void qcMapperMapsQcLift() {
         UUID actionId = UUID.randomUUID();
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -395,7 +395,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("QC mapper should map QC_PLACE action")
     void qcMapperMapsQcPlace() {
         UUID actionId = UUID.randomUUID();
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -415,7 +415,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @Test
     @DisplayName("QC mapper should return null for RTG action types")
     void qcMapperReturnsNullForRtgActions() {
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
@@ -433,7 +433,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("QC mapper should produce valid Avro GenericRecord")
     void qcMapperProducesValidAvroRecord() {
         UUID actionId = UUID.randomUUID();
-        WorkInstruction wi = new WorkInstruction(
+        WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", WorkInstructionStatus.PENDING,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
