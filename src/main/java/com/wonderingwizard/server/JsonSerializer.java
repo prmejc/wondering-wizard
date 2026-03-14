@@ -184,6 +184,7 @@ public final class JsonSerializer {
                 writeField(sb, "isTwinCarry", e.isTwinCarry(), false);
                 writeField(sb, "twinCompanionWorkInstruction", e.twinCompanionWorkInstruction(), false);
                 writeField(sb, "toPosition", e.toPosition(), false);
+                writeField(sb, "containerId", e.containerId(), false);
                 sb.append('}');
             }
             case ActionCompletedEvent e -> {

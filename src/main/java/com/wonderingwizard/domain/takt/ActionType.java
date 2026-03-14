@@ -61,14 +61,14 @@ public enum ActionType {
     }
 
     /**
-     * Returns a display name with an optional suffix (e.g., "QC Lift1" for twin operations).
+     * Returns a display name with an optional container suffix (e.g., "QC Lift1" for twin operations).
      *
-     * @param suffix the suffix to append, or null/empty for no suffix
+     * @param containerSuffix the 1-based container suffix to append, or 0 for no suffix
      */
-    public String displayName(String suffix) {
-        if (suffix == null || suffix.isEmpty()) {
+    public String displayName(int containerSuffix) {
+        if (containerSuffix <= 0) {
             return displayName;
         }
-        return displayName + suffix;
+        return displayName + containerSuffix;
     }
 }

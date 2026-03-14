@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 import static com.wonderingwizard.domain.takt.DeviceActionTemplate.DEFAULT_DURATION_SECONDS;
 import static com.wonderingwizard.domain.takt.ActionType.*;
 import static com.wonderingwizard.domain.takt.DeviceType.*;
-import static com.wonderingwizard.events.WorkInstructionEventStatus.PENDING;
+import static com.wonderingwizard.events.WorkInstructionStatus.PENDING;
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("GraphScheduleBuilder Tests")
@@ -103,16 +103,16 @@ class GraphScheduleBuilderTest {
             ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
             ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, 30)
                     .withFirstInTakt().withOnlyOnePerTakt(),
-            ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, 20).withFirstInTakt(),
-            ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, 20).withFirstInTakt(),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, 1, TT, 20).withFirstInTakt(),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, 2, TT, 20).withFirstInTakt(),
             ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, 30),
 
-            ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, 40)
+            ActionTemplate.of(RTG_LIFT_FROM_TT, 1, RTG, 40)
                     .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
-            ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, 50),
-            ActionTemplate.of(RTG_LIFT_FROM_TT, "2", RTG, 40)
+            ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, 50),
+            ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, 40)
                     .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
-            ActionTemplate.of(RTG_PLACE_ON_YARD, "2", RTG, 50)
+            ActionTemplate.of(RTG_PLACE_ON_YARD, 2, RTG, 50)
     );
 
     /**
@@ -133,16 +133,16 @@ class GraphScheduleBuilderTest {
             ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
             ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, 30)
                     .withFirstInTakt().withOnlyOnePerTakt(),
-            ActionTemplate.of(TT_HANDOVER_TO_RTG, "1", TT, 20).withFirstInTakt(),
-            ActionTemplate.of(TT_HANDOVER_TO_RTG, "2", TT, 20).withFirstInTakt(),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, 1, TT, 20).withFirstInTakt(),
+            ActionTemplate.of(TT_HANDOVER_TO_RTG, 2, TT, 20).withFirstInTakt(),
             ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, 30),
 
-            ActionTemplate.of(RTG_LIFT_FROM_TT, "1", RTG, 40)
+            ActionTemplate.of(RTG_LIFT_FROM_TT, 1, RTG, 40)
                     .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
-            ActionTemplate.of(RTG_PLACE_ON_YARD, "1", RTG, 50),
-            ActionTemplate.of(RTG_LIFT_FROM_TT, "2", RTG, 40)
+            ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, 50),
+            ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, 40)
                     .withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
-            ActionTemplate.of(RTG_PLACE_ON_YARD, "2", RTG, 50)
+            ActionTemplate.of(RTG_PLACE_ON_YARD, 2, RTG, 50)
     );
 
     /**

@@ -64,8 +64,8 @@ public record Action(UUID id, DeviceType deviceType, ActionType actionType, Stri
     /**
      * Creates an action with a generated UUID, no dependencies, a container index, custom duration, and display suffix.
      */
-    public static Action create(DeviceType deviceType, ActionType actionType, String suffix, int containerIndex, int durationSeconds) {
-        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(suffix), Set.of(), containerIndex, durationSeconds, 0, List.of());
+    public static Action create(DeviceType deviceType, ActionType actionType, int containerSuffix, int containerIndex, int durationSeconds) {
+        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(containerSuffix), Set.of(), containerIndex, durationSeconds, 0, List.of());
     }
 
     /**

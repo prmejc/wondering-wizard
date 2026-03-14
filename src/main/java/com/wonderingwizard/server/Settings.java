@@ -29,6 +29,13 @@ public class Settings {
     }
 
     /**
+     * Creates Settings from the given properties (for testing).
+     */
+    static Settings of(Properties properties) {
+        return new Settings(properties);
+    }
+
+    /**
      * Loads settings from classpath, then overrides with external file if
      * the {@code SETTINGS_FILE} environment variable is set.
      */

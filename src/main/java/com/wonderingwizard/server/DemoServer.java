@@ -174,6 +174,7 @@ public class DemoServer {
         httpServer.createContext("/editor", this::handleEditor);
         httpServer.createContext("/workinstructions", this::handleWorkInstructions);
         httpServer.createContext("/workqueues", this::handleWorkQueues);
+        httpServer.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
         httpServer.start();
         sseManager.startKeepalive();
         logger.info("Demo server started on port " + port);
@@ -307,7 +308,7 @@ public class DemoServer {
      * @param event the event to process
      * @return the list of side effects produced
      */
-    public List<SideEffect> processStep(String description, Event event) {
+    public synchronized List<SideEffect> processStep(String description, Event event) {
         // Handle SystemTimeSet: update currentTime
         if (event instanceof SystemTimeSet sts) {
             currentTime = sts.timestamp();
@@ -339,7 +340,7 @@ public class DemoServer {
      * @param targetStep the step number to revert to (1-based, 0 means undo all)
      * @return true if step-back was successful
      */
-    public boolean stepBackTo(int targetStep) {
+    public synchronized boolean stepBackTo(int targetStep) {
         if (targetStep < 0 || targetStep >= steps.size()) {
             return false;
         }
@@ -360,7 +361,7 @@ public class DemoServer {
      *
      * @return the state as a JSON-serializable map
      */
-    public Map<String, Object> getState() {
+    public synchronized Map<String, Object> getState() {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("currentTime", currentTime);
         state.put("steps", steps);
