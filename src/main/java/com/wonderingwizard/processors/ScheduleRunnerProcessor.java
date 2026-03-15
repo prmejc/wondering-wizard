@@ -18,7 +18,6 @@ import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.sideeffects.ActionActivated;
 import com.wonderingwizard.sideeffects.ActionCompleted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
-import com.wonderingwizard.sideeffects.ScheduleModified;
 import com.wonderingwizard.sideeffects.TaktActivated;
 import com.wonderingwizard.sideeffects.TaktCompleted;
 
@@ -177,9 +176,6 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         if (event instanceof ScheduleCreated scheduleCreated) {
             return handleScheduleCreated(scheduleCreated);
         }
-        if (event instanceof ScheduleModified scheduleModified) {
-            return handleScheduleModified(scheduleModified);
-        }
         if (event instanceof TimeEvent timeEvent) {
             return handleTimeEvent(timeEvent);
         }
@@ -200,76 +196,72 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         List<Takt> takts = scheduleCreated.takts();
         Instant estimatedMoveTime = scheduleCreated.estimatedMoveTime();
 
-        ScheduleState state = new ScheduleState(estimatedMoveTime, takts);
-        buildConditions(state);
-        scheduleStates.put(workQueueId, state);
+        ScheduleState oldState = scheduleStates.get(workQueueId);
 
-        return List.of();
+        ScheduleState newState = new ScheduleState(estimatedMoveTime, takts);
+        buildConditions(newState);
+        scheduleStates.put(workQueueId, newState);
+
+        List<SideEffect> sideEffects = new ArrayList<>();
+
+        if (oldState != null) {
+            sideEffects.addAll(transferState(workQueueId, oldState, newState));
+        }
+
+        sideEffects.addAll(tryActivateTakts(workQueueId, newState));
+
+        return sideEffects;
     }
 
     /**
-     * Handles a schedule modification by replacing all WAITING takts at or after the
-     * {@code firstNewTaktSequence} with the rebuilt takts from the ScheduleModified event.
-     * ACTIVE and COMPLETED takts are preserved.
+     * Transfers completed and active state from the old schedule to the new one.
+     * Matches takts by name (sequence-based) and actions by position within takt.
+     * <ul>
+     *   <li>Completed takts: all actions marked completed in new schedule</li>
+     *   <li>Active takts: completed actions transferred by position, eligible actions re-activated</li>
+     *   <li>Waiting takts: left as-is for normal activation</li>
+     * </ul>
      */
-    private List<SideEffect> handleScheduleModified(ScheduleModified modified) {
-        long workQueueId = modified.workQueueId();
-        ScheduleState state = scheduleStates.get(workQueueId);
-        if (state == null) {
-            return List.of();
+    private List<SideEffect> transferState(long workQueueId, ScheduleState oldState, ScheduleState newState) {
+        List<SideEffect> sideEffects = new ArrayList<>();
+
+        // Build old takt actions map for position-based matching
+        Map<String, List<Action>> oldTaktActions = new HashMap<>();
+        for (Takt takt : oldState.takts) {
+            oldTaktActions.put(takt.name(), takt.actions());
         }
 
-        int firstNewSeq = modified.firstNewTaktSequence();
+        for (Takt newTakt : newState.takts) {
+            String taktName = newTakt.name();
+            TaktState oldTaktState = oldState.taktStates.getOrDefault(taktName, TaktState.WAITING);
 
-        // Remove all WAITING takts at or after firstNewTaktSequence
-        List<Takt> taktsToRemove = new ArrayList<>();
-        for (Takt takt : state.takts) {
-            if (takt.sequence() >= firstNewSeq
-                    && state.taktStates.get(takt.name()) == TaktState.WAITING) {
-                taktsToRemove.add(takt);
+            if (oldTaktState == TaktState.COMPLETED) {
+                // Completed takts: mark takt and all actions as completed
+                newState.taktStates.put(taktName, TaktState.COMPLETED);
+                for (Action action : newTakt.actions()) {
+                    newState.completedActionIds.add(action.id());
+                }
+            } else if (oldTaktState == TaktState.ACTIVE) {
+                // Active takts: transfer completed action states by position,
+                // then activate eligible actions
+                newState.taktStates.put(taktName, TaktState.ACTIVE);
+                newState.actualStartTimes.put(taktName, this.currentTime);
+                sideEffects.add(new TaktActivated(workQueueId, taktName, this.currentTime));
+
+                List<Action> oldActions = oldTaktActions.getOrDefault(taktName, List.of());
+                for (int i = 0; i < newTakt.actions().size() && i < oldActions.size(); i++) {
+                    if (oldState.completedActionIds.contains(oldActions.get(i).id())) {
+                        newState.completedActionIds.add(newTakt.actions().get(i).id());
+                    }
+                }
+
+                // Activate eligible actions (those whose dependencies are met)
+                sideEffects.addAll(activateEligibleActions(workQueueId, newState, taktName));
             }
+            // WAITING takts: leave as-is, tryActivateTakts will handle them
         }
 
-        for (Takt takt : taktsToRemove) {
-            state.takts.remove(takt);
-            state.taktStates.remove(takt.name());
-            state.taktConditions.remove(takt.name());
-            state.overriddenConditions.remove(takt.name());
-            // Remove actions from lookup
-            for (Action action : takt.actions()) {
-                state.actionLookup.remove(action.id());
-                state.activeActionIds.remove(action.id());
-            }
-        }
-
-        // Add the rebuilt takts
-        for (Takt newTakt : modified.newTakts()) {
-            state.takts.add(newTakt);
-            state.taktStates.put(newTakt.name(), TaktState.WAITING);
-            state.overriddenConditions.put(newTakt.name(), new HashSet<>());
-            for (Action action : newTakt.actions()) {
-                state.actionLookup.put(action.id(), new ActionInfo(newTakt.name(), action));
-            }
-        }
-
-        // Sort takts by sequence for consistent ordering
-        state.takts.sort((a, b) -> Integer.compare(a.sequence(), b.sequence()));
-
-        // Rebuild conditions for new takts
-        for (Takt newTakt : modified.newTakts()) {
-            List<TaktCondition> conditions = new ArrayList<>();
-            if (newTakt.estimatedStartTime() != null) {
-                conditions.add(new TimeCondition(newTakt.estimatedStartTime()));
-            }
-            DependencyCondition depCondition = buildDependencyCondition(newTakt, state);
-            if (depCondition != null) {
-                conditions.add(depCondition);
-            }
-            state.taktConditions.put(newTakt.name(), conditions);
-        }
-
-        // Try to activate any of the new takts that are ready
-        return tryActivateTakts(workQueueId, state);
+        return sideEffects;
     }
 
     /**

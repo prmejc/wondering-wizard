@@ -13,6 +13,5 @@ public sealed interface SideEffect permits
         com.wonderingwizard.sideeffects.ActionCompleted,
         com.wonderingwizard.sideeffects.TaktActivated,
         com.wonderingwizard.sideeffects.TaktCompleted,
-        com.wonderingwizard.sideeffects.DelayUpdated,
-        com.wonderingwizard.sideeffects.ScheduleModified {
+        com.wonderingwizard.sideeffects.DelayUpdated {
 }
