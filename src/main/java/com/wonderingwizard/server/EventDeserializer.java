@@ -2,6 +2,7 @@ package com.wonderingwizard.server;
 
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.DigitalMapEvent;
 import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
@@ -81,6 +82,9 @@ public final class EventDeserializer {
                     Long.parseLong(requireField(fields, "workQueueId")),
                     UUID.fromString(requireField(fields, "actionId")),
                     requireField(fields, "conditionId"));
+
+            case "DigitalMapEvent" -> new DigitalMapEvent(
+                    fields.getOrDefault("mapPayload", ""));
 
             default -> throw new IllegalArgumentException("Unknown event type: " + type);
         };

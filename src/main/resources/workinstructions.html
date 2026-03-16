@@ -100,7 +100,8 @@ const API = window.location.pathname.replace(/\/workinstructions\/?$/, '');
 document.getElementById('nav-links').innerHTML =
   '<a href="' + (API || '/') + '">Schedule Viewer</a>' +
   '<a href="' + API + '/editor">Editor</a>' +
-  '<a href="' + API + '/workqueues">Work Queues</a>';
+  '<a href="' + API + '/workqueues">Work Queues</a>' +
+  '<a href="' + API + '/pathfinder">Pathfinder</a>';
 
 const WI_FIELDS = [
   { key: 'workInstructionId', label: 'WI ID', type: 'number' },

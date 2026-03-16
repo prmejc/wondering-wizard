@@ -99,6 +99,13 @@ public class GraphScheduleBuilder {
         ActionTemplate withIndependentAcrossContainers() {
             return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, true, containerSuffix);
         }
+
+        /**
+         * Creates a copy of this template with a different duration.
+         */
+        public ActionTemplate withDuration(int newDurationSeconds) {
+            return new ActionTemplate(actionType, name, deviceType, newDurationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix);
+        }
     }
 
     public record SyncRef(DeviceType deviceType, ActionType actionType) {}
@@ -133,6 +140,10 @@ public class GraphScheduleBuilder {
             case DSCH -> {
                 if (!wi.isTwinCarry()){
                     yield getDischargeSingleTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
+                }
+                // Twin companion not in this work queue — fall back to discharge twin (lift twin, put twin)
+                else if (!hasCompanionInQueue(wi, workInstructionHashMap)) {
+                    yield getDischargeTwinTemplate(wi, qcLiftDuration, driveToRtgPull, driveToUnderRtg, rtgPlaceDuration, driveToQcPull);
                 }
                 //pick as twin, drop as singles in the same bay
                 else if (wi.isTwinFetch() && !wi.isTwinPut() && !isDifferentBay(wi, workInstructionHashMap)) {
@@ -340,6 +351,11 @@ public class GraphScheduleBuilder {
         ));
     }
 
+    private static boolean hasCompanionInQueue(WorkInstructionEvent wi, HashMap<Long, WorkInstructionEvent> workInstructionHashMap) {
+        if (wi.twinCompanionWorkInstruction() < 1) return false;
+        return workInstructionHashMap.containsKey(wi.twinCompanionWorkInstruction());
+    }
+
     private boolean isDifferentBay(WorkInstructionEvent wi, HashMap<Long, WorkInstructionEvent> workInstructionHashMap) {
         if (wi.twinCompanionWorkInstruction() < 1) return false;
 
@@ -374,10 +390,10 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
 
                 // ── RTG chain (backward from sync point) ──
-                ActionTemplate.of(RTG_DRIVE, 1, RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL),
-                ActionTemplate.of(RTG_WAIT_FOR_TRUCK, 1, RTG, 0),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, 1, RTG, rtgPlaceDuration),
-                ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, driveToUnderRtg + rtgPlaceDuration)
+                ActionTemplate.of(RTG_DRIVE,  RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL),
+                ActionTemplate.of(RTG_WAIT_FOR_TRUCK,  RTG, 0),
+                ActionTemplate.of(RTG_LIFT_FROM_TT,  RTG, rtgPlaceDuration),
+                ActionTemplate.of(RTG_PLACE_ON_YARD, RTG, driveToUnderRtg + rtgPlaceDuration)
         ));
     }
 
@@ -538,6 +554,79 @@ public class GraphScheduleBuilder {
         }
 
         // Wire dependencies as a post-processing step
+        wireDependencies(allPlacedActions);
+
+        return takts.values().stream()
+                .sorted(Comparator.comparingInt(Takt::sequence))
+                .toList();
+    }
+
+    /**
+     * Creates takts with pipeline steps applied between template creation and takt fitting.
+     *
+     * <p>Pipeline steps are executed in order for each container's blueprint, allowing
+     * external processors (e.g., DigitalMapProcessor) to modify action durations before
+     * the placement algorithm fits actions into takts.
+     *
+     * @param instructions the work instructions
+     * @param estimatedMoveTime the earliest estimated move time
+     * @param qcMudaSeconds QC muda time in seconds
+     * @param loadMode the load mode (LOAD or DSCH)
+     * @param workQueueId the work queue ID (passed to pipeline steps)
+     * @param pipelineSteps the pipeline steps to apply to each container's blueprint
+     * @return the list of takts with actions fitted
+     */
+    public List<Takt> createTakts(List<WorkInstructionEvent> instructions, Instant estimatedMoveTime,
+                                   int qcMudaSeconds, LoadMode loadMode,
+                                   long workQueueId, List<SchedulePipelineStep> pipelineSteps) {
+        if (pipelineSteps == null || pipelineSteps.isEmpty()) {
+            return createTakts(instructions, estimatedMoveTime, qcMudaSeconds, loadMode);
+        }
+
+        var takts = new HashMap<Integer, Takt>();
+        var allPlacedActions = new ArrayList<PlacedAction>();
+
+        var sorted = instructions.stream()
+                .sorted(Comparator.comparing(WorkInstructionEvent::estimatedMoveTime))
+                .toList();
+
+        var processedTwinIds = new HashSet<Long>();
+        int containerIdx = 0;
+
+        var wiById = new HashMap<Long, WorkInstructionEvent>();
+        for (var wi : sorted) {
+            wiById.put(wi.workInstructionId(), wi);
+        }
+
+        for (var wi : sorted) {
+            if (isTwinDischarge(wi, loadMode) && processedTwinIds.contains(wi.workInstructionId())) {
+                continue;
+            }
+
+            List<WorkInstructionEvent> actionWis;
+            if (isTwinDischarge(wi, loadMode) && wi.twinCompanionWorkInstruction() != 0) {
+                var companion = wiById.get(wi.twinCompanionWorkInstruction());
+                actionWis = companion != null ? List.of(wi, companion) : List.of(wi);
+                processedTwinIds.add(wi.twinCompanionWorkInstruction());
+            } else {
+                actionWis = List.of(wi);
+            }
+
+            // Step 1: Build templates
+            var blueprint = buildContainerBlueprint(wi, wiById, qcMudaSeconds, loadMode);
+
+            // Step 2: Run pipeline steps to enrich templates (e.g., adjust durations from digital map)
+            for (var step : pipelineSteps) {
+                blueprint = step.enrichTemplates(workQueueId, blueprint, wi);
+            }
+
+            // Step 3: Fit into takts
+            var placed = placeContainerActions(blueprint, containerIdx, actionWis, qcMudaSeconds, takts);
+            allPlacedActions.addAll(placed);
+
+            containerIdx++;
+        }
+
         wireDependencies(allPlacedActions);
 
         return takts.values().stream()

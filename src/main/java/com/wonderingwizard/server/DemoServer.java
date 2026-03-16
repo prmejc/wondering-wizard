@@ -25,6 +25,7 @@ import com.wonderingwizard.kafka.KafkaSideEffectPublisher;
 import com.wonderingwizard.kafka.WorkInstructionEventMapper;
 import com.wonderingwizard.kafka.WorkQueueEventMapper;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.DigitalMapEvent;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.SystemTimeSet;
@@ -34,6 +35,7 @@ import com.wonderingwizard.events.WorkInstructionStatus;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.processors.DelayProcessor;
+import com.wonderingwizard.processors.DigitalMapProcessor;
 import com.wonderingwizard.processors.EventLogProcessor;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
@@ -83,6 +85,7 @@ public class DemoServer {
     private final List<Step> steps = new ArrayList<>();
     private final Instant initialTime = Instant.EPOCH;
     private Instant currentTime = initialTime;
+    private DigitalMapProcessor digitalMapProcessor;
     private HttpServer httpServer;
     private KafkaConsumerManager kafkaConsumerManager;
     private KafkaSideEffectPublisher sideEffectPublisher;
@@ -141,7 +144,11 @@ public class DemoServer {
         this.engine = new EventPropagatingEngine(baseEngine);
         engine.register(new EventLogProcessor());
         engine.register(new TimeAlarmProcessor());
-        engine.register(new WorkQueueProcessor());
+        this.digitalMapProcessor = new DigitalMapProcessor();
+        var workQueueProcessor = new WorkQueueProcessor();
+        workQueueProcessor.registerStep(digitalMapProcessor);
+        engine.register(digitalMapProcessor);
+        engine.register(workQueueProcessor);
         engine.register(new ScheduleRunnerProcessor());
         engine.register(new DelayProcessor());
     }
@@ -174,6 +181,10 @@ public class DemoServer {
         httpServer.createContext("/editor", this::handleEditor);
         httpServer.createContext("/workinstructions", this::handleWorkInstructions);
         httpServer.createContext("/workqueues", this::handleWorkQueues);
+        httpServer.createContext("/pathfinder", this::handlePathfinder);
+        httpServer.createContext("/api/pathfind", this::handlePathfind);
+        httpServer.createContext("/api/digitalmap", this::handleDigitalMap);
+        httpServer.createContext("/api/standby", this::handleStandby);
         httpServer.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
         httpServer.start();
         sseManager.startKeepalive();
@@ -181,6 +192,9 @@ public class DemoServer {
 
         // Set system time to current computer time
         sendSystemTimeSet(Instant.now().truncatedTo(ChronoUnit.SECONDS));
+
+        // Load default digital map
+        loadDefaultDigitalMap();
 
         if (settings.kafkaEnabled()) {
             startKafkaConsumers();
@@ -299,6 +313,20 @@ public class DemoServer {
     public void sendSystemTimeSet(Instant timestamp) {
         currentTime = timestamp;
         processStep("System time set", new SystemTimeSet(timestamp));
+    }
+
+    private void loadDefaultDigitalMap() {
+        try (InputStream is = getClass().getResourceAsStream("/digitalmap.json")) {
+            if (is == null) {
+                logger.info("No default digital map found (digitalmap.json not in resources)");
+                return;
+            }
+            String mapJson = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            processStep("Load default digital map", new DigitalMapEvent(mapJson));
+            logger.info("Default digital map loaded");
+        } catch (IOException e) {
+            logger.warning("Failed to load default digital map: " + e.getMessage());
+        }
     }
 
     /**
@@ -796,6 +824,158 @@ public class DemoServer {
                 os.write(html);
             }
         }
+    }
+
+    private void handlePathfinder(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try (InputStream is = getClass().getResourceAsStream("/pathfinder.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "Pathfinder page not found");
+                return;
+            }
+            byte[] html = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, html.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html);
+            }
+        }
+    }
+
+    private void handlePathfind(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        if (query == null) {
+            sendResponse(exchange, 400, "{\"error\":\"Missing query parameters 'from' and 'to'\"}");
+            return;
+        }
+
+        String from = null;
+        String to = null;
+        for (String param : query.split("&")) {
+            String[] kv = param.split("=", 2);
+            if (kv.length == 2) {
+                String key = java.net.URLDecoder.decode(kv[0], StandardCharsets.UTF_8);
+                String value = java.net.URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
+                if ("from".equals(key)) from = value;
+                if ("to".equals(key)) to = value;
+            }
+        }
+
+        if (from == null || from.isEmpty() || to == null || to.isEmpty()) {
+            sendResponse(exchange, 400, "{\"error\":\"Both 'from' and 'to' parameters are required\"}");
+            return;
+        }
+
+        if (!digitalMapProcessor.isMapLoaded()) {
+            sendResponse(exchange, 503, "{\"error\":\"No digital map loaded\"}");
+            return;
+        }
+
+        int duration = digitalMapProcessor.findPathDuration(from, to);
+
+        String json = "{\"from\":" + JsonSerializer.serialize(from)
+                + ",\"to\":" + JsonSerializer.serialize(to)
+                + ",\"durationSeconds\":" + duration
+                + ",\"found\":" + (duration >= 0) + "}";
+
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        sendResponse(exchange, 200, json);
+    }
+
+    private void handleDigitalMap(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        if (!digitalMapProcessor.isMapLoaded()) {
+            sendResponse(exchange, 503, "{\"error\":\"No digital map loaded\"}");
+            return;
+        }
+
+        var sb = new StringBuilder();
+        sb.append("{\"pois\":[");
+        var poiList = digitalMapProcessor.getPois();
+        for (int i = 0; i < poiList.size(); i++) {
+            var poi = poiList.get(i);
+            if (i > 0) sb.append(',');
+            sb.append("{\"name\":").append(JsonSerializer.serialize(poi.name()))
+              .append(",\"lat\":").append(poi.lat())
+              .append(",\"lon\":").append(poi.lon()).append('}');
+        }
+        sb.append("],\"roads\":[");
+        var roads = digitalMapProcessor.getRoadSegments();
+        for (int i = 0; i < roads.size(); i++) {
+            var seg = roads.get(i);
+            if (i > 0) sb.append(',');
+            sb.append("{\"lat1\":").append(seg.lat1())
+              .append(",\"lon1\":").append(seg.lon1())
+              .append(",\"lat2\":").append(seg.lat2())
+              .append(",\"lon2\":").append(seg.lon2())
+              .append(",\"speed\":").append(seg.speedKmh())
+              .append(",\"oneway\":").append(seg.oneway()).append('}');
+        }
+        sb.append("]}");
+
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        sendResponse(exchange, 200, sb.toString());
+    }
+
+    private void handleStandby(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        if (query == null) {
+            sendResponse(exchange, 400, "{\"error\":\"Missing query parameter 'position'\"}");
+            return;
+        }
+
+        String position = null;
+        for (String param : query.split("&")) {
+            String[] kv = param.split("=", 2);
+            if (kv.length == 2) {
+                String key = java.net.URLDecoder.decode(kv[0], StandardCharsets.UTF_8);
+                String value = java.net.URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
+                if ("position".equals(key)) position = value;
+            }
+        }
+
+        if (position == null || position.isEmpty()) {
+            sendResponse(exchange, 400, "{\"error\":\"'position' parameter is required\"}");
+            return;
+        }
+
+        if (!digitalMapProcessor.isMapLoaded()) {
+            sendResponse(exchange, 503, "{\"error\":\"No digital map loaded\"}");
+            return;
+        }
+
+        String standby = digitalMapProcessor.findStandbyLocation(position);
+
+        String json;
+        if (standby == null) {
+            json = "{\"position\":" + JsonSerializer.serialize(position)
+                    + ",\"found\":false}";
+        } else {
+            json = "{\"position\":" + JsonSerializer.serialize(position)
+                    + ",\"standby\":" + JsonSerializer.serialize(standby)
+                    + ",\"found\":true}";
+        }
+
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        sendResponse(exchange, 200, json);
     }
 
     private void handleGetState(HttpExchange exchange) throws IOException {

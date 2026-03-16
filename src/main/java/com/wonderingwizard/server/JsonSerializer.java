@@ -6,6 +6,7 @@ import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.DigitalMapEvent;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.SetTimeAlarm;
@@ -22,6 +23,7 @@ import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
 import com.wonderingwizard.sideeffects.TaktActivated;
 import com.wonderingwizard.sideeffects.TaktCompleted;
+import com.wonderingwizard.sideeffects.WorkInstructionReassigned;
 
 import java.time.Instant;
 import java.util.Collection;
@@ -209,6 +211,33 @@ public final class JsonSerializer {
                 writeField(sb, "conditionId", e.conditionId(), false);
                 sb.append('}');
             }
+            case DigitalMapEvent e -> {
+                sb.append('{');
+                writeField(sb, "type", "DigitalMapEvent", true);
+                writeField(sb, "mapPayload", e.mapPayload(), false);
+                sb.append('}');
+            }
+            case WorkInstructionReassigned e -> {
+                // Serialize as WorkInstructionEvent so the UI picks it up
+                var wi = e.workInstruction();
+                sb.append('{');
+                writeField(sb, "type", "WorkInstructionEvent", true);
+                writeField(sb, "workInstructionId", wi.workInstructionId(), false);
+                writeField(sb, "workQueueId", wi.workQueueId(), false);
+                writeField(sb, "fetchChe", wi.fetchChe(), false);
+                writeField(sb, "status", wi.status(), false);
+                writeField(sb, "estimatedMoveTime", wi.estimatedMoveTime(), false);
+                writeField(sb, "estimatedCycleTimeSeconds", wi.estimatedCycleTimeSeconds(), false);
+                writeField(sb, "estimatedRtgCycleTimeSeconds", wi.estimatedRtgCycleTimeSeconds(), false);
+                writeField(sb, "putChe", wi.putChe(), false);
+                writeField(sb, "isTwinFetch", wi.isTwinFetch(), false);
+                writeField(sb, "isTwinPut", wi.isTwinPut(), false);
+                writeField(sb, "isTwinCarry", wi.isTwinCarry(), false);
+                writeField(sb, "twinCompanionWorkInstruction", wi.twinCompanionWorkInstruction(), false);
+                writeField(sb, "toPosition", wi.toPosition(), false);
+                writeField(sb, "containerId", wi.containerId(), false);
+                sb.append('}');
+            }
             case ScheduleCreated e -> {
                 sb.append('{');
                 writeField(sb, "type", "ScheduleCreated", true);
@@ -267,6 +296,14 @@ public final class JsonSerializer {
                 sb.append('{');
                 writeField(sb, "type", "ScheduleAborted", true);
                 writeField(sb, "workQueueId", e.workQueueId(), false);
+                sb.append('}');
+            }
+            case WorkInstructionReassigned e -> {
+                var wi = e.workInstruction();
+                sb.append('{');
+                writeField(sb, "type", "WorkInstructionReassigned", true);
+                writeField(sb, "workInstructionId", wi.workInstructionId(), false);
+                writeField(sb, "workQueueId", wi.workQueueId(), false);
                 sb.append('}');
             }
             case ActionActivated e -> {

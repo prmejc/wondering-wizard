@@ -18,6 +18,7 @@ Marker interface for all events. Enables pattern matching in processors.
 - `WorkQueueMessage` - Work queue message with status and load mode for schedule management
 - `WorkInstructionEvent` - Work instruction with workQueueId association and estimatedMoveTime
 - `ActionCompletedEvent` - Notification that an action has been completed (with UUID validation)
+- `DigitalMapEvent` - Digital map update with edges and travel durations for pathfinding
 
 ### SideEffect (Sealed Interface)
 ```
@@ -193,7 +194,8 @@ com.wonderingwizard
 │   ├── LoadMode.java                # Load mode enum (LOAD, DSCH) for template selection
 │   ├── WorkInstructionEvent.java    # Work instruction event (with estimatedMoveTime)
 │   ├── WorkInstructionStatus.java   # Work instruction status enum
-│   └── ActionCompletedEvent.java    # Action completion event (with UUID)
+│   ├── ActionCompletedEvent.java    # Action completion event (with UUID)
+│   └── DigitalMapEvent.java         # Digital map event (edges with travel durations)
 ├── sideeffects/
 │   ├── AlarmSet.java                # Alarm set confirmation
 │   ├── AlarmTriggered.java          # Alarm trigger notification
@@ -207,8 +209,10 @@ com.wonderingwizard
 │   └── DelayUpdated.java            # Schedule delay change notification
 ├── processors/
 │   ├── TimeAlarmProcessor.java      # Time alarm handling
-│   ├── WorkQueueProcessor.java      # Work queue schedule and takt generation
-│   ├── GraphScheduleBuilder.java    # Graph-based takt generation (feature-flagged alternative)
+│   ├── WorkQueueProcessor.java      # Work queue schedule and takt generation (with pipeline)
+│   ├── GraphScheduleBuilder.java    # Graph-based takt generation (supports pipeline steps)
+│   ├── SchedulePipelineStep.java    # Interface for schedule creation pipeline steps
+│   ├── DigitalMapProcessor.java     # Digital map parsing + pathfinding (EventProcessor + SchedulePipelineStep)
 │   ├── ResourceAction.java          # Legacy action template for imperative takt generation
 │   ├── ScheduleRunnerProcessor.java # Schedule execution and action state management
 │   ├── DelayProcessor.java         # Schedule delay tracking and calculation
@@ -240,6 +244,38 @@ com.wonderingwizard
     ├── editor.html                  # Export Editor UI (bulk edit WorkInstruction exports)
     └── workinstructions.html        # Work Instructions UI (live view/edit of all WIs)
 ```
+
+## Schedule Creation Pipeline (F-16)
+
+The `WorkQueueProcessor` supports a pluggable pipeline for schedule creation. Pipeline steps are registered dynamically and execute between template creation and takt fitting.
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                    Schedule Creation Pipeline                       │
+│                                                                     │
+│  Step 1: GraphScheduleBuilder.buildContainerBlueprint()             │
+│    → ActionTemplate list (default durations)                        │
+│                          │                                          │
+│  Step 2: SchedulePipelineStep.enrichTemplates() [per registered]    │
+│    → ActionTemplate list (modified durations)                       │
+│    ┌─────────────────────────┐                                     │
+│    │ DigitalMapProcessor     │  pathfind(from, to) → adjust TT     │
+│    │ (future enrichers...)   │  durations based on map              │
+│    └─────────────────────────┘                                     │
+│                          │                                          │
+│  Step 3: GraphScheduleBuilder.placeContainerActions()               │
+│    → Takt list (actions fitted, extra takts if needed)              │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Key Concepts
+
+- **SchedulePipelineStep**: Interface for enrichment steps. Each step receives action templates for one container and may modify durations or other properties.
+- **DigitalMapProcessor**: Dual-role processor — receives `DigitalMapEvent` as `EventProcessor` to store map state, and enriches TT drive durations as `SchedulePipelineStep` during schedule creation.
+- **Registration**: Steps are registered via `WorkQueueProcessor.registerStep()` at startup.
+- **Passthrough**: If no steps are registered or a step has no applicable data, templates pass through unchanged.
 
 ## HTTP Demo Server (F-7)
 

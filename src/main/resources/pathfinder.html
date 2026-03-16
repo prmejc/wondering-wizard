@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Map Pathfinder</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            gap: 20px;
+        }
+    </style>
+</head>
+<body>
+    <nav style="width:100%;max-width:1200px;display:flex;gap:12px;font-size:0.9em" id="nav">
+        <a id="nav-home" href="/" style="color:#4ecca3;text-decoration:none">Schedule Viewer</a>
+        <a id="nav-wi" href="/workinstructions" style="color:#4ecca3;text-decoration:none">Work Instructions</a>
+        <a id="nav-wq" href="/workqueues" style="color:#4ecca3;text-decoration:none">Work Queues</a>
+    </nav>
+    <pathfinder-app></pathfinder-app>
+    <digital-map></digital-map>
+
+    <script>
+        const API = window.location.pathname.replace(/\/pathfinder\/?$/, '');
+        document.getElementById('nav-home').href = API || '/';
+        document.getElementById('nav-wi').href = API + '/workinstructions';
+        document.getElementById('nav-wq').href = API + '/workqueues';
+        class PathfinderApp extends HTMLElement {
+            constructor() {
+                super();
+                this.attachShadow({ mode: 'open' });
+            }
+
+            connectedCallback() {
+                this.shadowRoot.innerHTML = `
+                    <style>
+                        :host {
+                            display: block;
+                            width: 100%;
+                            max-width: 600px;
+                        }
+                        .card {
+                            background: #16213e;
+                            border-radius: 12px;
+                            padding: 32px;
+                            box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+                        }
+                        h1 {
+                            font-size: 1.4em;
+                            margin-bottom: 24px;
+                            color: #e94560;
+                            font-weight: 600;
+                        }
+                        .form-row {
+                            display: flex;
+                            gap: 12px;
+                            margin-bottom: 16px;
+                            align-items: flex-end;
+                        }
+                        .field {
+                            flex: 1;
+                            display: flex;
+                            flex-direction: column;
+                            gap: 6px;
+                        }
+                        label {
+                            font-size: 0.85em;
+                            color: #8892b0;
+                            text-transform: uppercase;
+                            letter-spacing: 0.05em;
+                        }
+                        input {
+                            padding: 10px 14px;
+                            border: 1px solid #2a3a5c;
+                            border-radius: 6px;
+                            background: #0f3460;
+                            color: #e0e0e0;
+                            font-size: 1em;
+                            font-family: 'SF Mono', 'Fira Code', monospace;
+                            outline: none;
+                            transition: border-color 0.2s;
+                        }
+                        input:focus {
+                            border-color: #e94560;
+                        }
+                        input::placeholder {
+                            color: #4a5568;
+                        }
+                        button {
+                            padding: 10px 24px;
+                            background: #e94560;
+                            color: white;
+                            border: none;
+                            border-radius: 6px;
+                            font-size: 1em;
+                            cursor: pointer;
+                            font-weight: 600;
+                            transition: background 0.2s;
+                            white-space: nowrap;
+                        }
+                        button:hover {
+                            background: #c81e45;
+                        }
+                        button:disabled {
+                            background: #4a5568;
+                            cursor: not-allowed;
+                        }
+                        .result {
+                            margin-top: 24px;
+                            padding: 20px;
+                            border-radius: 8px;
+                            display: none;
+                        }
+                        .result.visible {
+                            display: block;
+                        }
+                        .result.success {
+                            background: #1a3a2a;
+                            border: 1px solid #2d6a4f;
+                        }
+                        .result.not-found {
+                            background: #3a1a1a;
+                            border: 1px solid #6a2d2d;
+                        }
+                        .result.error {
+                            background: #3a2a1a;
+                            border: 1px solid #6a4a2d;
+                        }
+                        .result-path {
+                            font-size: 1.1em;
+                            margin-bottom: 12px;
+                            display: flex;
+                            align-items: center;
+                            gap: 10px;
+                        }
+                        .result-path .node {
+                            font-family: 'SF Mono', 'Fira Code', monospace;
+                            background: #0f3460;
+                            padding: 4px 10px;
+                            border-radius: 4px;
+                            font-weight: 600;
+                        }
+                        .result-path .arrow {
+                            color: #e94560;
+                            font-size: 1.2em;
+                        }
+                        .result-duration {
+                            font-size: 2em;
+                            font-weight: 700;
+                            color: #4ecca3;
+                            font-family: 'SF Mono', 'Fira Code', monospace;
+                        }
+                        .result-duration .unit {
+                            font-size: 0.5em;
+                            color: #8892b0;
+                            font-weight: 400;
+                        }
+                        .result-message {
+                            font-size: 1em;
+                            color: #e94560;
+                        }
+                        .swap-btn {
+                            padding: 8px;
+                            background: transparent;
+                            border: 1px solid #2a3a5c;
+                            border-radius: 6px;
+                            color: #8892b0;
+                            cursor: pointer;
+                            font-size: 1.2em;
+                            line-height: 1;
+                            transition: all 0.2s;
+                            align-self: flex-end;
+                            margin-bottom: 1px;
+                        }
+                        .swap-btn:hover {
+                            border-color: #e94560;
+                            color: #e94560;
+                        }
+                        .divider {
+                            border: none;
+                            border-top: 1px solid #2a3a5c;
+                            margin: 24px 0;
+                        }
+                        h2 {
+                            font-size: 1.1em;
+                            margin-bottom: 16px;
+                            color: #8892b0;
+                            font-weight: 500;
+                        }
+                        .result-standby {
+                            font-size: 1.6em;
+                            font-weight: 700;
+                            color: #4ecca3;
+                            font-family: 'SF Mono', 'Fira Code', monospace;
+                        }
+                    </style>
+                    <div class="card">
+                        <h1>Digital Map Pathfinder</h1>
+                        <div class="form-row">
+                            <div class="field">
+                                <label for="from">From</label>
+                                <input type="text" id="from" placeholder="e.g. 1A25" autocomplete="off" />
+                            </div>
+                            <button class="swap-btn" id="swap" title="Swap">&#8644;</button>
+                            <div class="field">
+                                <label for="to">To</label>
+                                <input type="text" id="to" placeholder="e.g. B52" autocomplete="off" />
+                            </div>
+                            <button id="find">Find</button>
+                        </div>
+                        <div class="result" id="result"></div>
+                        <hr class="divider" />
+                        <h2>Standby Location</h2>
+                        <div class="form-row">
+                            <div class="field">
+                                <label for="position">Position</label>
+                                <input type="text" id="position" placeholder="e.g. 4D11" autocomplete="off" />
+                            </div>
+                            <button id="find-standby">Find Standby</button>
+                        </div>
+                        <div class="result" id="standby-result"></div>
+                    </div>
+                `;
+
+                const fromInput = this.shadowRoot.getElementById('from');
+                const toInput = this.shadowRoot.getElementById('to');
+                const findBtn = this.shadowRoot.getElementById('find');
+                const swapBtn = this.shadowRoot.getElementById('swap');
+                const resultDiv = this.shadowRoot.getElementById('result');
+
+                const doFind = async () => {
+                    const from = fromInput.value.trim();
+                    const to = toInput.value.trim();
+                    if (!from || !to) return;
+
+                    findBtn.disabled = true;
+                    findBtn.textContent = '...';
+
+                    try {
+                        const params = new URLSearchParams({ from, to });
+                        const resp = await fetch(API + '/api/pathfind?' + params);
+                        const data = await resp.json();
+
+                        resultDiv.classList.add('visible');
+                        resultDiv.classList.remove('success', 'not-found', 'error');
+
+                        if (!resp.ok) {
+                            resultDiv.classList.add('error');
+                            resultDiv.innerHTML = '<div class="result-message">' + (data.error || 'Request failed') + '</div>';
+                        } else if (!data.found) {
+                            resultDiv.classList.add('not-found');
+                            resultDiv.innerHTML = `
+                                <div class="result-path">
+                                    <span class="node">${data.from}</span>
+                                    <span class="arrow">&#8603;</span>
+                                    <span class="node">${data.to}</span>
+                                </div>
+                                <div class="result-message">No path found</div>
+                            `;
+                        } else {
+                            resultDiv.classList.add('success');
+                            const mins = Math.floor(data.durationSeconds / 60);
+                            const secs = data.durationSeconds % 60;
+                            const formatted = mins > 0
+                                ? mins + '<span class="unit">m </span>' + secs + '<span class="unit">s</span>'
+                                : data.durationSeconds + '<span class="unit">s</span>';
+                            resultDiv.innerHTML = `
+                                <div class="result-path">
+                                    <span class="node">${data.from}</span>
+                                    <span class="arrow">&#8594;</span>
+                                    <span class="node">${data.to}</span>
+                                </div>
+                                <div class="result-duration">${formatted}</div>
+                            `;
+                        }
+                    } catch (err) {
+                        resultDiv.classList.add('visible', 'error');
+                        resultDiv.classList.remove('success', 'not-found');
+                        resultDiv.innerHTML = '<div class="result-message">Connection error: ' + err.message + '</div>';
+                    } finally {
+                        findBtn.disabled = false;
+                        findBtn.textContent = 'Find';
+                    }
+                };
+
+                findBtn.addEventListener('click', doFind);
+
+                fromInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { toInput.focus(); }
+                });
+                toInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { doFind(); }
+                });
+
+                swapBtn.addEventListener('click', () => {
+                    const tmp = fromInput.value;
+                    fromInput.value = toInput.value;
+                    toInput.value = tmp;
+                });
+
+                const posInput = this.shadowRoot.getElementById('position');
+                const findStandbyBtn = this.shadowRoot.getElementById('find-standby');
+                const standbyResult = this.shadowRoot.getElementById('standby-result');
+
+                const doFindStandby = async () => {
+                    const position = posInput.value.trim();
+                    if (!position) return;
+
+                    findStandbyBtn.disabled = true;
+                    findStandbyBtn.textContent = '...';
+
+                    try {
+                        const params = new URLSearchParams({ position });
+                        const resp = await fetch(API + '/api/standby?' + params);
+                        const data = await resp.json();
+
+                        standbyResult.classList.add('visible');
+                        standbyResult.classList.remove('success', 'not-found', 'error');
+
+                        if (!resp.ok) {
+                            standbyResult.classList.add('error');
+                            standbyResult.innerHTML = '<div class="result-message">' + (data.error || 'Request failed') + '</div>';
+                        } else if (!data.found) {
+                            standbyResult.classList.add('not-found');
+                            standbyResult.innerHTML = `
+                                <div class="result-path">
+                                    <span class="node">${data.position}</span>
+                                </div>
+                                <div class="result-message">Position not found</div>
+                            `;
+                        } else {
+                            standbyResult.classList.add('success');
+                            standbyResult.innerHTML = `
+                                <div class="result-path">
+                                    <span class="node">${data.position}</span>
+                                    <span class="arrow">&#8594;</span>
+                                    <span class="result-standby">${data.standby}</span>
+                                </div>
+                            `;
+                        }
+                    } catch (err) {
+                        standbyResult.classList.add('visible', 'error');
+                        standbyResult.classList.remove('success', 'not-found');
+                        standbyResult.innerHTML = '<div class="result-message">Connection error: ' + err.message + '</div>';
+                    } finally {
+                        findStandbyBtn.disabled = false;
+                        findStandbyBtn.textContent = 'Find Standby';
+                    }
+                };
+
+                findStandbyBtn.addEventListener('click', doFindStandby);
+                posInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') { doFindStandby(); }
+                });
+            }
+        }
+
+        customElements.define('pathfinder-app', PathfinderApp);
+
+        class DigitalMap extends HTMLElement {
+            constructor() {
+                super();
+                this.attachShadow({ mode: 'open' });
+                this._mapData = null;
+                this._transform = { x: 0, y: 0, scale: 1 };
+                this._dragging = false;
+                this._dragStart = { x: 0, y: 0 };
+                this._hoveredPoi = null;
+            }
+
+            connectedCallback() {
+                this.shadowRoot.innerHTML = `
+                    <style>
+                        :host {
+                            display: block;
+                            width: 100%;
+                            max-width: 1200px;
+                        }
+                        .card {
+                            background: #16213e;
+                            border-radius: 12px;
+                            padding: 24px;
+                            box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+                        }
+                        .header {
+                            display: flex;
+                            align-items: center;
+                            justify-content: space-between;
+                            margin-bottom: 16px;
+                        }
+                        h2 {
+                            font-size: 1.2em;
+                            color: #e94560;
+                            font-weight: 600;
+                        }
+                        .stats {
+                            font-size: 0.85em;
+                            color: #8892b0;
+                            font-family: 'SF Mono', 'Fira Code', monospace;
+                        }
+                        .canvas-wrap {
+                            position: relative;
+                            border-radius: 8px;
+                            overflow: hidden;
+                            background: #0a0f1e;
+                            border: 1px solid #2a3a5c;
+                        }
+                        canvas {
+                            display: block;
+                            width: 100%;
+                            cursor: grab;
+                        }
+                        canvas.dragging {
+                            cursor: grabbing;
+                        }
+                        .tooltip {
+                            position: absolute;
+                            pointer-events: none;
+                            background: #16213e;
+                            border: 1px solid #e94560;
+                            border-radius: 6px;
+                            padding: 6px 10px;
+                            font-family: 'SF Mono', 'Fira Code', monospace;
+                            font-size: 0.85em;
+                            color: #e0e0e0;
+                            white-space: nowrap;
+                            display: none;
+                            z-index: 10;
+                        }
+                        .tooltip.visible {
+                            display: block;
+                        }
+                        .loading {
+                            text-align: center;
+                            padding: 60px 0;
+                            color: #8892b0;
+                        }
+                        .controls {
+                            display: flex;
+                            gap: 8px;
+                        }
+                        .controls button {
+                            padding: 4px 10px;
+                            background: #0f3460;
+                            border: 1px solid #2a3a5c;
+                            border-radius: 4px;
+                            color: #8892b0;
+                            cursor: pointer;
+                            font-size: 0.85em;
+                            transition: all 0.2s;
+                        }
+                        .controls button:hover {
+                            border-color: #e94560;
+                            color: #e94560;
+                        }
+                    </style>
+                    <div class="card">
+                        <div class="header">
+                            <h2>Terminal Map</h2>
+                            <div class="controls">
+                                <button id="zoom-in">+</button>
+                                <button id="zoom-out">-</button>
+                                <button id="reset">Reset</button>
+                            </div>
+                            <div class="stats" id="stats"></div>
+                        </div>
+                        <div class="canvas-wrap">
+                            <canvas id="map" height="600"></canvas>
+                            <div class="tooltip" id="tooltip"></div>
+                        </div>
+                        <div class="loading" id="loading">Loading digital map...</div>
+                    </div>
+                `;
+
+                this._canvas = this.shadowRoot.getElementById('map');
+                this._ctx = this._canvas.getContext('2d');
+                this._tooltip = this.shadowRoot.getElementById('tooltip');
+                this._loading = this.shadowRoot.getElementById('loading');
+                this._statsEl = this.shadowRoot.getElementById('stats');
+
+                this._setupInteractions();
+                this._loadMap();
+            }
+
+            async _loadMap() {
+                try {
+                    const resp = await fetch(API + '/api/digitalmap');
+                    if (!resp.ok) {
+                        this._loading.textContent = 'No digital map loaded';
+                        return;
+                    }
+                    this._mapData = await resp.json();
+                    this._loading.style.display = 'none';
+                    this._statsEl.textContent = this._mapData.pois.length + ' POIs, ' + this._mapData.roads.length + ' road segments';
+                    this._fitToView();
+                    this._render();
+                } catch (err) {
+                    this._loading.textContent = 'Failed to load map: ' + err.message;
+                }
+            }
+
+            _fitToView() {
+                if (!this._mapData) return;
+                const { roads, pois } = this._mapData;
+
+                let minLat = Infinity, maxLat = -Infinity;
+                let minLon = Infinity, maxLon = -Infinity;
+
+                for (const r of roads) {
+                    minLat = Math.min(minLat, r.lat1, r.lat2);
+                    maxLat = Math.max(maxLat, r.lat1, r.lat2);
+                    minLon = Math.min(minLon, r.lon1, r.lon2);
+                    maxLon = Math.max(maxLon, r.lon1, r.lon2);
+                }
+                for (const p of pois) {
+                    minLat = Math.min(minLat, p.lat);
+                    maxLat = Math.max(maxLat, p.lat);
+                    minLon = Math.min(minLon, p.lon);
+                    maxLon = Math.max(maxLon, p.lon);
+                }
+
+                this._bounds = { minLat, maxLat, minLon, maxLon };
+
+                const rect = this._canvas.getBoundingClientRect();
+                const w = rect.width * devicePixelRatio;
+                const h = 600 * devicePixelRatio;
+                this._canvas.width = w;
+                this._canvas.height = h;
+
+                const padding = 40 * devicePixelRatio;
+                const dataW = maxLon - minLon;
+                const dataH = maxLat - minLat;
+
+                if (dataW === 0 || dataH === 0) return;
+
+                const scaleX = (w - 2 * padding) / dataW;
+                const scaleY = (h - 2 * padding) / dataH;
+                const scale = Math.min(scaleX, scaleY);
+
+                const cx = (minLon + maxLon) / 2;
+                const cy = (minLat + maxLat) / 2;
+
+                this._transform = {
+                    scale,
+                    x: w / 2 - cx * scale,
+                    y: h / 2 + cy * scale  // flip Y since lat increases upward
+                };
+            }
+
+            _toScreen(lat, lon) {
+                const { scale, x, y } = this._transform;
+                return {
+                    x: lon * scale + x,
+                    y: -lat * scale + y  // flip Y
+                };
+            }
+
+            _render() {
+                if (!this._mapData) return;
+                const ctx = this._ctx;
+                const w = this._canvas.width;
+                const h = this._canvas.height;
+                const dpr = devicePixelRatio;
+
+                ctx.clearRect(0, 0, w, h);
+
+                // Draw roads
+                for (const r of this._mapData.roads) {
+                    const p1 = this._toScreen(r.lat1, r.lon1);
+                    const p2 = this._toScreen(r.lat2, r.lon2);
+
+                    // Color by speed
+                    const speed = r.speed || 10;
+                    const hue = Math.min(speed / 40, 1) * 120; // 0=red, 120=green
+                    ctx.strokeStyle = 'hsla(' + hue + ', 60%, 45%, 0.6)';
+                    ctx.lineWidth = Math.max(1, 1.5 * dpr * (this._transform.scale / this._initialScale || 1));
+                    ctx.beginPath();
+                    ctx.moveTo(p1.x, p1.y);
+                    ctx.lineTo(p2.x, p2.y);
+                    ctx.stroke();
+                }
+
+                // Draw POIs
+                const poiRadius = Math.max(3, 4 * dpr);
+                const fontSize = Math.max(9, 10 * dpr);
+
+                for (const p of this._mapData.pois) {
+                    const sp = this._toScreen(p.lat, p.lon);
+                    const isHovered = this._hoveredPoi === p;
+
+                    ctx.beginPath();
+                    ctx.arc(sp.x, sp.y, isHovered ? poiRadius * 1.5 : poiRadius, 0, Math.PI * 2);
+                    ctx.fillStyle = isHovered ? '#e94560' : '#4ecca3';
+                    ctx.fill();
+
+                    // Draw label if zoomed in enough or hovered
+                    const effectiveScale = this._transform.scale / (this._initialScale || this._transform.scale);
+                    if (effectiveScale > 0.8 || isHovered) {
+                        ctx.font = (isHovered ? 'bold ' : '') + fontSize + 'px -apple-system, sans-serif';
+                        ctx.fillStyle = isHovered ? '#e94560' : '#8892b0';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(p.name, sp.x, sp.y - poiRadius - 4 * dpr);
+                    }
+                }
+
+                if (!this._initialScale) {
+                    this._initialScale = this._transform.scale;
+                }
+            }
+
+            _setupInteractions() {
+                const canvas = this._canvas;
+                const wrap = canvas.parentElement;
+
+                // Mouse wheel zoom
+                canvas.addEventListener('wheel', (e) => {
+                    e.preventDefault();
+                    const rect = canvas.getBoundingClientRect();
+                    const mx = (e.clientX - rect.left) * devicePixelRatio;
+                    const my = (e.clientY - rect.top) * devicePixelRatio;
+
+                    const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+                    this._zoomAt(mx, my, factor);
+                }, { passive: false });
+
+                // Pan
+                canvas.addEventListener('mousedown', (e) => {
+                    this._dragging = true;
+                    this._dragStart = { x: e.clientX, y: e.clientY };
+                    this._transformStart = { ...this._transform };
+                    canvas.classList.add('dragging');
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if (this._dragging) {
+                        const dx = (e.clientX - this._dragStart.x) * devicePixelRatio;
+                        const dy = (e.clientY - this._dragStart.y) * devicePixelRatio;
+                        this._transform.x = this._transformStart.x + dx;
+                        this._transform.y = this._transformStart.y + dy;
+                        this._render();
+                    } else if (this._mapData) {
+                        // Hover detection
+                        const rect = canvas.getBoundingClientRect();
+                        const mx = (e.clientX - rect.left) * devicePixelRatio;
+                        const my = (e.clientY - rect.top) * devicePixelRatio;
+                        const hitRadius = 12 * devicePixelRatio;
+                        let found = null;
+
+                        for (const p of this._mapData.pois) {
+                            const sp = this._toScreen(p.lat, p.lon);
+                            const dx = sp.x - mx;
+                            const dy = sp.y - my;
+                            if (dx * dx + dy * dy < hitRadius * hitRadius) {
+                                found = p;
+                                break;
+                            }
+                        }
+
+                        if (found !== this._hoveredPoi) {
+                            this._hoveredPoi = found;
+                            if (found) {
+                                this._tooltip.textContent = found.name;
+                                this._tooltip.classList.add('visible');
+                                this._tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+                                this._tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+                            } else {
+                                this._tooltip.classList.remove('visible');
+                            }
+                            this._render();
+                        } else if (found) {
+                            this._tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+                            this._tooltip.style.top = (e.clientY - rect.top - 10) + 'px';
+                        }
+                    }
+                });
+
+                window.addEventListener('mouseup', () => {
+                    this._dragging = false;
+                    canvas.classList.remove('dragging');
+                });
+
+                // Buttons
+                this.shadowRoot.getElementById('zoom-in').addEventListener('click', () => {
+                    const w = this._canvas.width / 2;
+                    const h = this._canvas.height / 2;
+                    this._zoomAt(w, h, 1.3);
+                });
+                this.shadowRoot.getElementById('zoom-out').addEventListener('click', () => {
+                    const w = this._canvas.width / 2;
+                    const h = this._canvas.height / 2;
+                    this._zoomAt(w, h, 1 / 1.3);
+                });
+                this.shadowRoot.getElementById('reset').addEventListener('click', () => {
+                    this._initialScale = null;
+                    this._fitToView();
+                    this._render();
+                });
+
+                // Resize
+                const ro = new ResizeObserver(() => {
+                    if (this._mapData) {
+                        const rect = this._canvas.getBoundingClientRect();
+                        this._canvas.width = rect.width * devicePixelRatio;
+                        this._canvas.height = 600 * devicePixelRatio;
+                        this._render();
+                    }
+                });
+                ro.observe(this._canvas);
+            }
+
+            _zoomAt(mx, my, factor) {
+                const t = this._transform;
+                t.x = mx - (mx - t.x) * factor;
+                t.y = my - (my - t.y) * factor;
+                t.scale *= factor;
+                this._render();
+            }
+        }
+
+        customElements.define('digital-map', DigitalMap);
+    </script>
+</body>
+</html>

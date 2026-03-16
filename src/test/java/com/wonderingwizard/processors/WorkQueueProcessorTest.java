@@ -1448,5 +1448,113 @@ class WorkQueueProcessorTest {
             assertEquals(1L, modified.workQueueId());
             assertFalse(modified.takts().isEmpty(), "Rebuilt schedule should have takts");
         }
+
+        @Test
+        @DisplayName("Cross-queue FETCH_COMPLETE should swap WIs between queues and reschedule both")
+        void crossQueueFetchComplete_swapsWisAndReschedulesBothQueues() {
+            // Setup: WQ1 has WI1, WQ2 has WI21
+            engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    "CHE-QC", false, false, false));
+            engine.processEvent(new WorkInstructionEvent(
+                    21L, 2L, "CHE-002", PENDING, EMT.plusSeconds(60), 120, 60,
+                    "CHE-QC", false, false, false));
+
+            // Activate both queues
+            engine.processEvent(
+                    new WorkQueueMessage(1L, ACTIVE, 0, com.wonderingwizard.events.LoadMode.DSCH));
+            engine.processEvent(
+                    new WorkQueueMessage(2L, ACTIVE, 0, com.wonderingwizard.events.LoadMode.DSCH));
+
+            // WI21 arrives with workQueueId=1 and FETCH_COMPLETE
+            // (it moved from WQ2 to WQ1, displacing WI1)
+            List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    21L, 1L, "CHE-002", FETCH_COMPLETE, EMT.plusSeconds(60), 120, 60,
+                    "CHE-QC", false, false, false));
+
+            // Should produce: WorkInstructionReassigned + ScheduleCreated(WQ1) + ScheduleCreated(WQ2)
+            assertEquals(3, effects.size(),
+                    "Should produce reassignment + ScheduleCreated for both queues");
+
+            // First effect: the reassigned WI
+            assertInstanceOf(com.wonderingwizard.sideeffects.WorkInstructionReassigned.class, effects.get(0));
+            var reassigned = (com.wonderingwizard.sideeffects.WorkInstructionReassigned) effects.get(0);
+            assertEquals(1L, reassigned.workInstruction().workInstructionId(),
+                    "WI1 should be reassigned");
+            assertEquals(2L, reassigned.workInstruction().workQueueId(),
+                    "WI1 should be reassigned to WQ2");
+
+            // Second and third effects: reschedules for both queues
+            assertInstanceOf(ScheduleCreated.class, effects.get(1));
+            assertInstanceOf(ScheduleCreated.class, effects.get(2));
+
+            var schedule1 = (ScheduleCreated) effects.get(1);
+            var schedule2 = (ScheduleCreated) effects.get(2);
+            assertEquals(1L, schedule1.workQueueId(), "First reschedule should be for WQ1");
+            assertEquals(2L, schedule2.workQueueId(), "Second reschedule should be for WQ2");
+
+            // WQ1 should have WI21 (the one that arrived with FETCH_COMPLETE)
+            assertFalse(schedule1.takts().isEmpty(), "WQ1 should have takts for WI21");
+
+            // WQ2 should have WI1 (displaced from WQ1)
+            assertFalse(schedule2.takts().isEmpty(), "WQ2 should have takts for displaced WI1");
+        }
+
+        @Test
+        @DisplayName("Cross-queue FETCH_COMPLETE with inactive source queue should only reschedule target")
+        void crossQueueFetchComplete_inactiveSourceQueue_onlyReschedulesTarget() {
+            // Setup: WQ1 has WI1, WQ2 has WI21
+            engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    "CHE-QC", false, false, false));
+            engine.processEvent(new WorkInstructionEvent(
+                    21L, 2L, "CHE-002", PENDING, EMT.plusSeconds(60), 120, 60,
+                    "CHE-QC", false, false, false));
+
+            // Only activate WQ1 (WQ2 stays inactive)
+            engine.processEvent(
+                    new WorkQueueMessage(1L, ACTIVE, 0, com.wonderingwizard.events.LoadMode.DSCH));
+
+            // WI21 arrives with workQueueId=1 and FETCH_COMPLETE
+            List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    21L, 1L, "CHE-002", FETCH_COMPLETE, EMT.plusSeconds(60), 120, 60,
+                    "CHE-QC", false, false, false));
+
+            // Should produce: WorkInstructionReassigned + ScheduleCreated(WQ1) only (WQ2 inactive)
+            assertEquals(2, effects.size(),
+                    "Should produce reassignment + reschedule for active target queue only");
+            assertInstanceOf(com.wonderingwizard.sideeffects.WorkInstructionReassigned.class, effects.get(0));
+            assertInstanceOf(ScheduleCreated.class, effects.get(1));
+            var schedule = (ScheduleCreated) effects.get(1);
+            assertEquals(1L, schedule.workQueueId());
+        }
+
+        @Test
+        @DisplayName("Same-queue wrong WI fetch should not trigger cross-queue swap")
+        void sameQueueWrongWiFetch_noCrossQueueSwap() {
+            // Setup: WQ1 has WI1, WI2, WI3 — all in same queue
+            engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    "CHE-QC", false, false, false));
+            engine.processEvent(new WorkInstructionEvent(
+                    2L, 1L, "CHE-002", PENDING, EMT.plusSeconds(120), 120, 60,
+                    "CHE-QC", false, false, false));
+            engine.processEvent(new WorkInstructionEvent(
+                    3L, 1L, "CHE-003", PENDING, EMT.plusSeconds(240), 120, 60,
+                    "CHE-QC", false, false, false));
+
+            engine.processEvent(
+                    new WorkQueueMessage(1L, ACTIVE, 0, com.wonderingwizard.events.LoadMode.DSCH));
+
+            // WI3 fetched out of order (expected WI1) — same queue
+            List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    3L, 1L, "CHE-003", FETCH_COMPLETE, EMT.plusSeconds(240), 120, 60,
+                    "CHE-QC", false, false, false));
+
+            // Should produce exactly 1 ScheduleCreated (same-queue swap, no cross-queue)
+            assertEquals(1, effects.size());
+            var schedule = (ScheduleCreated) effects.get(0);
+            assertEquals(1L, schedule.workQueueId());
+        }
     }
 }

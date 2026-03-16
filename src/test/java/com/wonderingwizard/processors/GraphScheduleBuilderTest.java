@@ -1091,4 +1091,62 @@ class GraphScheduleBuilderTest {
             assertInstanceOf(com.wonderingwizard.sideeffects.ScheduleCreated.class, effects.getFirst());
         }
     }
+
+    @Nested
+    @DisplayName("Twin companion not in same work queue")
+    class MissingTwinCompanion {
+
+        @Test
+        @DisplayName("Should use discharge twin template when twin companion is not in the same WQ")
+        void twinCompanionMissing_usesDischargetwinTemplate() {
+            var builder = new GraphScheduleBuilder(() -> DEFAULT_DURATION_SECONDS, () -> 0);
+
+            // WI with twin flags but companion ID 99 not in the WQ
+            var wi = new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    "CHE-QC", true, false, true, 99L, "A01-01-01");
+
+            var wiMap = new HashMap<Long, WorkInstructionEvent>();
+            wiMap.put(wi.workInstructionId(), wi);
+            // companion 99 NOT in wiMap
+
+            var blueprint = builder.buildContainerBlueprint(wi, wiMap, 0, LoadMode.DSCH);
+
+            // Should use the discharge twin template:
+            // - RTG actions have no containerSuffix (suffix=0), unlike lift-twins-drop-singles which has 1 and 2
+            var rtgSuffixes = blueprint.stream()
+                    .filter(t -> t.deviceType() == RTG)
+                    .map(ActionTemplate::containerSuffix)
+                    .collect(Collectors.toSet());
+            assertEquals(Set.of(0), rtgSuffixes,
+                    "Discharge twin template should have no suffix on RTG actions");
+        }
+
+        @Test
+        @DisplayName("Should use normal twin template when twin companion IS in the same WQ")
+        void twinCompanionPresent_usesSpecificTemplate() {
+            var builder = new GraphScheduleBuilder(() -> DEFAULT_DURATION_SECONDS, () -> 0);
+
+            // WI1 with isTwinFetch=true, isTwinPut=false (lift twins, drop singles)
+            var wi1 = new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    "CHE-QC", true, false, true, 2L, "A01-01-01");
+            var wi2 = new WorkInstructionEvent(
+                    2L, 1L, "CHE-002", PENDING, EMT.plusSeconds(60), 120, 60,
+                    "CHE-QC", true, false, true, 1L, "A01-01-01");
+
+            var wiMap = new HashMap<Long, WorkInstructionEvent>();
+            wiMap.put(wi1.workInstructionId(), wi1);
+            wiMap.put(wi2.workInstructionId(), wi2);
+
+            var blueprint = builder.buildContainerBlueprint(wi1, wiMap, 0, LoadMode.DSCH);
+
+            // Should use the lift twins drop singles template (has containerSuffix on RTG)
+            var rtgActions = blueprint.stream()
+                    .filter(t -> t.deviceType() == RTG)
+                    .toList();
+            assertTrue(rtgActions.stream().anyMatch(t -> t.containerSuffix() > 0),
+                    "Lift twins drop singles template should have container suffixes on RTG actions");
+        }
+    }
 }
