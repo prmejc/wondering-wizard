@@ -67,6 +67,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.logging.Logger;
 
 /**
@@ -91,6 +94,11 @@ public class DemoServer {
     private KafkaConsumerManager kafkaConsumerManager;
     private KafkaSideEffectPublisher sideEffectPublisher;
     private final SseConnectionManager sseManager = new SseConnectionManager();
+    private static final long BROADCAST_DEBOUNCE_MS = 1000;
+    private volatile boolean broadcastPending;
+    private volatile boolean broadcastLoopRunning;
+    private final LinkedBlockingQueue<EngineCommand<?>> eventQueue = new LinkedBlockingQueue<>();
+    private volatile boolean eventLoopRunning;
 
     /**
      * A numbered step representing a user-initiated event and its resulting side effects.
@@ -133,6 +141,70 @@ public class DemoServer {
                               ActionState status, Set<UUID> dependsOn, int containerIndex,
                               int durationSeconds, int deviceIndex, List<ConditionView> conditions,
                               List<String> containerIds) {}
+
+    /**
+     * A command submitted to the single-threaded event processing queue.
+     * HTTP handlers submit commands and block on the future until processing completes.
+     */
+    private record EngineCommand<T>(Callable<T> task, CompletableFuture<T> future) {}
+
+    /**
+     * Submits a task to the single-threaded event processing queue and waits for the result.
+     * All engine state mutations go through this queue to guarantee single-threaded processing.
+     * When the event loop is not running (e.g. in unit tests), executes the task directly.
+     */
+    <T> T submitAndWait(Callable<T> task) {
+        if (!eventLoopRunning) {
+            try {
+                return task.call();
+            } catch (RuntimeException e) {
+                throw e;
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        }
+        CompletableFuture<T> future = new CompletableFuture<>();
+        eventQueue.add(new EngineCommand<>(task, future));
+        try {
+            return future.get();
+        } catch (Exception e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof RuntimeException re) throw re;
+            throw new RuntimeException(cause != null ? cause : e);
+        }
+    }
+
+    /**
+     * Submits a void task to the event processing queue and waits for completion.
+     */
+    void submitAndWait(Runnable task) {
+        submitAndWait(() -> { task.run(); return null; });
+    }
+
+    private void startEventLoop() {
+        eventLoopRunning = true;
+        Thread.ofVirtual().name("event-processing-loop").start(() -> {
+            while (eventLoopRunning) {
+                try {
+                    EngineCommand<?> command = eventQueue.take();
+                    executeCommand(command);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        });
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> void executeCommand(EngineCommand<T> command) {
+        try {
+            T result = command.task().call();
+            command.future().complete(result);
+        } catch (Exception e) {
+            command.future().completeExceptionally(e);
+        }
+    }
 
     public DemoServer() {
         this(Settings.load());
@@ -189,12 +261,14 @@ public class DemoServer {
         httpServer.createContext("/workinstructions", this::handleWorkInstructions);
         httpServer.createContext("/workqueues", this::handleWorkQueues);
         httpServer.createContext("/pathfinder", this::handlePathfinder);
+        httpServer.createContext("/proposal2", this::handleProposal2);
         httpServer.createContext("/api/pathfind", this::handlePathfind);
         httpServer.createContext("/api/digitalmap", this::handleDigitalMap);
         httpServer.createContext("/api/standby", this::handleStandby);
         httpServer.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
         httpServer.start();
         sseManager.startKeepalive();
+        startEventLoop();
         logger.info("Demo server started on port " + port);
 
         // Set system time to current computer time
@@ -215,6 +289,7 @@ public class DemoServer {
      * Stops the HTTP server.
      */
     public void stop() {
+        eventLoopRunning = false;
         sseManager.stop();
         if (sideEffectPublisher != null) {
             sideEffectPublisher.stop();
@@ -238,7 +313,7 @@ public class DemoServer {
 
             @Override
             public List<SideEffect> processEvent(Event event) {
-                return processStep("Kafka: " + event.getClass().getSimpleName(), event);
+                return processStep("Kafka: " + event.getClass().getSimpleName(), event).sideEffects();
             }
 
             @Override
@@ -323,7 +398,6 @@ public class DemoServer {
      * @param timestamp the time to set
      */
     public void sendSystemTimeSet(Instant timestamp) {
-        currentTime = timestamp;
         processStep("System time set", new SystemTimeSet(timestamp));
     }
 
@@ -348,7 +422,17 @@ public class DemoServer {
      * @param event the event to process
      * @return the list of side effects produced
      */
-    public synchronized List<SideEffect> processStep(String description, Event event) {
+    /** Result of processing a step, returned to HTTP handlers. */
+    record StepResult(Step step, List<SideEffect> sideEffects) {}
+
+    public StepResult processStep(String description, Event event) {
+        return submitAndWait(() -> processStepInternal(description, event));
+    }
+
+    /**
+     * Core event processing logic. Must only be called from the event processing thread.
+     */
+    private StepResult processStepInternal(String description, Event event) {
         // Handle SystemTimeSet: update currentTime
         if (event instanceof SystemTimeSet sts) {
             currentTime = sts.timestamp();
@@ -357,15 +441,18 @@ public class DemoServer {
         List<SideEffect> sideEffects = engine.processEvent(event);
 
         int stepNumber = steps.size() + 1;
-        steps.add(new Step(stepNumber, description, event, sideEffects));
+        Step step = new Step(stepNumber, description, event, sideEffects);
+        steps.add(step);
 
+        // Publish on a separate thread
         if (sideEffectPublisher != null) {
-            sideEffectPublisher.publish(sideEffects);
+            List<SideEffect> toPublish = List.copyOf(sideEffects);
+            Thread.ofVirtual().name("kafka-publish").start(() -> sideEffectPublisher.publish(toPublish));
         }
 
         broadcastState();
 
-        return sideEffects;
+        return new StepResult(step, sideEffects);
     }
 
     /**
@@ -373,10 +460,12 @@ public class DemoServer {
      * The snapshot is associated with the current step count so that
      * step-back can restore it and replay events from that point.
      */
-    public synchronized void createSnapshot() {
-        engine.snapshot();
-        snapshotStepIndex = steps.size();
-        logger.info("Snapshot created at step " + snapshotStepIndex);
+    public void createSnapshot() {
+        submitAndWait(() -> {
+            engine.snapshot();
+            snapshotStepIndex = steps.size();
+            logger.info("Snapshot created at step " + snapshotStepIndex);
+        });
     }
 
     /**
@@ -396,8 +485,39 @@ public class DemoServer {
     /** Step index at which the most recent snapshot was taken (-1 = none). */
     private int snapshotStepIndex = -1;
 
+    /**
+     * Signals that a state broadcast is needed. Called from the event processing thread.
+     * The actual serialization and broadcast happen on a separate debounce thread.
+     */
     private void broadcastState() {
-        sseManager.broadcast("state", JsonSerializer.serialize(getState()));
+        broadcastPending = true;
+        if (!broadcastLoopRunning) {
+            broadcastLoopRunning = true;
+            Thread.ofVirtual().name("sse-debounce").start(this::broadcastLoop);
+        }
+    }
+
+    private void broadcastLoop() {
+        try {
+            while (broadcastPending) {
+                broadcastPending = false;
+                try {
+                    Thread.sleep(BROADCAST_DEBOUNCE_MS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                // Serialize state on the event processing thread, then broadcast on this thread
+                String json = submitAndWait(() -> JsonSerializer.serialize(buildState()));
+                sseManager.broadcast("state", json);
+            }
+        } finally {
+            broadcastLoopRunning = false;
+            // If a broadcast was requested while we were shutting down, restart
+            if (broadcastPending) {
+                broadcastState();
+            }
+        }
     }
 
     /**
@@ -407,44 +527,46 @@ public class DemoServer {
      * @param targetStep the step number to revert to (1-based, 0 means undo all)
      * @return true if step-back was successful
      */
-    public synchronized boolean stepBackTo(int targetStep) {
-        if (targetStep < 0 || targetStep >= steps.size()) {
-            return false;
-        }
-        if (snapshotStepIndex < 0 || targetStep < snapshotStepIndex) {
-            logger.warning("Cannot step back to step " + targetStep
-                    + ": no snapshot or target is before snapshot at step " + snapshotStepIndex);
-            return false;
-        }
-
-        // Save the events we need to replay (from snapshot to target)
-        List<Step> stepsToReplay = new ArrayList<>();
-        for (int i = snapshotStepIndex; i < targetStep; i++) {
-            stepsToReplay.add(steps.get(i));
-        }
-
-        // Restore the snapshot
-        engine.stepBack();
-
-        // Clear all steps after snapshot
-        while (steps.size() > snapshotStepIndex) {
-            steps.remove(steps.size() - 1);
-        }
-
-        // Replay events from snapshot up to target (without creating new snapshots)
-        for (Step step : stepsToReplay) {
-            if (step.event() instanceof SystemTimeSet sts) {
-                currentTime = sts.timestamp();
+    public boolean stepBackTo(int targetStep) {
+        return submitAndWait(() -> {
+            if (targetStep < 0 || targetStep >= steps.size()) {
+                return false;
             }
-            List<SideEffect> sideEffects = engine.processEvent(step.event());
-            steps.add(new Step(steps.size() + 1, step.description(), step.event(), sideEffects));
-        }
+            if (snapshotStepIndex < 0 || targetStep < snapshotStepIndex) {
+                logger.warning("Cannot step back to step " + targetStep
+                        + ": no snapshot or target is before snapshot at step " + snapshotStepIndex);
+                return false;
+            }
 
-        // Re-take the snapshot at current position so further step-backs work
-        engine.snapshot();
-        snapshotStepIndex = steps.size();
+            // Save the events we need to replay (from snapshot to target)
+            List<Step> stepsToReplay = new ArrayList<>();
+            for (int i = snapshotStepIndex; i < targetStep; i++) {
+                stepsToReplay.add(steps.get(i));
+            }
 
-        return true;
+            // Restore the snapshot
+            engine.stepBack();
+
+            // Clear all steps after snapshot
+            while (steps.size() > snapshotStepIndex) {
+                steps.remove(steps.size() - 1);
+            }
+
+            // Replay events from snapshot up to target (without creating new snapshots)
+            for (Step step : stepsToReplay) {
+                if (step.event() instanceof SystemTimeSet sts) {
+                    currentTime = sts.timestamp();
+                }
+                List<SideEffect> sideEffects = engine.processEvent(step.event());
+                steps.add(new Step(steps.size() + 1, step.description(), step.event(), sideEffects));
+            }
+
+            // Re-take the snapshot at current position so further step-backs work
+            engine.snapshot();
+            snapshotStepIndex = steps.size();
+
+            return true;
+        });
     }
 
     /**
@@ -452,12 +574,49 @@ public class DemoServer {
      *
      * @return the state as a JSON-serializable map
      */
-    public synchronized Map<String, Object> getState() {
+    public Map<String, Object> getState() {
+        return submitAndWait(() -> buildState());
+    }
+
+    private static final int MAX_STEPS_IN_RESPONSE = 300;
+    private static final int DEFAULT_SCHEDULE_PAGE_SIZE = 5;
+
+    /**
+     * Builds the state map. Must only be called from the event processing thread.
+     */
+    private Map<String, Object> buildState() {
+        return buildState(0, DEFAULT_SCHEDULE_PAGE_SIZE);
+    }
+
+    /**
+     * Builds the state map with pagination. Must only be called from the event processing thread.
+     *
+     * @param schedulePage zero-based page index for schedules
+     * @param schedulePageSize number of schedules per page
+     */
+    private Map<String, Object> buildState(int schedulePage, int schedulePageSize) {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("currentTime", currentTime);
         state.put("snapshotStep", snapshotStepIndex);
-        state.put("steps", steps);
-        state.put("schedules", buildScheduleViews());
+        state.put("totalSteps", steps.size());
+
+        // Only include the last MAX_STEPS_IN_RESPONSE steps
+        if (steps.size() <= MAX_STEPS_IN_RESPONSE) {
+            state.put("steps", steps);
+        } else {
+            state.put("steps", steps.subList(steps.size() - MAX_STEPS_IN_RESPONSE, steps.size()));
+        }
+
+        // Paginate schedules
+        List<ScheduleView> allSchedules = buildScheduleViews();
+        state.put("totalSchedules", allSchedules.size());
+        state.put("schedulePage", schedulePage);
+        state.put("schedulePageSize", schedulePageSize);
+
+        int from = Math.min(schedulePage * schedulePageSize, allSchedules.size());
+        int to = Math.min(from + schedulePageSize, allSchedules.size());
+        state.put("schedules", allSchedules.subList(from, to));
+
         return state;
     }
 
@@ -914,6 +1073,26 @@ public class DemoServer {
         }
     }
 
+    private void handleProposal2(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try (InputStream is = getClass().getResourceAsStream("/proposal2.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "Proposal 2 page not found");
+                return;
+            }
+            byte[] html = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, html.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html);
+            }
+        }
+    }
+
     private void handlePathfind(HttpExchange exchange) throws IOException {
         if (!"GET".equals(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
@@ -1051,7 +1230,25 @@ public class DemoServer {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
             return;
         }
-        sendJsonResponse(exchange, 200, JsonSerializer.serialize(getState()));
+        Map<String, String> params = parseQueryParams(exchange.getRequestURI().getQuery());
+        int schedulePage = Integer.parseInt(params.getOrDefault("schedulePage", "0"));
+        int schedulePageSize = Integer.parseInt(params.getOrDefault("schedulePageSize",
+                String.valueOf(DEFAULT_SCHEDULE_PAGE_SIZE)));
+        String json = submitAndWait(() -> JsonSerializer.serialize(
+                buildState(schedulePage, schedulePageSize)));
+        sendJsonResponse(exchange, 200, json);
+    }
+
+    private static Map<String, String> parseQueryParams(String query) {
+        Map<String, String> params = new HashMap<>();
+        if (query == null || query.isBlank()) return params;
+        for (String pair : query.split("&")) {
+            int eq = pair.indexOf('=');
+            if (eq > 0) {
+                params.put(pair.substring(0, eq), pair.substring(eq + 1));
+            }
+        }
+        return params;
     }
 
     private void handleWorkInstruction(HttpExchange exchange) throws IOException {
@@ -1092,10 +1289,10 @@ public class DemoServer {
                     estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                     putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
                     toPosition, containerId);
-            List<SideEffect> effects = processStep("WorkInstruction: " + workInstructionId, event);
+            StepResult result = processStep("WorkInstruction: " + workInstructionId, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
-                    Map.of("step", steps.get(steps.size() - 1), "sideEffects", effects)));
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }
@@ -1122,10 +1319,10 @@ public class DemoServer {
                     : null;
 
             WorkQueueMessage event = new WorkQueueMessage(workQueueId, status, qcMudaSeconds, loadMode);
-            List<SideEffect> effects = processStep("WorkQueue " + statusStr + ": " + workQueueId, event);
+            StepResult result = processStep("WorkQueue " + statusStr + ": " + workQueueId, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
-                    Map.of("step", steps.get(steps.size() - 1), "sideEffects", effects)));
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }
@@ -1142,12 +1339,14 @@ public class DemoServer {
             String secondsStr = requireField(body, "seconds");
             long seconds = Long.parseLong(secondsStr);
 
-            currentTime = currentTime.plusSeconds(seconds);
-            TimeEvent event = new TimeEvent(currentTime);
-            List<SideEffect> effects = processStep("Tick +" + seconds + "s", event);
+            StepResult result = submitAndWait(() -> {
+                currentTime = currentTime.plusSeconds(seconds);
+                TimeEvent te = new TimeEvent(currentTime);
+                return processStepInternal("Tick +" + seconds + "s", te);
+            });
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
-                    Map.of("step", steps.get(steps.size() - 1), "sideEffects", effects)));
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }
@@ -1166,10 +1365,10 @@ public class DemoServer {
             UUID actionId = UUID.fromString(actionIdStr);
 
             ActionCompletedEvent event = new ActionCompletedEvent(actionId, workQueueId);
-            List<SideEffect> effects = processStep("Complete action: " + actionIdStr.substring(0, 8), event);
+            StepResult result = processStep("Complete action: " + actionIdStr.substring(0, 8), event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
-                    Map.of("step", steps.get(steps.size() - 1), "sideEffects", effects)));
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }
@@ -1188,11 +1387,11 @@ public class DemoServer {
             String conditionId = requireField(body, "conditionId");
 
             OverrideConditionEvent event = new OverrideConditionEvent(workQueueId, taktName, conditionId);
-            List<SideEffect> effects = processStep(
+            StepResult result = processStep(
                     "Override condition: " + conditionId + " on " + taktName, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
-                    Map.of("step", steps.get(steps.size() - 1), "sideEffects", effects)));
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }
@@ -1213,11 +1412,11 @@ public class DemoServer {
 
             OverrideActionConditionEvent event = new OverrideActionConditionEvent(
                     workQueueId, actionId, conditionId);
-            List<SideEffect> effects = processStep(
+            StepResult result = processStep(
                     "Override action condition: " + conditionId + " on " + actionIdStr.substring(0, 8), event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
-                    Map.of("step", steps.get(steps.size() - 1), "sideEffects", effects)));
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }
@@ -1228,9 +1427,14 @@ public class DemoServer {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
             return;
         }
-        createSnapshot();
-        broadcastState();
-        sendJsonResponse(exchange, 200, JsonSerializer.serialize(getState()));
+        String stateJson = submitAndWait(() -> {
+            engine.snapshot();
+            snapshotStepIndex = steps.size();
+            logger.info("Snapshot created at step " + snapshotStepIndex);
+            broadcastState();
+            return JsonSerializer.serialize(buildState());
+        });
+        sendJsonResponse(exchange, 200, stateJson);
     }
 
     private void handleStepBackTo(HttpExchange exchange) throws IOException {
@@ -1244,10 +1448,38 @@ public class DemoServer {
             String targetStepStr = requireField(body, "targetStep");
             int targetStep = Integer.parseInt(targetStepStr);
 
-            // Recompute currentTime from remaining steps
-            boolean success = stepBackTo(targetStep);
+            String result = submitAndWait(() -> {
+                if (targetStep < 0 || targetStep >= steps.size()) {
+                    return null;
+                }
+                if (snapshotStepIndex < 0 || targetStep < snapshotStepIndex) {
+                    logger.warning("Cannot step back to step " + targetStep
+                            + ": no snapshot or target is before snapshot at step " + snapshotStepIndex);
+                    return null;
+                }
 
-            if (success) {
+                List<Step> stepsToReplay = new ArrayList<>();
+                for (int i = snapshotStepIndex; i < targetStep; i++) {
+                    stepsToReplay.add(steps.get(i));
+                }
+
+                engine.stepBack();
+
+                while (steps.size() > snapshotStepIndex) {
+                    steps.remove(steps.size() - 1);
+                }
+
+                for (Step step : stepsToReplay) {
+                    if (step.event() instanceof SystemTimeSet sts) {
+                        currentTime = sts.timestamp();
+                    }
+                    List<SideEffect> sideEffects = engine.processEvent(step.event());
+                    steps.add(new Step(steps.size() + 1, step.description(), step.event(), sideEffects));
+                }
+
+                engine.snapshot();
+                snapshotStepIndex = steps.size();
+
                 // Recalculate current time from remaining steps
                 currentTime = initialTime;
                 for (Step step : steps) {
@@ -1257,8 +1489,13 @@ public class DemoServer {
                         currentTime = te.timestamp();
                     }
                 }
+
                 broadcastState();
-                sendJsonResponse(exchange, 200, JsonSerializer.serialize(getState()));
+                return JsonSerializer.serialize(buildState());
+            });
+
+            if (result != null) {
+                sendJsonResponse(exchange, 200, result);
             } else {
                 sendJsonResponse(exchange, 400, "{\"error\":\"Invalid target step\"}");
             }
@@ -1273,21 +1510,23 @@ public class DemoServer {
             return;
         }
 
-        StringBuilder sb = new StringBuilder();
-        sb.append('[');
-        boolean first = true;
-        for (Step step : steps) {
-            if (!first) sb.append(',');
-            sb.append("{\"description\":");
-            appendJsonString(sb, step.description());
-            sb.append(",\"event\":");
-            sb.append(JsonSerializer.serialize(step.event()));
-            sb.append('}');
-            first = false;
-        }
-        sb.append(']');
+        byte[] bytes = submitAndWait(() -> {
+            StringBuilder sb = new StringBuilder();
+            sb.append('[');
+            boolean first = true;
+            for (Step step : steps) {
+                if (!first) sb.append(',');
+                sb.append("{\"description\":");
+                appendJsonString(sb, step.description());
+                sb.append(",\"event\":");
+                sb.append(JsonSerializer.serialize(step.event()));
+                sb.append('}');
+                first = false;
+            }
+            sb.append(']');
+            return sb.toString().getBytes(StandardCharsets.UTF_8);
+        });
 
-        byte[] bytes = sb.toString().getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().set("Content-Type", "application/json; charset=UTF-8");
         exchange.getResponseHeaders().set("Content-Disposition", "attachment; filename=\"event-log.json\"");
         exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
@@ -1307,25 +1546,29 @@ public class DemoServer {
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             List<Map<String, String>> entries = parseImportArray(body);
 
-            // Reset engine to initial state
-            resetToInitial();
+            String stateJson = submitAndWait(() -> {
+                // Reset engine to initial state
+                resetToInitial();
 
-            // Replay events
-            for (Map<String, String> entry : entries) {
-                String description = entry.get("description");
-                Event event = EventDeserializer.deserialize(entry);
+                // Replay events
+                for (Map<String, String> entry : entries) {
+                    String description = entry.get("description");
+                    Event event = EventDeserializer.deserialize(entry);
 
-                // For TimeEvents, update currentTime before processStep
-                // (SystemTimeSet is handled inside processStep)
-                if (event instanceof TimeEvent te) {
-                    currentTime = te.timestamp();
+                    // For TimeEvents, update currentTime before processing
+                    // (SystemTimeSet is handled inside processStepInternal)
+                    if (event instanceof TimeEvent te) {
+                        currentTime = te.timestamp();
+                    }
+
+                    processStepInternal(description != null ? description : "Imported", event);
                 }
 
-                processStep(description != null ? description : "Imported", event);
-            }
+                broadcastState();
+                return JsonSerializer.serialize(buildState());
+            });
 
-            broadcastState();
-            sendJsonResponse(exchange, 200, JsonSerializer.serialize(getState()));
+            sendJsonResponse(exchange, 200, stateJson);
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }

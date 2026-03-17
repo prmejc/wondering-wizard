@@ -98,6 +98,7 @@
                 <version>3.2.2</version>
                 <configuration>
                     <argLine>--add-reads com.wonderingwizard=ALL-UNNAMED</argLine>
+                    <excludedGroups>e2e</excludedGroups>
                 </configuration>
             </plugin>
             <plugin>
@@ -130,4 +131,24 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>e2e</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>3.2.2</version>
+                        <configuration>
+                            <argLine>--add-reads com.wonderingwizard=ALL-UNNAMED</argLine>
+                            <groups>e2e</groups>
+                            <excludedGroups />
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

@@ -239,6 +239,8 @@ com.wonderingwizard
 │   ├── JsonParser.java              # Minimal JSON parser for request bodies
 │   └── EventDeserializer.java       # Event deserialization from JSON (for import)
 ├── Main.java                        # Entry point (starts DemoServer or runs demo)
+├── e2e/                             # End-to-end tests (run against live server)
+│   └── ScheduleCreationPerformanceE2ETest.java # Schedule creation throughput test
 └── resources/
     ├── index.html                   # Schedule Viewer UI (Web Components, vanilla JS)
     ├── editor.html                  # Export Editor UI (bulk edit WorkInstruction exports)

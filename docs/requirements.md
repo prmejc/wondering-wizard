@@ -1114,3 +1114,47 @@ mvn test -Dtest="DigitalMapProcessorTest"
 - `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — added DigitalMapEvent serialization)
 - `src/main/java/com/wonderingwizard/server/EventDeserializer.java` (modified — added DigitalMapEvent deserialization)
 - `src/test/java/com/wonderingwizard/processors/DigitalMapProcessorTest.java` (new — comprehensive test suite)
+
+### F-17: End-to-End Performance Tests
+
+**Status:** Implemented
+
+**Description:**
+End-to-end test suite that interacts with a running server instance via the same HTTP API used by the frontend. Tests run against a live `localhost` server to validate real-world performance characteristics.
+
+**Test: Schedule Creation Performance**
+Creates a high volume of work instructions and measures schedule creation throughput:
+1. Create 10,000 WorkInstructions (1,000 per WQ across 10 WQs) via `POST /api/work-instruction`
+2. Activate all 10 WQs via `POST /api/work-queue` with status `ACTIVE`
+3. Measure how long each activation takes to return with a `ScheduleCreated` side effect
+4. Verify all 10 schedules exist via `GET /api/state`
+
+Work instruction creation uses virtual threads for concurrent HTTP requests. WQ activation is sequential to measure individual schedule creation time per queue.
+
+**How to Run:**
+```bash
+# Terminal 1: Start the server
+mvn exec:java
+
+# Terminal 2: Run e2e tests
+mvn test -Pe2e
+```
+
+The `e2e` Maven profile overrides the default surefire exclusion to include only tests tagged with `@Tag("e2e")`. These tests are excluded from normal `mvn test` runs.
+
+The base URL defaults to `http://localhost:8080` and can be overridden with:
+```bash
+mvn test -Pe2e -De2e.baseUrl=http://localhost:9090
+```
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Server not running, run e2e tests | Test fails with clear error message |
+| 2 | Server running, run e2e tests | 10,000 WIs created, 10 schedules created, timing printed |
+| 3 | Normal `mvn test` | E2E tests are skipped |
+
+**Implementation Files:**
+- `src/test/java/com/wonderingwizard/e2e/ScheduleCreationPerformanceE2ETest.java` (new — e2e performance test)
+- `pom.xml` (modified — added `e2e` profile and `excludedGroups` for surefire)

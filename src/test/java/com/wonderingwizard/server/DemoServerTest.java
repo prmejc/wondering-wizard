@@ -68,11 +68,11 @@ class DemoServerTest {
                     1L, 1L, "RTG-01", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
 
-            List<SideEffect> effects = server.processStep("Activate WQ",
+            DemoServer.StepResult result = server.processStep("Activate WQ",
                     new WorkQueueMessage(1L, WorkQueueStatus.ACTIVE, 0, null));
 
-            assertFalse(effects.isEmpty());
-            boolean hasScheduleCreated = effects.stream().anyMatch(se -> se instanceof ScheduleCreated);
+            assertFalse(result.sideEffects().isEmpty());
+            boolean hasScheduleCreated = result.sideEffects().stream().anyMatch(se -> se instanceof ScheduleCreated);
             assertTrue(hasScheduleCreated);
         }
     }
@@ -146,9 +146,9 @@ class DemoServerTest {
             assertEquals(1, server.getSteps().size());
 
             // Re-activate should produce ScheduleCreated again
-            List<SideEffect> effects = server.processStep("Activate WQ again",
+            DemoServer.StepResult reactivateResult = server.processStep("Activate WQ again",
                     new WorkQueueMessage(1L, WorkQueueStatus.ACTIVE, 0, null));
-            boolean hasScheduleCreated = effects.stream().anyMatch(se -> se instanceof ScheduleCreated);
+            boolean hasScheduleCreated = reactivateResult.sideEffects().stream().anyMatch(se -> se instanceof ScheduleCreated);
             assertTrue(hasScheduleCreated);
         }
     }
@@ -248,31 +248,31 @@ class DemoServerTest {
             Instant emt = Instant.parse("2024-01-01T00:05:00Z");
 
             // Step 1: Add work instruction
-            List<SideEffect> step1 = server.processStep("Add WI",
+            DemoServer.StepResult step1 = server.processStep("Add WI",
                     new WorkInstructionEvent(1L, 1L, "RTG-01",
                             MoveStage.PLANNED, emt, 120));
-            assertTrue(step1.isEmpty());
+            assertTrue(step1.sideEffects().isEmpty());
 
             // Step 2: Activate work queue
-            List<SideEffect> step2 = server.processStep("Activate",
+            DemoServer.StepResult step2 = server.processStep("Activate",
                     new WorkQueueMessage(1L, WorkQueueStatus.ACTIVE, 0, null));
-            assertTrue(step2.stream().anyMatch(se -> se instanceof ScheduleCreated));
+            assertTrue(step2.sideEffects().stream().anyMatch(se -> se instanceof ScheduleCreated));
 
             // Step 3: Tick time
-            List<SideEffect> step3 = server.processStep("Tick",
+            DemoServer.StepResult step3 = server.processStep("Tick",
                     new TimeEvent(emt.plusSeconds(1)));
-            assertTrue(step3.stream().anyMatch(se -> se instanceof ActionActivated));
+            assertTrue(step3.sideEffects().stream().anyMatch(se -> se instanceof ActionActivated));
 
             // Find the active action ID
-            ActionActivated activated = (ActionActivated) step3.stream()
+            ActionActivated activated = (ActionActivated) step3.sideEffects().stream()
                     .filter(se -> se instanceof ActionActivated)
                     .findFirst().orElseThrow();
 
             // Step 4: Complete the action
-            List<SideEffect> step4 = server.processStep("Complete",
+            DemoServer.StepResult step4 = server.processStep("Complete",
                     new com.wonderingwizard.events.ActionCompletedEvent(
                             activated.actionId(), 1L));
-            assertFalse(step4.isEmpty());
+            assertFalse(step4.sideEffects().isEmpty());
 
             // Verify state
             Map<String, Object> state = server.getState();

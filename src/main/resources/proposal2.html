@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Wondering Wizard - Schedule Viewer</title>
+<title>Wondering Wizard - Schedule Viewer (Proposal 2)</title>
 <style>
   :root {
     --rtg-color: #3b82f6;
@@ -62,7 +62,7 @@
 <side-effects-log></side-effects-log>
 
 <script>
-const API = window.location.pathname.replace(/\/$/, '');
+const API = '';
 
 async function apiCall(path, body) {
   const opts = body ? { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) } : {};
