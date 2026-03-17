@@ -243,7 +243,8 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
                 ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg),
                 ActionTemplate.of(TT_HANDOVER_TO_RTG, TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
+                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS)
+                        .withSkipWhenGatesSatisfied(),
 
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE, RTG, RTG_DRIVE_SECONDS)
@@ -287,7 +288,8 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, 2, TT, 30),
                 ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, 2, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_TO_RTG, 2, TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
+                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS)
+                        .withSkipWhenGatesSatisfied(),
 
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE, 1, RTG, RTG_DRIVE_SECONDS)
@@ -337,7 +339,8 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg),
                 ActionTemplate.of(TT_HANDOVER_TO_RTG, 1, TT, rtgPlaceDuration),
                 ActionTemplate.of(TT_HANDOVER_TO_RTG, 2, TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
+                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS)
+                        .withSkipWhenGatesSatisfied(),
 
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE, 1, RTG, RTG_DRIVE_SECONDS)
@@ -381,7 +384,8 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, 2, TT, driveToUnderRtg),
 
                 ActionTemplate.of(TT_HANDOVER_TO_RTG, 2, TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
+                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS)
+                        .withSkipWhenGatesSatisfied(),
 
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE, 1, RTG, RTG_DRIVE_SECONDS)
@@ -428,7 +432,8 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg),
                 ActionTemplate.of(TT_HANDOVER_TO_RTG, 1, TT, rtgPlaceDuration),
                 ActionTemplate.of(TT_HANDOVER_TO_RTG, 2, TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
+                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS)
+                        .withSkipWhenGatesSatisfied(),
 
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE, 1, RTG, RTG_DRIVE_SECONDS)
@@ -487,7 +492,8 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
                 ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg),
                 ActionTemplate.of(TT_HANDOVER_TO_RTG, TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
+                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS)
+                        .withSkipWhenGatesSatisfied(),
 
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE,  RTG, RTG_DRIVE_SECONDS)
@@ -523,7 +529,8 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
                 ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg),
                 ActionTemplate.of(TT_HANDOVER_TO_RTG, TT, rtgPlaceDuration),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
+                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS)
+                        .withSkipWhenGatesSatisfied(),
 
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE,  RTG, RTG_DRIVE_SECONDS)
@@ -556,7 +563,8 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(TT_DRIVE_UNDER_QC, TT, 30),
                 ActionTemplate.of(TT_HANDOVER_TO_QC, TT, qcLiftDuration)
                         .withFirstInTakt().withSyncWith(QC, QC_LIFT),
-                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
+                ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS)
+                        .withSkipWhenGatesSatisfied(),
 
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE, RTG, 1),

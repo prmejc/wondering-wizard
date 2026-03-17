@@ -96,7 +96,7 @@ public class DemoServer {
     private KafkaConsumerManager kafkaConsumerManager;
     private KafkaSideEffectPublisher sideEffectPublisher;
     private final SseConnectionManager sseManager = new SseConnectionManager();
-    private static final long BROADCAST_DEBOUNCE_MS = 1000;
+    private static final long BROADCAST_DEBOUNCE_MS = 100;
     private volatile boolean broadcastPending;
     private volatile boolean broadcastLoopRunning;
     private final LinkedBlockingQueue<EngineCommand<?>> eventQueue = new LinkedBlockingQueue<>();
