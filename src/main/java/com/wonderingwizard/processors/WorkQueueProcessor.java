@@ -11,12 +11,13 @@ import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
+import com.wonderingwizard.events.EventType;
+import com.wonderingwizard.events.MoveStage;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
-import com.wonderingwizard.sideeffects.ScheduleModified;
+import com.wonderingwizard.sideeffects.WorkInstructionReassigned;
 import jdk.jfr.Timespan;
 
 import java.security.Timestamp;
@@ -63,6 +64,7 @@ public class WorkQueueProcessor implements EventProcessor {
     private final IntSupplier driveTimeSupplier;
     private final IntSupplier qcDriveTimeOffsetSupplier;
     private final boolean useGraphScheduleBuilder;
+    private final List<SchedulePipelineStep> pipelineSteps = new ArrayList<>();
 
     public WorkQueueProcessor() {
         this(
@@ -86,10 +88,24 @@ public class WorkQueueProcessor implements EventProcessor {
         this.useGraphScheduleBuilder = useGraphScheduleBuilder;
     }
 
+    /**
+     * Registers a pipeline step to be executed during schedule creation,
+     * between template building and takt fitting.
+     *
+     * @param step the pipeline step to register
+     */
+    public void registerStep(SchedulePipelineStep step) {
+        pipelineSteps.add(step);
+    }
+
     @Override
     public List<SideEffect> process(Event event) {
         if (event instanceof WorkQueueMessage message) {
             return handleWorkQueueMessage(message);
+        }
+        if (event instanceof WorkInstructionReassigned reassigned) {
+            // Re-processed from side effect — apply as a regular WI update
+            return handleWorkInstructionEvent(reassigned.workInstruction());
         }
         if (event instanceof WorkInstructionEvent instruction) {
             return handleWorkInstructionEvent(instruction);
@@ -104,6 +120,17 @@ public class WorkQueueProcessor implements EventProcessor {
         // Find the old instruction before removing it (for mismatch detection)
         WorkInstructionEvent oldInstruction = findWorkInstruction(workInstructionId);
 
+        // Find the source queue of the incoming WI (before removal)
+        long sourceQueueId = findQueueForInstruction(workInstructionId);
+
+        // Determine expected next WI BEFORE updating the map (so current event's
+        // post-fetch status doesn't affect the lookup)
+        WorkInstructionEvent expectedWi = null;
+        if (EventType.QC_DISCHARGED_CONTAINER.equals(event.eventType())
+                && activeSchedules.containsKey(workQueueId)) {
+            expectedWi = findExpectedNextWi(workQueueId);
+        }
+
         // Remove existing instruction with same ID from all queues (handles moves and updates)
         for (List<WorkInstructionEvent> instructions : workInstructions.values()) {
             instructions.removeIf(wi -> wi.workInstructionId() == workInstructionId);
@@ -114,15 +141,87 @@ public class WorkQueueProcessor implements EventProcessor {
                 .computeIfAbsent(workQueueId, k -> new ArrayList<>())
                 .add(event);
 
-        // Check for FETCH_COMPLETE mismatch: if twin flags changed, trigger reschedule
-        if (event.status() == WorkInstructionStatus.FETCH_COMPLETE
-                && activeSchedules.containsKey(workQueueId)
-                && oldInstruction != null
-                && hasTwinFlagsMismatch(oldInstruction, event)) {
-            return handleReschedule(workQueueId, event);
+        if (expectedWi == null) {
+            return List.of();
+        }
+
+        boolean needsReschedule = false;
+        WorkInstructionEvent movedWi = null;
+
+        // Check 1: Was the right WI fetched? If not, handle the swap
+        if (expectedWi.workInstructionId() != workInstructionId) {
+            boolean crossQueueSwap = sourceQueueId != -1 && sourceQueueId != workQueueId;
+
+            if (crossQueueSwap) {
+                // Cross-queue swap: move the displaced expected WI to the source queue
+                movedWi = moveWorkInstruction(expectedWi, sourceQueueId);
+            } else {
+                // Same-queue swap: just swap estimatedMoveTime within the queue
+                swapEstimatedMoveTime(workQueueId, event, expectedWi);
+            }
+            needsReschedule = true;
+        }
+
+        // Check 2: Did twin flags change?
+        if (oldInstruction != null && hasTwinFlagsMismatch(oldInstruction, event)) {
+            needsReschedule = true;
+        }
+
+        if (needsReschedule) {
+            var effects = new ArrayList<SideEffect>();
+            // Emit reassignment side effect first so it appears in the event log
+            if (movedWi != null) {
+                effects.add(new WorkInstructionReassigned(movedWi));
+            }
+            effects.addAll(handleReschedule(workQueueId));
+            // If a cross-queue swap occurred, also reschedule the source queue
+            if (movedWi != null && activeSchedules.containsKey(sourceQueueId)) {
+                effects.addAll(handleReschedule(sourceQueueId));
+            }
+            return effects;
         }
 
         return List.of();
+    }
+
+    /**
+     * Finds which queue currently holds the given work instruction.
+     *
+     * @return the workQueueId, or -1 if not found
+     */
+    private long findQueueForInstruction(long workInstructionId) {
+        for (var entry : workInstructions.entrySet()) {
+            for (WorkInstructionEvent wi : entry.getValue()) {
+                if (wi.workInstructionId() == workInstructionId) {
+                    return entry.getKey();
+                }
+            }
+        }
+        return -1;
+    }
+
+    /**
+     * Moves a work instruction to a different queue, updating its workQueueId.
+     *
+     * @return the moved work instruction with the new workQueueId
+     */
+    private WorkInstructionEvent moveWorkInstruction(WorkInstructionEvent wi, long targetQueueId) {
+        // Remove from current queue
+        for (List<WorkInstructionEvent> instructions : workInstructions.values()) {
+            instructions.removeIf(w -> w.workInstructionId() == wi.workInstructionId());
+        }
+
+        // Create a copy with the new workQueueId and add to target queue
+        var moved = new WorkInstructionEvent(
+                wi.eventType(), wi.workInstructionId(), targetQueueId, wi.fetchChe(),
+                wi.workInstructionMoveStage(), wi.estimatedMoveTime(), wi.estimatedCycleTimeSeconds(),
+                wi.estimatedRtgCycleTimeSeconds(), wi.putChe(),
+                wi.isTwinFetch(), wi.isTwinPut(), wi.isTwinCarry(),
+                wi.twinCompanionWorkInstruction(), wi.toPosition(), wi.containerId());
+        workInstructions
+                .computeIfAbsent(targetQueueId, k -> new ArrayList<>())
+                .add(moved);
+        return moved;
     }
 
     /**
@@ -140,6 +239,53 @@ public class WorkQueueProcessor implements EventProcessor {
     }
 
     /**
+     * Finds the next expected WI to be fetched: the first WI still in Planned/Ready stage in schedule order.
+     */
+    private WorkInstructionEvent findExpectedNextWi(long workQueueId) {
+        List<WorkInstructionEvent> allInstructions = workInstructions.getOrDefault(workQueueId, List.of());
+
+        return allInstructions.stream()
+                .sorted(Comparator.comparing(WorkInstructionEvent::estimatedMoveTime))
+                .filter(wi -> MoveStage.isPreFetch(wi.workInstructionMoveStage()))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * Swaps the estimatedMoveTime between the fetched WI and the expected WI in the work
+     * instructions map, so that the fetched WI takes the expected position and vice versa.
+     */
+    private void swapEstimatedMoveTime(long workQueueId, WorkInstructionEvent fetchedWi, WorkInstructionEvent expectedWi) {
+        List<WorkInstructionEvent> instructions = workInstructions.get(workQueueId);
+        if (instructions == null) {
+            return;
+        }
+
+        Instant fetchedTime = fetchedWi.estimatedMoveTime();
+        Instant expectedTime = expectedWi.estimatedMoveTime();
+
+        instructions.replaceAll(wi -> {
+            if (wi.workInstructionId() == fetchedWi.workInstructionId()) {
+                return new WorkInstructionEvent(
+                        wi.eventType(), wi.workInstructionId(), wi.workQueueId(), wi.fetchChe(),
+                        wi.workInstructionMoveStage(), expectedTime, wi.estimatedCycleTimeSeconds(),
+                        wi.estimatedRtgCycleTimeSeconds(), wi.putChe(),
+                        wi.isTwinFetch(), wi.isTwinPut(), wi.isTwinCarry(),
+                        wi.twinCompanionWorkInstruction(), wi.toPosition(), wi.containerId());
+            }
+            if (wi.workInstructionId() == expectedWi.workInstructionId()) {
+                return new WorkInstructionEvent(
+                        wi.eventType(), wi.workInstructionId(), wi.workQueueId(), wi.fetchChe(),
+                        wi.workInstructionMoveStage(), fetchedTime, wi.estimatedCycleTimeSeconds(),
+                        wi.estimatedRtgCycleTimeSeconds(), wi.putChe(),
+                        wi.isTwinFetch(), wi.isTwinPut(), wi.isTwinCarry(),
+                        wi.twinCompanionWorkInstruction(), wi.toPosition(), wi.containerId());
+            }
+            return wi;
+        });
+    }
+
+    /**
      * Checks whether the twin flags (isTwinFetch, isTwinPut, isTwinCarry) have changed
      * between the old and new work instruction.
      */
@@ -150,66 +296,33 @@ public class WorkQueueProcessor implements EventProcessor {
     }
 
     /**
-     * Handles rescheduling when a FETCH_COMPLETE event reveals that the actual container
-     * configuration differs from the plan. Rebuilds takts for the changed work instruction
-     * and all subsequent ones.
-     *
-     * @param workQueueId the work queue to reschedule
-     * @param changedWi   the work instruction whose twin flags changed
-     * @return side effects containing the ScheduleModified event
+     * Rebuilds the entire schedule from scratch when a FETCH_COMPLETE event reveals
+     * that the actual container configuration or order differs from the plan.
      */
-    private List<SideEffect> handleReschedule(long workQueueId, WorkInstructionEvent changedWi) {
+    private List<SideEffect> handleReschedule(long workQueueId) {
         List<WorkInstructionEvent> allInstructions = workInstructions.getOrDefault(workQueueId, List.of());
         if (allInstructions.isEmpty()) {
             return List.of();
         }
 
-        // Sort all instructions by estimated move time (same order as original schedule)
-        var sorted = allInstructions.stream()
-                .sorted(Comparator.comparing(WorkInstructionEvent::estimatedMoveTime))
-                .toList();
-
-        // Find the index of the changed instruction — this and all after it need rebuilding
-        int changedIndex = -1;
-        int containerIdx = 0;
-        var processedTwinIds = new HashSet<Long>();
-        LoadMode loadMode = loadModeByQueue.getOrDefault(workQueueId, LoadMode.DSCH);
-
-        for (int i = 0; i < sorted.size(); i++) {
-            var wi = sorted.get(i);
-            if (loadMode == LoadMode.DSCH && wi.isTwinCarry() && processedTwinIds.contains(wi.workInstructionId())) {
-                continue;
-            }
-            if (wi.workInstructionId() == changedWi.workInstructionId()) {
-                changedIndex = i;
-                break;
-            }
-            if (loadMode == LoadMode.DSCH && wi.isTwinCarry() && wi.twinCompanionWorkInstruction() != 0) {
-                processedTwinIds.add(wi.twinCompanionWorkInstruction());
-            }
-            containerIdx++;
-        }
-
-        if (changedIndex < 0) {
-            return List.of();
-        }
-
-        // The remaining instructions to rebuild: from changedIndex onward
-        List<WorkInstructionEvent> remainingInstructions = sorted.subList(changedIndex, sorted.size());
-
-        // Compute the takt sequence where the new takts should start.
-        // containerIdx is the 0-based container index of the changed WI.
-        // In the original schedule, container N's anchor takt is at sequence N.
-        int startTaktSequence = containerIdx;
+        var estimatedMoveTime = allInstructions.stream()
+                .map(WorkInstructionEvent::estimatedMoveTime)
+                .filter(t -> t != null)
+                .min(Instant::compareTo)
+                .orElse(null);
 
         int qcMuda = qcMudaByQueue.getOrDefault(workQueueId, 0);
-        Instant startTime = changedWi.estimatedMoveTime();
+        LoadMode loadMode = loadModeByQueue.getOrDefault(workQueueId, LoadMode.DSCH);
 
-        var rebuiltTakts = new GraphScheduleBuilder(driveTimeSupplier, qcDriveTimeOffsetSupplier)
-                .rebuildRemainingTakts(remainingInstructions, startTime, containerIdx,
-                        startTaktSequence, qcMuda, loadMode);
+        List<Takt> takts = new GraphScheduleBuilder(driveTimeSupplier, qcDriveTimeOffsetSupplier)
+                .createTakts(allInstructions, estimatedMoveTime, qcMuda, loadMode,
+                        workQueueId, pipelineSteps);
 
-        return List.of(new ScheduleModified(workQueueId, rebuiltTakts, startTaktSequence));
+        var sortedTakts = takts.stream()
+                .sorted((a, b) -> a.sequence() - b.sequence())
+                .toList();
+
+        return List.of(new ScheduleCreated(workQueueId, sortedTakts, estimatedMoveTime));
     }
 
     private List<SideEffect> handleWorkQueueMessage(WorkQueueMessage message) {
@@ -247,7 +360,8 @@ public class WorkQueueProcessor implements EventProcessor {
         LoadMode loadMode = loadModeByQueue.getOrDefault(workQueueId, LoadMode.DSCH);
         List<Takt> takts = useGraphScheduleBuilder
                 ? new GraphScheduleBuilder(driveTimeSupplier, qcDriveTimeOffsetSupplier)
-                        .createTakts(instructions, estimatedMoveTime, qcMuda, loadMode)
+                        .createTakts(instructions, estimatedMoveTime, qcMuda, loadMode,
+                                workQueueId, pipelineSteps)
                 : createTaktsFromWorkInstructionsPrimvs(instructions, estimatedMoveTime, qcMuda);
 
         return List.of(new ScheduleCreated(workQueueId, takts.stream().sorted( (a, b) -> a.sequence() - b.sequence()).toList(), estimatedMoveTime));

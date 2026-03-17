@@ -2,13 +2,13 @@ package com.wonderingwizard.server;
 
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.DigitalMapEvent;
 import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.SystemTimeSet;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 
@@ -52,10 +52,12 @@ public final class EventDeserializer {
                             ? LoadMode.valueOf(fields.get("loadMode")) : null);
 
             case "WorkInstructionEvent" -> new WorkInstructionEvent(
+                    fields.getOrDefault("eventType", ""),
                     Long.parseLong(requireField(fields, "workInstructionId")),
                     Long.parseLong(requireField(fields, "workQueueId")),
                     fields.getOrDefault("fetchChe", ""),
-                    WorkInstructionStatus.valueOf(requireField(fields, "status")),
+                    requireField(fields,
+                            fields.containsKey("workInstructionMoveStage") ? "workInstructionMoveStage" : "status"),
                     fields.get("estimatedMoveTime") != null && !fields.get("estimatedMoveTime").equals("null")
                             ? Instant.parse(fields.get("estimatedMoveTime")) : null,
                     Integer.parseInt(fields.getOrDefault("estimatedCycleTimeSeconds", "0")),
@@ -81,6 +83,9 @@ public final class EventDeserializer {
                     Long.parseLong(requireField(fields, "workQueueId")),
                     UUID.fromString(requireField(fields, "actionId")),
                     requireField(fields, "conditionId"));
+
+            case "DigitalMapEvent" -> new DigitalMapEvent(
+                    fields.getOrDefault("mapPayload", ""));
 
             default -> throw new IllegalArgumentException("Unknown event type: " + type);
         };

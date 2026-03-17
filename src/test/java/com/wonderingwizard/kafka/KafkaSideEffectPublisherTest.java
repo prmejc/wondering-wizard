@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.UUID;
 
-import static com.wonderingwizard.events.WorkInstructionStatus.PENDING;
+import static com.wonderingwizard.events.MoveStage.PLANNED;
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("KafkaSideEffectPublisher Tests")
@@ -72,7 +72,7 @@ class KafkaSideEffectPublisherTest {
     @DisplayName("ActionActivated enriched record should contain deviceType and workInstructions")
     void actionActivatedContainsEnrichedFields() {
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", PENDING, Instant.now(), 120, 60, "RTG05",
+                100L, 1L, "QC01", PLANNED, Instant.now(), 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
 

@@ -1,7 +1,6 @@
 package com.wonderingwizard.kafka;
 
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
 import com.wonderingwizard.kafka.messages.WorkInstructionKafkaMessage;
 import org.apache.avro.generic.GenericRecord;
 
@@ -60,6 +59,10 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
      * Convert a typed WorkInstructionKafkaMessage to the engine's WorkInstructionEvent.
      */
     WorkInstructionEvent toEngineEvent(WorkInstructionKafkaMessage kafkaMessage) {
+        String eventType = kafkaMessage.eventType() != null
+                ? kafkaMessage.eventType()
+                : "";
+
         long workInstructionId = kafkaMessage.workInstructionId() != null
                 ? kafkaMessage.workInstructionId()
                 : 0;
@@ -72,7 +75,9 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 ? kafkaMessage.fetchCHEName()
                 : "";
 
-        WorkInstructionStatus status = mapStatus(kafkaMessage.workInstructionMoveStage());
+        String workInstructionMoveStage = kafkaMessage.workInstructionMoveStage() != null
+                ? kafkaMessage.workInstructionMoveStage()
+                : "Planned";
 
         Instant estimatedMoveTime = kafkaMessage.estimatedMoveTime() != null
                 ? Instant.ofEpochMilli(kafkaMessage.estimatedMoveTime())
@@ -107,32 +112,17 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 : "";
 
         logger.fine("Mapped WorkInstruction Kafka message: workInstructionId=" + workInstructionId
-                + ", workQueueId=" + workQueueId + ", status=" + status
+                + ", workQueueId=" + workQueueId + ", workInstructionMoveStage=" + workInstructionMoveStage
                 + ", fetchChe=" + fetchChe + ", putChe=" + putChe);
 
         return new WorkInstructionEvent(
-                workInstructionId, workQueueId, fetchChe, status,
+                eventType, workInstructionId, workQueueId, fetchChe, workInstructionMoveStage,
                 estimatedMoveTime, estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                 putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
                 toPosition, containerId);
     }
 
-    private WorkInstructionStatus mapStatus(String moveStage) {
-        if (moveStage == null) {
-            return WorkInstructionStatus.PENDING;
-        }
-        return switch (moveStage.toUpperCase()) {
-            case "PLANNED", "READY" -> WorkInstructionStatus.PENDING;
-            case "CARRY_UNDERWAY", "FETCH_UNDERWAY", "PUT_UNDERWAY" -> WorkInstructionStatus.IN_PROGRESS;
-            case "COMPLETE", "COMPLETED" -> WorkInstructionStatus.COMPLETED;
-            case "CANCELLED", "CANCEL" -> WorkInstructionStatus.CANCELLED;
-            default -> {
-                logger.warning("Unknown WorkInstruction moveStage from Kafka: " + moveStage
-                        + ", defaulting to PENDING");
-                yield WorkInstructionStatus.PENDING;
-            }
-        };
-    }
+
 
     private static String getStringField(GenericRecord record, String fieldName) {
         Object value = record.get(fieldName);

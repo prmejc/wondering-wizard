@@ -148,6 +148,7 @@ class ScheduleHeader extends HTMLElement {
         <button class="secondary" onclick="window.open(API+'/editor','_blank')" title="Open export editor">&#9998; Editor</button>
         <button class="secondary" onclick="window.open(API+'/workinstructions','_blank')" title="View work instructions">&#9776; Work Instructions</button>
         <button class="secondary" onclick="window.open(API+'/workqueues','_blank')" title="View work queues">&#9776; Work Queues</button>
+        <button class="secondary" onclick="window.open(API+'/pathfinder','_blank')" title="Open pathfinder">&#9737; Pathfinder</button>
         <input id="import-file" type="file" accept=".json" style="display:none">
       </div>`;
     this.setAttribute('data-refresh', '');
@@ -243,6 +244,50 @@ class EventPanel extends HTMLElement {
 
       <h3>Work Instruction</h3>
       <div class="form-group">
+        <label>Event Type</label>
+        <select id="wi-event-type">
+          <option value="CarryCHE Assigned">CarryCHE Assigned</option>
+          <option value="CarryCHE Changed">CarryCHE Changed</option>
+          <option value="Dispatch Changed">Dispatch Changed</option>
+          <option value="Estimated Cycle Time Assigned">Estimated Cycle Time Assigned</option>
+          <option value="Estimated Cycle Time Changed">Estimated Cycle Time Changed</option>
+          <option value="Estimated Move Time Assigned">Estimated Move Time Assigned</option>
+          <option value="Estimated Move Time Changed">Estimated Move Time Changed</option>
+          <option value="FetchCHE Assigned">FetchCHE Assigned</option>
+          <option value="FetchCHE Changed">FetchCHE Changed</option>
+          <option value="Pinning Changed">Pinning Changed</option>
+          <option value="PutCHE Assigned">PutCHE Assigned</option>
+          <option value="PutCHE Changed">PutCHE Changed</option>
+          <option value="QC Discharged Container">QC Discharged Container</option>
+          <option value="QC Loaded Container">QC Loaded Container</option>
+          <option value="StateFetch Changed">StateFetch Changed</option>
+          <option value="To Position Changed">To Position Changed</option>
+          <option value="WI Abandoned">WI Abandoned</option>
+          <option value="WI Bypassed">WI Bypassed</option>
+          <option value="WI Created" selected>WI Created</option>
+          <option value="WI MoveStage Changed">WI MoveStage Changed</option>
+          <option value="WI Resequenced">WI Resequenced</option>
+          <option value="WI Reset">WI Reset</option>
+          <option value="WI Resumed">WI Resumed</option>
+          <option value="WI Reverted">WI Reverted</option>
+          <option value="WQ Change">WQ Change</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Move Stage</label>
+        <select id="wi-move-stage">
+          <option value="Planned" selected>Planned</option>
+          <option value="Ready">Ready</option>
+          <option value="Fetch Underway">Fetch Underway</option>
+          <option value="Carry Underway">Carry Underway</option>
+          <option value="Carry Complete">Carry Complete</option>
+          <option value="Put Underway">Put Underway</option>
+          <option value="Put Complete">Put Complete</option>
+          <option value="Complete">Complete</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label>Instruction ID</label>
         <input id="wi-id" type="number" value="1">
       </div>
@@ -270,6 +315,10 @@ class EventPanel extends HTMLElement {
       <div class="form-group">
         <label>To Position</label>
         <input id="wi-to-position" value="Y-PTM-1L20E4">
+      </div>
+      <div class="form-group">
+        <label>Container ID</label>
+        <input id="wi-container-id" value="THIVE1">
       </div>
       <div class="form-group">
         <label>Est. Move Time (ISO)</label>
@@ -310,6 +359,20 @@ class EventPanel extends HTMLElement {
       </div>
       <button onclick="this.closest('event-panel').sendWQ()" style="margin-top:8px;width:100%">Send Work Queue</button>`;
     this.querySelector('#wi-emt').addEventListener('input', () => { this._emtDirty = true; });
+    const updateCompanion = () => {
+      const anyTwin = this.querySelector('#wi-twin-fetch').checked
+          || this.querySelector('#wi-twin-put').checked
+          || this.querySelector('#wi-twin-carry').checked;
+      const id = parseInt(this.querySelector('#wi-id').value) || 0;
+      this.querySelector('#wi-twin-companion').value = anyTwin ? (id % 2 === 1 ? id + 1 : id - 1) : 0;
+    };
+    this.querySelector('#wi-twin-fetch').addEventListener('change', updateCompanion);
+    this.querySelector('#wi-twin-put').addEventListener('change', updateCompanion);
+    this.querySelector('#wi-twin-carry').addEventListener('change', updateCompanion);
+    this.querySelector('#wi-id').addEventListener('input', () => {
+      updateCompanion();
+      this.querySelector('#wi-container-id').value = 'THIVE' + (this.querySelector('#wi-id').value || '0');
+    });
   }
   refresh(state) {
     if (!this._emtDirty && state.currentTime) {
@@ -319,6 +382,7 @@ class EventPanel extends HTMLElement {
   }
   async sendWI() {
     const data = {
+      eventType: this.querySelector('#wi-event-type').value,
       workInstructionId: this.querySelector('#wi-id').value,
       workQueueId: this.querySelector('#wi-queue').value,
       fetchChe: this.querySelector('#wi-che').value,
@@ -328,15 +392,22 @@ class EventPanel extends HTMLElement {
       isTwinCarry: String(this.querySelector('#wi-twin-carry').checked),
       twinCompanionWorkInstruction: this.querySelector('#wi-twin-companion').value,
       toPosition: this.querySelector('#wi-to-position').value,
+      containerId: this.querySelector('#wi-container-id').value,
       estimatedMoveTime: this.querySelector('#wi-emt').value,
       estimatedCycleTimeSeconds: this.querySelector('#wi-ect').value,
       estimatedRtgCycleTimeSeconds: this.querySelector('#wi-rtg-ect').value,
-      status: 'PENDING'
+      workInstructionMoveStage: this.querySelector('#wi-move-stage').value
     };
     await apiCall('/api/work-instruction', data);
-    // Auto-increment WI ID
+    // Auto-increment WI ID and update twin companion
     const idInput = this.querySelector('#wi-id');
-    idInput.value = parseInt(idInput.value) + 1;
+    const newId = parseInt(idInput.value) + 1;
+    idInput.value = newId;
+    const anyTwin = this.querySelector('#wi-twin-fetch').checked
+        || this.querySelector('#wi-twin-put').checked
+        || this.querySelector('#wi-twin-carry').checked;
+    this.querySelector('#wi-twin-companion').value = anyTwin ? (newId % 2 === 1 ? newId + 1 : newId - 1) : 0;
+    this.querySelector('#wi-container-id').value = 'THIVE' + newId;
     this._emtDirty = false;
     this._emtOffsetMin += 2;
     refreshState();
@@ -726,7 +797,11 @@ class TimelinePanel extends HTMLElement {
     this.style.cssText = 'grid-area:right';
     this.classList.add('panel');
     this.setAttribute('data-refresh', '');
-    this.innerHTML = '<h2 style="display:flex;align-items:center;gap:12px">Timeline <label style="font-size:12px;font-weight:400;display:flex;align-items:center;gap:4px;color:var(--text-muted)"><input id="hide-ticks" type="checkbox" checked> Hide time events</label></h2><div id="timeline-content"></div>';
+    this.innerHTML = '<h2 style="display:flex;align-items:center;gap:12px">Timeline <button id="snapshot-btn" class="secondary" style="font-size:11px;padding:3px 8px">Snapshot</button> <label style="font-size:12px;font-weight:400;display:flex;align-items:center;gap:4px;color:var(--text-muted)"><input id="hide-ticks" type="checkbox" checked> Hide time events</label></h2><div id="timeline-content"></div>';
+    this.querySelector('#snapshot-btn').addEventListener('click', async () => {
+      await apiCall('/api/snapshot');
+      refreshState();
+    });
     this.querySelector('#hide-ticks').addEventListener('change', () => { if (window._lastState) this.refresh(window._lastState); });
   }
   refresh(state) {
@@ -738,17 +813,25 @@ class TimelinePanel extends HTMLElement {
     }
 
     const hideTicks = this.querySelector('#hide-ticks').checked;
+    const snapshotStep = state.snapshotStep ?? -1;
 
     let html = '';
     for (let i = steps.length - 1; i >= 0; i--) {
       const step = steps[i];
       if (hideTicks && step.description && (step.description.startsWith('Tick ') || step.description === 'System time set')) continue;
       const effectCount = (step.sideEffects || []).length;
+      const canRevert = step.stepNumber > snapshotStep && snapshotStep >= 0;
+      const isSnapshot = step.stepNumber === snapshotStep;
       html += '<div class="timeline-entry" data-step="' + step.stepNumber + '" ';
-      html += 'style="padding:8px 10px;margin-bottom:4px;border-radius:4px;cursor:pointer;border:1px solid var(--border);font-size:13px;transition:background .15s"';
-      html += ' onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'">';
+      html += 'style="padding:8px 10px;margin-bottom:4px;border-radius:4px;'
+           + (canRevert ? 'cursor:pointer;' : 'cursor:default;opacity:0.6;')
+           + 'border:1px solid ' + (isSnapshot ? 'var(--active)' : 'var(--border)') + ';font-size:13px;transition:background .15s"';
+      if (canRevert) html += ' onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'"';
+      html += '>';
       html += '<div style="display:flex;justify-content:space-between;align-items:center">';
-      html += '<span><strong style="color:var(--text-muted)">#' + step.stepNumber + '</strong> ' + step.description + '</span>';
+      html += '<span>';
+      if (isSnapshot) html += '<span style="color:var(--active);font-size:10px;margin-right:4px">SNAPSHOT</span>';
+      html += '<strong style="color:var(--text-muted)">#' + step.stepNumber + '</strong> ' + step.description + '</span>';
       if (effectCount > 0) {
         html += '<span style="background:var(--active);color:white;font-size:10px;padding:1px 6px;border-radius:10px">' + effectCount + '</span>';
       }
@@ -757,9 +840,11 @@ class TimelinePanel extends HTMLElement {
     container.innerHTML = html;
 
     container.querySelectorAll('.timeline-entry').forEach(entry => {
+      const stepNum = parseInt(entry.dataset.step);
+      if (stepNum <= snapshotStep) return;
       entry.addEventListener('click', async () => {
-        const targetStep = parseInt(entry.dataset.step) - 1;
-        await apiCall('/api/step-back-to', { targetStep });
+        const targetStep = stepNum - 1;
+        await apiCall('/api/step-back-to', { targetStep: String(targetStep) });
         refreshState();
       });
     });

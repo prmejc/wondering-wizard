@@ -6,7 +6,7 @@ import com.wonderingwizard.engine.EventPropagatingEngine;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
+import com.wonderingwizard.events.MoveStage;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
@@ -47,10 +47,10 @@ class DemoServerTest {
         @DisplayName("Should track steps with sequential numbering")
         void tracksSteps() {
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING,
+                    1L, 1L, "RTG-01", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
             server.processStep("WI 2", new WorkInstructionEvent(
-                    2L, 1L, "RTG-02", WorkInstructionStatus.PENDING,
+                    2L, 1L, "RTG-02", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
 
             List<DemoServer.Step> steps = server.getSteps();
@@ -65,7 +65,7 @@ class DemoServerTest {
         @DisplayName("Should record side effects in steps")
         void recordsSideEffects() {
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING,
+                    1L, 1L, "RTG-01", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
 
             List<SideEffect> effects = server.processStep("Activate WQ",
@@ -85,10 +85,10 @@ class DemoServerTest {
         @DisplayName("Should step back to target step")
         void stepsBackToTarget() {
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING,
+                    1L, 1L, "RTG-01", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
             server.processStep("WI 2", new WorkInstructionEvent(
-                    2L, 1L, "RTG-02", WorkInstructionStatus.PENDING,
+                    2L, 1L, "RTG-02", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
             server.processStep("Activate WQ",
                     new WorkQueueMessage(1L, WorkQueueStatus.ACTIVE, 0, null));
@@ -104,10 +104,10 @@ class DemoServerTest {
         @DisplayName("Should step back to beginning (step 0)")
         void stepsBackToBeginning() {
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING,
+                    1L, 1L, "RTG-01", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
             server.processStep("WI 2", new WorkInstructionEvent(
-                    2L, 1L, "RTG-02", WorkInstructionStatus.PENDING,
+                    2L, 1L, "RTG-02", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
 
             boolean success = server.stepBackTo(0);
@@ -119,7 +119,7 @@ class DemoServerTest {
         @DisplayName("Should return false for invalid target step")
         void returnsFalseForInvalidStep() {
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING,
+                    1L, 1L, "RTG-01", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
 
             assertFalse(server.stepBackTo(-1));
@@ -131,7 +131,7 @@ class DemoServerTest {
         void handlesStepBackWithPropagation() {
             // Register work instructions
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING,
+                    1L, 1L, "RTG-01", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
 
             // Activate - this creates ScheduleCreated which propagates
@@ -170,7 +170,7 @@ class DemoServerTest {
         @DisplayName("Should include schedules in state after activation")
         void includesSchedulesInState() {
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING,
+                    1L, 1L, "RTG-01", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
             server.processStep("Activate WQ",
                     new WorkQueueMessage(1L, WorkQueueStatus.ACTIVE, 0, null));
@@ -190,7 +190,7 @@ class DemoServerTest {
         void showsActionStatuses() {
             Instant emt = Instant.parse("2024-01-01T00:05:00Z");
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING, emt, 120));
+                    1L, 1L, "RTG-01", MoveStage.PLANNED, emt, 120));
             server.processStep("Activate WQ",
                     new WorkQueueMessage(1L, WorkQueueStatus.ACTIVE, 0, null));
 
@@ -222,7 +222,7 @@ class DemoServerTest {
         @DisplayName("Should serialize state to valid JSON")
         void serializesStateToJson() {
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING,
+                    1L, 1L, "RTG-01", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
             server.processStep("Activate WQ",
                     new WorkQueueMessage(1L, WorkQueueStatus.ACTIVE, 0, null));
@@ -250,7 +250,7 @@ class DemoServerTest {
             // Step 1: Add work instruction
             List<SideEffect> step1 = server.processStep("Add WI",
                     new WorkInstructionEvent(1L, 1L, "RTG-01",
-                            WorkInstructionStatus.PENDING, emt, 120));
+                            MoveStage.PLANNED, emt, 120));
             assertTrue(step1.isEmpty());
 
             // Step 2: Activate work queue

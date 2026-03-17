@@ -62,6 +62,11 @@ public class EventPropagatingEngine implements Engine {
     }
 
     @Override
+    public void snapshot() {
+        delegate.snapshot();
+    }
+
+    @Override
     public boolean stepBack() {
         return delegate.stepBack();
     }

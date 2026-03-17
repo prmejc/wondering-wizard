@@ -5,7 +5,7 @@ import com.wonderingwizard.engine.EventProcessingEngine;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
+
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import org.junit.jupiter.api.BeforeEach;
@@ -98,7 +98,9 @@ class EventLogProcessorTest {
         @Test
         @DisplayName("Should support step-back via engine")
         void stepBackRestoresLog() {
+            engine.snapshot();
             engine.processEvent(new TimeEvent(now));
+            engine.snapshot();
             engine.processEvent(new TimeEvent(now.plusSeconds(5)));
 
             assertEquals(2, processor.getEventLog().size());

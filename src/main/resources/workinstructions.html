@@ -100,14 +100,17 @@ const API = window.location.pathname.replace(/\/workinstructions\/?$/, '');
 document.getElementById('nav-links').innerHTML =
   '<a href="' + (API || '/') + '">Schedule Viewer</a>' +
   '<a href="' + API + '/editor">Editor</a>' +
-  '<a href="' + API + '/workqueues">Work Queues</a>';
+  '<a href="' + API + '/workqueues">Work Queues</a>' +
+  '<a href="' + API + '/pathfinder">Pathfinder</a>';
 
 const WI_FIELDS = [
+  { key: 'eventType', label: 'Event Type', type: 'select',
+    options: ['CarryCHE Assigned', 'CarryCHE Changed', 'Dispatch Changed', 'Estimated Cycle Time Assigned', 'Estimated Cycle Time Changed', 'Estimated Move Time Assigned', 'Estimated Move Time Changed', 'FetchCHE Assigned', 'FetchCHE Changed', 'Pinning Changed', 'PutCHE Assigned', 'PutCHE Changed', 'QC Discharged Container', 'QC Loaded Container', 'StateFetch Changed', 'To Position Changed', 'WI Abandoned', 'WI Bypassed', 'WI Created', 'WI MoveStage Changed', 'WI Resequenced', 'WI Reset', 'WI Resumed', 'WI Reverted', 'WQ Change'] },
   { key: 'workInstructionId', label: 'WI ID', type: 'number' },
   { key: 'workQueueId', label: 'WQ ID', type: 'number' },
   { key: 'fetchChe', label: 'Fetch CHE', type: 'text' },
-  { key: 'status', label: 'Status', type: 'select',
-    options: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED', 'FETCH_COMPLETE'] },
+  { key: 'workInstructionMoveStage', label: 'Move Stage', type: 'select',
+    options: ['Planned', 'Ready', 'Fetch Underway', 'Carry Underway', 'Carry Complete', 'Put Underway', 'Put Complete', 'Complete', 'Cancelled'] },
   { key: 'estimatedMoveTime', label: 'Est. Move Time', type: 'datetime' },
   { key: 'estimatedCycleTimeSeconds', label: 'Cycle Time (s)', type: 'number' },
   { key: 'estimatedRtgCycleTimeSeconds', label: 'RTG Cycle (s)', type: 'number' },
@@ -239,7 +242,7 @@ function render() {
 function inputFor(field, row, wiId) {
   const attrs = 'data-field="' + field.key + '" data-wi-id="' + wiId + '"';
   if (field.key === 'workInstructionId') {
-    return '<span class="status-' + (row.status || '') + '">' + row[field.key] + '</span>';
+    return '<span class="status-' + (row.workInstructionMoveStage || '') + '">' + row[field.key] + '</span>';
   }
   if (field.type === 'select') {
     const opts = field.options.map(o =>

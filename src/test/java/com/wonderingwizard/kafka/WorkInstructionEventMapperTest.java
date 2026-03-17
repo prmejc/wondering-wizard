@@ -1,7 +1,7 @@
 package com.wonderingwizard.kafka;
 
+import com.wonderingwizard.events.MoveStage;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
 import com.wonderingwizard.kafka.messages.WorkInstructionKafkaMessage;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericData;
@@ -66,7 +66,7 @@ class WorkInstructionEventMapperTest {
         record.put("workInstructionId", 101L);
         record.put("workQueueId", 42L);
         record.put("fetchCHEName", "RTG-01");
-        record.put("workInstructionMoveStage", "PLANNED");
+        record.put("workInstructionMoveStage", "Planned");
         record.put("estimatedMoveTime", 1700000000000L);
         record.put("estimatedCycleTime", 120.0);
         record.put("estimatedRTGCycleTime", 45.0);
@@ -83,7 +83,7 @@ class WorkInstructionEventMapperTest {
         assertEquals(42L, event.workQueueId());
         assertEquals("RTG-01", event.fetchChe());
         assertEquals("QC-01", event.putChe());
-        assertEquals(WorkInstructionStatus.PENDING, event.status());
+        assertEquals(MoveStage.PLANNED, event.workInstructionMoveStage());
         assertEquals(Instant.ofEpochMilli(1700000000000L), event.estimatedMoveTime());
         assertEquals(120, event.estimatedCycleTimeSeconds());
         assertEquals(45, event.estimatedRtgCycleTimeSeconds());
@@ -99,7 +99,7 @@ class WorkInstructionEventMapperTest {
         GenericRecord record = new GenericData.Record(schema);
         record.put("workInstructionId", 1L);
         record.put("workQueueId", 1L);
-        record.put("workInstructionMoveStage", "PLANNED");
+        record.put("workInstructionMoveStage", "Planned");
         record.put("estimatedRTGCycleTime", null);
 
         WorkInstructionEvent event = mapper.map(record);
@@ -183,15 +183,15 @@ class WorkInstructionEventMapperTest {
 
     @ParameterizedTest
     @CsvSource({
-            "PLANNED, PENDING",
-            "READY, PENDING",
-            "CARRY_UNDERWAY, IN_PROGRESS",
-            "FETCH_UNDERWAY, IN_PROGRESS",
-            "PUT_UNDERWAY, IN_PROGRESS",
-            "COMPLETE, COMPLETED",
-            "COMPLETED, COMPLETED",
-            "CANCELLED, CANCELLED",
-            "CANCEL, CANCELLED"
+            "Planned, Planned",
+            "Ready, Ready",
+            "Carry Underway, Carry Underway",
+            "Fetch Underway, Fetch Underway",
+            "Put Underway, Put Underway",
+            "Carry Complete, Carry Complete",
+            "Put Complete, Put Complete",
+            "Complete, Complete",
+            "Cancelled, Cancelled"
     })
     void shouldMapMoveStageToStatus(String moveStage, String expectedStatus) {
         GenericRecord record = new GenericData.Record(schema);
@@ -201,7 +201,7 @@ class WorkInstructionEventMapperTest {
 
         WorkInstructionEvent event = mapper.map(record);
 
-        assertEquals(WorkInstructionStatus.valueOf(expectedStatus), event.status());
+        assertEquals(expectedStatus, event.workInstructionMoveStage());
     }
 
     @Test
@@ -213,11 +213,11 @@ class WorkInstructionEventMapperTest {
 
         WorkInstructionEvent event = mapper.map(record);
 
-        assertEquals(WorkInstructionStatus.PENDING, event.status());
+        assertEquals(MoveStage.PLANNED, event.workInstructionMoveStage());
     }
 
     @Test
-    void shouldMapUnknownMoveStageToPlanned() {
+    void shouldMapUnknownMoveStageToItself() {
         GenericRecord record = new GenericData.Record(schema);
         record.put("workInstructionId", 1L);
         record.put("workQueueId", 1L);
@@ -225,7 +225,7 @@ class WorkInstructionEventMapperTest {
 
         WorkInstructionEvent event = mapper.map(record);
 
-        assertEquals(WorkInstructionStatus.PENDING, event.status());
+        assertEquals("SOME_UNKNOWN_STAGE", event.workInstructionMoveStage());
     }
 
     @Test
@@ -240,7 +240,7 @@ class WorkInstructionEventMapperTest {
         record.put("stateFetch", "READY");
         record.put("workInstructionQueueSequence", 3L);
         record.put("moveKind", "DISCHARGE");
-        record.put("workInstructionMoveStage", "PLANNED");
+        record.put("workInstructionMoveStage", "Planned");
         record.put("fetchCHEName", "RTG-01");
         record.put("carryCHEName", "TT-05");
         record.put("putCHEName", "QC-02");
@@ -267,7 +267,7 @@ class WorkInstructionEventMapperTest {
         assertEquals("READY", kafkaMessage.stateFetch());
         assertEquals(3L, kafkaMessage.workInstructionQueueSequence());
         assertEquals("DISCHARGE", kafkaMessage.moveKind());
-        assertEquals("PLANNED", kafkaMessage.workInstructionMoveStage());
+        assertEquals("Planned", kafkaMessage.workInstructionMoveStage());
         assertEquals("RTG-01", kafkaMessage.fetchCHEName());
         assertEquals("TT-05", kafkaMessage.carryCHEName());
         assertEquals("QC-02", kafkaMessage.putCHEName());

@@ -6,8 +6,8 @@ import com.wonderingwizard.engine.EventProcessingEngine;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.SetTimeAlarm;
 import com.wonderingwizard.events.TimeEvent;
+import com.wonderingwizard.events.MoveStage;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
@@ -130,7 +130,7 @@ public class Main {
                 1L,
                 workQueueId,
                 "RTG-01",
-                WorkInstructionStatus.PENDING,
+                MoveStage.PLANNED,
                 estimatedMoveTime,
                 120
         ));
@@ -141,7 +141,7 @@ public class Main {
                 2L,
                 workQueueId,
                 "RTG-02",
-                WorkInstructionStatus.PENDING,
+                MoveStage.PLANNED,
                 estimatedMoveTime.plusSeconds(5),
                 120
         ));

@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-import static com.wonderingwizard.events.WorkInstructionStatus.PENDING;
 import static com.wonderingwizard.events.WorkQueueStatus.ACTIVE;
 import static com.wonderingwizard.events.WorkQueueStatus.INACTIVE;
 import static org.junit.jupiter.api.Assertions.*;
@@ -519,76 +518,74 @@ class ScheduleRunnerProcessorTest {
     }
 
     @Nested
-    @DisplayName("ScheduleModified handling")
-    class ScheduleModifiedTests {
+    @DisplayName("Schedule replacement via ScheduleCreated")
+    class ScheduleReplacementTests {
 
         @Test
-        @DisplayName("Should replace WAITING takts with new ones from ScheduleModified")
-        void scheduleModified_replacesWaitingTakts() {
-            // Create 3 takts
+        @DisplayName("Should replace existing schedule when a new ScheduleCreated arrives")
+        void scheduleCreated_replacesExistingSchedule() {
+            // Create initial schedule with 3 takts
             List<Takt> takts = createLinkedTakts(3, EMT);
             processor.process(new ScheduleCreated(1L, takts, EMT));
 
             // Activate first takt
-            Instant timeAfterStart = EMT.plusSeconds(1);
-            processor.process(new TimeEvent(timeAfterStart));
+            processor.process(new TimeEvent(EMT.plusSeconds(1)));
 
-            // Now modify: replace takt at sequence 1 and 2 with new takts
+            // Advance time past new schedule start before replacing
+            processor.process(new TimeEvent(EMT.plusSeconds(121)));
+
+            // Send a new ScheduleCreated — should fully replace the schedule
+            // and activate takts whose time conditions are already met
             List<Takt> newTakts = createLinkedTakts(2, EMT.plusSeconds(120));
-            // Adjust sequences to start at 1
-            var rebuiltTakts = new java.util.ArrayList<Takt>();
-            for (int i = 0; i < newTakts.size(); i++) {
-                Takt t = newTakts.get(i);
-                rebuiltTakts.add(new Takt(i + 1, t.actions(), t.plannedStartTime(), t.estimatedStartTime(), t.durationSeconds()));
-            }
+            List<SideEffect> replaceEffects = processor.process(new ScheduleCreated(1L, newTakts, EMT.plusSeconds(120)));
 
-            var modified = new com.wonderingwizard.sideeffects.ScheduleModified(1L, rebuiltTakts, 1);
-            List<SideEffect> effects = processor.process(modified);
-
-            // The new TAKT101 should not activate yet (time condition not met for 120s later)
-            // But the point is: processing didn't throw, and state was updated
-            // Let's advance time and verify new takts can be activated
-            Instant afterTakt1Start = EMT.plusSeconds(121);
-            List<SideEffect> activateEffects = processor.process(new TimeEvent(afterTakt1Start));
-
-            // Should try to activate the new TAKT101
-            boolean taktActivated = activateEffects.stream()
-                    .anyMatch(e -> e instanceof TaktActivated ta && ta.taktName().equals("TAKT101"));
-            // The new takt may or may not activate depending on dependency conditions
-            // The important thing is the schedule was successfully modified without errors
+            boolean taktActivated = replaceEffects.stream()
+                    .anyMatch(e -> e instanceof TaktActivated);
+            assertTrue(taktActivated, "New schedule's takts should activate during replacement");
         }
 
         @Test
-        @DisplayName("Should not modify ACTIVE or COMPLETED takts")
-        void scheduleModified_preservesActiveAndCompletedTakts() {
-            // Create 3 takts
-            List<Takt> takts = createLinkedTakts(3, EMT);
+        @DisplayName("Should preserve completed actions when schedule is replaced with new action UUIDs")
+        void scheduleReplacement_preservesCompletedActionsByType() {
+            // Create initial schedule: TAKT100 with QC_LIFT → QC_PLACE
+            List<Takt> takts = createLinkedTakts(2, EMT);
+            UUID takt1Action1 = takts.get(0).actions().get(0).id(); // QC_LIFT
+            UUID takt1Action2 = takts.get(0).actions().get(1).id(); // QC_PLACE
+
             processor.process(new ScheduleCreated(1L, takts, EMT));
 
-            // Activate and complete first takt
+            // Activate first takt
             processor.process(new TimeEvent(EMT.plusSeconds(1)));
-            // Get the first takt's actions
-            Action firstAction = takts.get(0).actions().get(0);
-            Action secondAction = takts.get(0).actions().get(1);
-            processor.process(new ActionCompletedEvent(firstAction.id(), 1L));
-            processor.process(new ActionCompletedEvent(secondAction.id(), 1L));
 
-            // First takt should be COMPLETED now. Replace takts from sequence 2 onward.
-            List<Takt> newTakts = createLinkedTakts(1, EMT.plusSeconds(240));
-            var rebuiltTakts = List.of(new Takt(2, newTakts.get(0).actions(),
-                    newTakts.get(0).plannedStartTime(), newTakts.get(0).estimatedStartTime(), 120));
+            // Complete QC_LIFT in TAKT100
+            processor.process(new ActionCompletedEvent(takt1Action1, 1L));
+            // Complete QC_PLACE in TAKT100 — takt completes
+            processor.process(new ActionCompletedEvent(takt1Action2, 1L));
 
-            var modified = new com.wonderingwizard.sideeffects.ScheduleModified(1L, rebuiltTakts, 2);
-            // This should succeed without error — completed takt 0 preserved
-            List<SideEffect> effects = processor.process(modified);
+            // Advance time past TAKT101 start
+            processor.process(new TimeEvent(EMT.plusSeconds(121)));
 
-            // Verify TAKT100 is still completed by trying to activate new takt via time
-            Instant afterNewTaktStart = EMT.plusSeconds(241);
-            List<SideEffect> timeEffects = processor.process(new TimeEvent(afterNewTaktStart));
+            // Now replan: new schedule with DIFFERENT UUIDs but same action types
+            List<Takt> newTakts = createLinkedTakts(2, EMT);
+            UUID newTakt1Action1 = newTakts.get(0).actions().get(0).id(); // QC_LIFT (new UUID)
+            UUID newTakt1Action2 = newTakts.get(0).actions().get(1).id(); // QC_PLACE (new UUID)
 
-            // Should have effects for the new takt
-            assertFalse(timeEffects.isEmpty() && effects.isEmpty(),
-                    "Should produce effects either during modification or time advance");
+            processor.process(new ScheduleCreated(1L, newTakts, EMT));
+
+            // TAKT100 was completed — processor should report completed state for new UUIDs
+            assertEquals(ScheduleRunnerProcessor.ActionStatus.COMPLETED,
+                    processor.getActionStatus(1L, newTakt1Action1),
+                    "QC_LIFT should be COMPLETED after replan (transferred by actionType:containerIndex)");
+            assertEquals(ScheduleRunnerProcessor.ActionStatus.COMPLETED,
+                    processor.getActionStatus(1L, newTakt1Action2),
+                    "QC_PLACE should be COMPLETED after replan");
+            assertEquals(ScheduleRunnerProcessor.TaktState.COMPLETED,
+                    processor.getTaktState(1L, "TAKT100"),
+                    "TAKT100 should remain COMPLETED after replan");
+
+            // Completing new TAKT100 QC_LIFT should be ignored (already completed)
+            List<SideEffect> noOp = processor.process(new ActionCompletedEvent(newTakt1Action1, 1L));
+            assertTrue(noOp.isEmpty(), "Completing action in already-completed takt should be no-op");
         }
     }
 }

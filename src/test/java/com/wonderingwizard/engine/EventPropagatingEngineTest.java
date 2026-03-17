@@ -5,7 +5,7 @@ import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
+import com.wonderingwizard.events.MoveStage;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
@@ -61,13 +61,13 @@ class EventPropagatingEngineTest {
 
             assertFalse(propagatingEngine.stepBack());
 
-            // WorkQueueMessage(ACTIVE) produces ScheduleCreated which is also an Event,
-            // so EventPropagatingEngine recursively processes it → 2 history entries
+            // snapshot() before processEvent to enable step-back
+            propagatingEngine.snapshot();
             propagatingEngine.processEvent(new WorkQueueMessage(1, WorkQueueStatus.ACTIVE, 0, null));
-            assertEquals(2, propagatingEngine.getHistorySize());
+            assertEquals(1, propagatingEngine.getHistorySize());
 
             assertTrue(propagatingEngine.stepBack());
-            assertEquals(1, propagatingEngine.getHistorySize());
+            assertEquals(0, propagatingEngine.getHistorySize());
         }
 
         @Test
@@ -77,13 +77,14 @@ class EventPropagatingEngineTest {
 
             assertEquals(0, propagatingEngine.getHistorySize());
 
-            // Each WorkQueueMessage(ACTIVE) produces ScheduleCreated (implements Event),
-            // which is recursively processed → 2 history entries per message
+            // Each snapshot() adds exactly 1 history entry
+            propagatingEngine.snapshot();
             propagatingEngine.processEvent(new WorkQueueMessage(1, WorkQueueStatus.ACTIVE, 0, null));
-            assertEquals(2, propagatingEngine.getHistorySize());
+            assertEquals(1, propagatingEngine.getHistorySize());
 
+            propagatingEngine.snapshot();
             propagatingEngine.processEvent(new WorkQueueMessage(2, WorkQueueStatus.ACTIVE, 0, null));
-            assertEquals(4, propagatingEngine.getHistorySize());
+            assertEquals(2, propagatingEngine.getHistorySize());
         }
 
         @Test
@@ -91,10 +92,12 @@ class EventPropagatingEngineTest {
         void clearHistoryDelegatesToInnerEngine() {
             propagatingEngine.register(new WorkQueueProcessor(() -> 30));
 
+            propagatingEngine.snapshot();
             propagatingEngine.processEvent(new WorkQueueMessage(1, WorkQueueStatus.ACTIVE, 0, null));
+            propagatingEngine.snapshot();
             propagatingEngine.processEvent(new WorkQueueMessage(2, WorkQueueStatus.ACTIVE, 0, null));
 
-            assertEquals(4, propagatingEngine.getHistorySize());
+            assertEquals(2, propagatingEngine.getHistorySize());
 
             propagatingEngine.clearHistory();
 
@@ -132,7 +135,7 @@ class EventPropagatingEngineTest {
 
             // Register a work instruction first
             propagatingEngine.processEvent(new WorkInstructionEvent(
-                    1, workQueueId, "CHE1", WorkInstructionStatus.PENDING, estimatedMoveTime, 120));
+                    1, workQueueId, "CHE1", MoveStage.PLANNED, estimatedMoveTime, 120));
 
             // Activate the work queue - this should produce ScheduleCreated,
             // which should then be recursively processed
@@ -167,7 +170,7 @@ class EventPropagatingEngineTest {
 
             // Register work instruction with past estimated move time
             propagatingEngine.processEvent(new WorkInstructionEvent(
-                    1, workQueueId, "CHE1", WorkInstructionStatus.PENDING, pastTime, 120));
+                    1, workQueueId, "CHE1", MoveStage.PLANNED, pastTime, 120));
 
             // Process a time event first to set the time context
             propagatingEngine.processEvent(new TimeEvent(Instant.now()));
@@ -211,7 +214,7 @@ class EventPropagatingEngineTest {
 
             // Register work instruction
             propagatingEngine.processEvent(new WorkInstructionEvent(
-                    1, workQueueId, "CHE1", WorkInstructionStatus.PENDING, pastTime, 120));
+                    1, workQueueId, "CHE1", MoveStage.PLANNED, pastTime, 120));
 
             // Set time context
             propagatingEngine.processEvent(new TimeEvent(Instant.now()));
@@ -252,7 +255,7 @@ class EventPropagatingEngineTest {
 
             // First, register a work instruction
             propagatingEngine.processEvent(new WorkInstructionEvent(
-                    1, workQueueId, "CHE1", WorkInstructionStatus.PENDING, now.minusSeconds(10), 120));
+                    1, workQueueId, "CHE1", MoveStage.PLANNED, now.minusSeconds(10), 120));
 
             // Activate the queue - WorkQueueProcessor will produce ScheduleCreated
             // EventPropagatingEngine should then pass ScheduleCreated to ScheduleRunnerProcessor
@@ -285,7 +288,7 @@ class EventPropagatingEngineTest {
 
             // Register work instruction
             plainEngine.processEvent(new WorkInstructionEvent(
-                    1, workQueueId, "CHE1", WorkInstructionStatus.PENDING, now.minusSeconds(10), 120));
+                    1, workQueueId, "CHE1", MoveStage.PLANNED, now.minusSeconds(10), 120));
 
             // Activate the queue
             List<SideEffect> plainEffects = plainEngine.processEvent(

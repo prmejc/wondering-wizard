@@ -25,16 +25,18 @@ import com.wonderingwizard.kafka.KafkaSideEffectPublisher;
 import com.wonderingwizard.kafka.WorkInstructionEventMapper;
 import com.wonderingwizard.kafka.WorkQueueEventMapper;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.DigitalMapEvent;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.SystemTimeSet;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.processors.DelayProcessor;
+import com.wonderingwizard.processors.DigitalMapProcessor;
 import com.wonderingwizard.processors.EventLogProcessor;
+import com.wonderingwizard.processors.RtgWaitDurationStep;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
 import com.wonderingwizard.processors.WorkQueueProcessor;
@@ -80,9 +82,11 @@ public class DemoServer {
 
     private final Engine engine;
     private final Settings settings;
+    private final ScheduleRunnerProcessor scheduleRunnerProcessor;
     private final List<Step> steps = new ArrayList<>();
     private final Instant initialTime = Instant.EPOCH;
     private Instant currentTime = initialTime;
+    private DigitalMapProcessor digitalMapProcessor;
     private HttpServer httpServer;
     private KafkaConsumerManager kafkaConsumerManager;
     private KafkaSideEffectPublisher sideEffectPublisher;
@@ -95,10 +99,9 @@ public class DemoServer {
      * @param description a short description of the event
      * @param event the event that was processed
      * @param sideEffects the side effects produced
-     * @param engineHistoryDelta the number of engine history entries consumed by this step
      */
     public record Step(int stepNumber, String description, Event event,
-                       List<SideEffect> sideEffects, int engineHistoryDelta) {}
+                       List<SideEffect> sideEffects) {}
 
     /** Action status for schedule visualization. */
     public enum ActionState {
@@ -141,14 +144,24 @@ public class DemoServer {
         this.engine = new EventPropagatingEngine(baseEngine);
         engine.register(new EventLogProcessor());
         engine.register(new TimeAlarmProcessor());
-        engine.register(new WorkQueueProcessor());
-        engine.register(new ScheduleRunnerProcessor());
+        this.digitalMapProcessor = new DigitalMapProcessor();
+        var workQueueProcessor = new WorkQueueProcessor();
+        workQueueProcessor.registerStep(digitalMapProcessor);
+        workQueueProcessor.registerStep(new RtgWaitDurationStep());
+        engine.register(digitalMapProcessor);
+        engine.register(workQueueProcessor);
+        this.scheduleRunnerProcessor = new ScheduleRunnerProcessor();
+        engine.register(scheduleRunnerProcessor);
         engine.register(new DelayProcessor());
+        // Take initial snapshot so we can always reset to clean state
+        engine.snapshot();
+        snapshotStepIndex = 0;
     }
 
     DemoServer(Engine engine) {
         this.settings = Settings.load();
         this.engine = engine;
+        this.scheduleRunnerProcessor = null;
     }
 
     /**
@@ -168,12 +181,17 @@ public class DemoServer {
         httpServer.createContext("/api/override-condition", this::handleOverrideCondition);
         httpServer.createContext("/api/override-action-condition", this::handleOverrideActionCondition);
         httpServer.createContext("/api/step-back-to", this::handleStepBackTo);
+        httpServer.createContext("/api/snapshot", this::handleSnapshot);
         httpServer.createContext("/api/event-log/export", this::handleExportEventLog);
         httpServer.createContext("/api/event-log/import", this::handleImportEventLog);
         httpServer.createContext("/api/events", this::handleSseConnection);
         httpServer.createContext("/editor", this::handleEditor);
         httpServer.createContext("/workinstructions", this::handleWorkInstructions);
         httpServer.createContext("/workqueues", this::handleWorkQueues);
+        httpServer.createContext("/pathfinder", this::handlePathfinder);
+        httpServer.createContext("/api/pathfind", this::handlePathfind);
+        httpServer.createContext("/api/digitalmap", this::handleDigitalMap);
+        httpServer.createContext("/api/standby", this::handleStandby);
         httpServer.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
         httpServer.start();
         sseManager.startKeepalive();
@@ -181,6 +199,9 @@ public class DemoServer {
 
         // Set system time to current computer time
         sendSystemTimeSet(Instant.now().truncatedTo(ChronoUnit.SECONDS));
+
+        // Load default digital map
+        loadDefaultDigitalMap();
 
         if (settings.kafkaEnabled()) {
             startKafkaConsumers();
@@ -218,6 +239,11 @@ public class DemoServer {
             @Override
             public List<SideEffect> processEvent(Event event) {
                 return processStep("Kafka: " + event.getClass().getSimpleName(), event);
+            }
+
+            @Override
+            public void snapshot() {
+                engine.snapshot();
             }
 
             @Override
@@ -301,6 +327,20 @@ public class DemoServer {
         processStep("System time set", new SystemTimeSet(timestamp));
     }
 
+    private void loadDefaultDigitalMap() {
+        try (InputStream is = getClass().getResourceAsStream("/digitalmap.json")) {
+            if (is == null) {
+                logger.info("No default digital map found (digitalmap.json not in resources)");
+                return;
+            }
+            String mapJson = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            processStep("Load default digital map", new DigitalMapEvent(mapJson));
+            logger.info("Default digital map loaded");
+        } catch (IOException e) {
+            logger.warning("Failed to load default digital map: " + e.getMessage());
+        }
+    }
+
     /**
      * Processes an event and records it as a numbered step.
      *
@@ -314,12 +354,10 @@ public class DemoServer {
             currentTime = sts.timestamp();
         }
 
-        int historyBefore = engine.getHistorySize();
         List<SideEffect> sideEffects = engine.processEvent(event);
-        int historyDelta = engine.getHistorySize() - historyBefore;
 
         int stepNumber = steps.size() + 1;
-        steps.add(new Step(stepNumber, description, event, sideEffects, historyDelta));
+        steps.add(new Step(stepNumber, description, event, sideEffects));
 
         if (sideEffectPublisher != null) {
             sideEffectPublisher.publish(sideEffects);
@@ -330,12 +368,41 @@ public class DemoServer {
         return sideEffects;
     }
 
+    /**
+     * Creates an explicit snapshot of the current engine state.
+     * The snapshot is associated with the current step count so that
+     * step-back can restore it and replay events from that point.
+     */
+    public synchronized void createSnapshot() {
+        engine.snapshot();
+        snapshotStepIndex = steps.size();
+        logger.info("Snapshot created at step " + snapshotStepIndex);
+    }
+
+    /**
+     * Resets the engine to its initial state (before any events).
+     * Uses the initial snapshot taken at startup.
+     */
+    private void resetToInitial() {
+        // Restore initial snapshot
+        engine.stepBack();
+        steps.clear();
+        currentTime = initialTime;
+        snapshotStepIndex = 0;
+        // Re-take snapshot at step 0 for future resets
+        engine.snapshot();
+    }
+
+    /** Step index at which the most recent snapshot was taken (-1 = none). */
+    private int snapshotStepIndex = -1;
+
     private void broadcastState() {
         sseManager.broadcast("state", JsonSerializer.serialize(getState()));
     }
 
     /**
-     * Steps back to the target step number, undoing all steps after it.
+     * Steps back to the target step number by restoring the nearest snapshot
+     * and replaying events from that point.
      *
      * @param targetStep the step number to revert to (1-based, 0 means undo all)
      * @return true if step-back was successful
@@ -344,14 +411,38 @@ public class DemoServer {
         if (targetStep < 0 || targetStep >= steps.size()) {
             return false;
         }
-
-        // Calculate total engine step-backs needed
-        while (steps.size() > targetStep) {
-            Step last = steps.remove(steps.size() - 1);
-            for (int i = 0; i < last.engineHistoryDelta(); i++) {
-                engine.stepBack();
-            }
+        if (snapshotStepIndex < 0 || targetStep < snapshotStepIndex) {
+            logger.warning("Cannot step back to step " + targetStep
+                    + ": no snapshot or target is before snapshot at step " + snapshotStepIndex);
+            return false;
         }
+
+        // Save the events we need to replay (from snapshot to target)
+        List<Step> stepsToReplay = new ArrayList<>();
+        for (int i = snapshotStepIndex; i < targetStep; i++) {
+            stepsToReplay.add(steps.get(i));
+        }
+
+        // Restore the snapshot
+        engine.stepBack();
+
+        // Clear all steps after snapshot
+        while (steps.size() > snapshotStepIndex) {
+            steps.remove(steps.size() - 1);
+        }
+
+        // Replay events from snapshot up to target (without creating new snapshots)
+        for (Step step : stepsToReplay) {
+            if (step.event() instanceof SystemTimeSet sts) {
+                currentTime = sts.timestamp();
+            }
+            List<SideEffect> sideEffects = engine.processEvent(step.event());
+            steps.add(new Step(steps.size() + 1, step.description(), step.event(), sideEffects));
+        }
+
+        // Re-take the snapshot at current position so further step-backs work
+        engine.snapshot();
+        snapshotStepIndex = steps.size();
 
         return true;
     }
@@ -364,6 +455,7 @@ public class DemoServer {
     public synchronized Map<String, Object> getState() {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("currentTime", currentTime);
+        state.put("snapshotStep", snapshotStepIndex);
         state.put("steps", steps);
         state.put("schedules", buildScheduleViews());
         return state;
@@ -380,15 +472,16 @@ public class DemoServer {
     }
 
     private List<ScheduleView> buildScheduleViews() {
-        // Derive schedule state from accumulated side effects
+        // Build schedule structure from ScheduleCreated side effects,
+        // then query ScheduleRunnerProcessor for authoritative action/takt states
         Map<Long, ScheduleViewBuilder> builders = new LinkedHashMap<>();
 
         for (Step step : steps) {
             for (SideEffect se : step.sideEffects()) {
                 switch (se) {
                     case ScheduleCreated created -> {
-                        ScheduleViewBuilder builder = new ScheduleViewBuilder(
-                                created.workQueueId(), true, created.estimatedMoveTime());
+                        long wqId = created.workQueueId();
+                        ScheduleViewBuilder builder = new ScheduleViewBuilder(wqId, true, created.estimatedMoveTime());
                         for (Takt takt : created.takts()) {
                             List<ActionView> actionViews = new ArrayList<>();
                             for (Action action : takt.actions()) {
@@ -396,53 +489,38 @@ public class DemoServer {
                                     .map(wi -> wi.containerId() != null ? wi.containerId() : "")
                                     .filter(id -> !id.isEmpty())
                                     .toList();
-                            actionViews.add(new ActionView(
+                                // Get action status from processor's authoritative state
+                                ActionState actionState = scheduleRunnerProcessor != null
+                                        ? mapActionStatus(scheduleRunnerProcessor.getActionStatus(wqId, action.id()))
+                                        : ActionState.PENDING;
+                                actionViews.add(new ActionView(
                                         action.id(), action.deviceType(), action.description(),
-                                        ActionState.PENDING, action.dependsOn(), action.containerIndex(),
+                                        actionState, action.dependsOn(), action.containerIndex(),
                                         action.durationSeconds(), action.deviceIndex(), List.of(), cIds));
                             }
-                            builder.takts.add(new TaktView(takt.name(), TaktState.WAITING,
-                                    takt.plannedStartTime(), takt.estimatedStartTime(), null,
+                            // Get takt status from processor's authoritative state
+                            TaktState taktState = scheduleRunnerProcessor != null
+                                    ? mapTaktState(scheduleRunnerProcessor.getTaktState(wqId, takt.name()))
+                                    : TaktState.WAITING;
+                            Instant actualStart = scheduleRunnerProcessor != null
+                                    ? scheduleRunnerProcessor.getActualStartTime(wqId, takt.name())
+                                    : null;
+                            builder.takts.add(new TaktView(takt.name(), taktState,
+                                    takt.plannedStartTime(), takt.estimatedStartTime(), actualStart,
                                     null, takt.durationSeconds(), 0, 0, actionViews, List.of()));
                         }
                         builder.storeTakts(created.takts());
-                        builders.put(created.workQueueId(), builder);
+                        builders.put(wqId, builder);
                     }
                     case ScheduleAborted aborted ->
                             builders.remove(aborted.workQueueId());
-                    case TaktActivated taktActivated -> {
-                        ScheduleViewBuilder builder = builders.get(taktActivated.workQueueId());
-                        if (builder != null) {
-                            builder.setTaktStatus(taktActivated.taktName(), TaktState.ACTIVE);
-                            builder.setActualStartTime(taktActivated.taktName(), taktActivated.activatedAt());
-                        }
-                    }
-                    case TaktCompleted taktCompleted -> {
-                        ScheduleViewBuilder builder = builders.get(taktCompleted.workQueueId());
-                        if (builder != null) {
-                            builder.setTaktStatus(taktCompleted.taktName(), TaktState.COMPLETED);
-                            builder.setCompletedAt(taktCompleted.taktName(), taktCompleted.completedAt());
-                        }
-                    }
                     case DelayUpdated delayUpdated -> {
                         ScheduleViewBuilder builder = builders.get(delayUpdated.workQueueId());
                         if (builder != null) {
                             builder.totalDelaySeconds = delayUpdated.totalDelaySeconds();
                         }
                     }
-                    case ActionActivated activated -> {
-                        ScheduleViewBuilder builder = builders.get(activated.workQueueId());
-                        if (builder != null) {
-                            builder.setActionStatus(activated.actionId(), ActionState.ACTIVE);
-                        }
-                    }
-                    case ActionCompleted completed -> {
-                        ScheduleViewBuilder builder = builders.get(completed.workQueueId());
-                        if (builder != null) {
-                            builder.setActionStatus(completed.actionId(), ActionState.COMPLETED);
-                        }
-                    }
-                    default -> { /* Other side effects don't affect schedule view */ }
+                    default -> { /* Action/takt state is queried from processor directly */ }
                 }
             }
             // Track override events (they are events, not side effects)
@@ -463,6 +541,22 @@ public class DemoServer {
         return builders.values().stream()
                 .map(b -> b.build(currentTime))
                 .toList();
+    }
+
+    private static ActionState mapActionStatus(ScheduleRunnerProcessor.ActionStatus status) {
+        return switch (status) {
+            case COMPLETED -> ActionState.COMPLETED;
+            case ACTIVE -> ActionState.ACTIVE;
+            case PENDING -> ActionState.PENDING;
+        };
+    }
+
+    private static TaktState mapTaktState(ScheduleRunnerProcessor.TaktState state) {
+        return switch (state) {
+            case COMPLETED -> TaktState.COMPLETED;
+            case ACTIVE -> TaktState.ACTIVE;
+            case WAITING -> TaktState.WAITING;
+        };
     }
 
     private static class ScheduleViewBuilder {
@@ -525,11 +619,13 @@ public class DemoServer {
                 }
             }
 
-            // Build completed action IDs from action states
+            // Build completed action IDs from takt action views
             Set<UUID> completedActionIds = new HashSet<>();
-            for (Map.Entry<UUID, ActionState> entry : actionStates.entrySet()) {
-                if (entry.getValue() == ActionState.COMPLETED) {
-                    completedActionIds.add(entry.getKey());
+            for (TaktView takt : takts) {
+                for (ActionView action : takt.actions()) {
+                    if (action.status() == ActionState.COMPLETED) {
+                        completedActionIds.add(action.id());
+                    }
                 }
             }
 
@@ -798,6 +894,158 @@ public class DemoServer {
         }
     }
 
+    private void handlePathfinder(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try (InputStream is = getClass().getResourceAsStream("/pathfinder.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "Pathfinder page not found");
+                return;
+            }
+            byte[] html = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, html.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html);
+            }
+        }
+    }
+
+    private void handlePathfind(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        if (query == null) {
+            sendResponse(exchange, 400, "{\"error\":\"Missing query parameters 'from' and 'to'\"}");
+            return;
+        }
+
+        String from = null;
+        String to = null;
+        for (String param : query.split("&")) {
+            String[] kv = param.split("=", 2);
+            if (kv.length == 2) {
+                String key = java.net.URLDecoder.decode(kv[0], StandardCharsets.UTF_8);
+                String value = java.net.URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
+                if ("from".equals(key)) from = value;
+                if ("to".equals(key)) to = value;
+            }
+        }
+
+        if (from == null || from.isEmpty() || to == null || to.isEmpty()) {
+            sendResponse(exchange, 400, "{\"error\":\"Both 'from' and 'to' parameters are required\"}");
+            return;
+        }
+
+        if (!digitalMapProcessor.isMapLoaded()) {
+            sendResponse(exchange, 503, "{\"error\":\"No digital map loaded\"}");
+            return;
+        }
+
+        int duration = digitalMapProcessor.findPathDuration(from, to);
+
+        String json = "{\"from\":" + JsonSerializer.serialize(from)
+                + ",\"to\":" + JsonSerializer.serialize(to)
+                + ",\"durationSeconds\":" + duration
+                + ",\"found\":" + (duration >= 0) + "}";
+
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        sendResponse(exchange, 200, json);
+    }
+
+    private void handleDigitalMap(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        if (!digitalMapProcessor.isMapLoaded()) {
+            sendResponse(exchange, 503, "{\"error\":\"No digital map loaded\"}");
+            return;
+        }
+
+        var sb = new StringBuilder();
+        sb.append("{\"pois\":[");
+        var poiList = digitalMapProcessor.getPois();
+        for (int i = 0; i < poiList.size(); i++) {
+            var poi = poiList.get(i);
+            if (i > 0) sb.append(',');
+            sb.append("{\"name\":").append(JsonSerializer.serialize(poi.name()))
+              .append(",\"lat\":").append(poi.lat())
+              .append(",\"lon\":").append(poi.lon()).append('}');
+        }
+        sb.append("],\"roads\":[");
+        var roads = digitalMapProcessor.getRoadSegments();
+        for (int i = 0; i < roads.size(); i++) {
+            var seg = roads.get(i);
+            if (i > 0) sb.append(',');
+            sb.append("{\"lat1\":").append(seg.lat1())
+              .append(",\"lon1\":").append(seg.lon1())
+              .append(",\"lat2\":").append(seg.lat2())
+              .append(",\"lon2\":").append(seg.lon2())
+              .append(",\"speed\":").append(seg.speedKmh())
+              .append(",\"oneway\":").append(seg.oneway()).append('}');
+        }
+        sb.append("]}");
+
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        sendResponse(exchange, 200, sb.toString());
+    }
+
+    private void handleStandby(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        String query = exchange.getRequestURI().getQuery();
+        if (query == null) {
+            sendResponse(exchange, 400, "{\"error\":\"Missing query parameter 'position'\"}");
+            return;
+        }
+
+        String position = null;
+        for (String param : query.split("&")) {
+            String[] kv = param.split("=", 2);
+            if (kv.length == 2) {
+                String key = java.net.URLDecoder.decode(kv[0], StandardCharsets.UTF_8);
+                String value = java.net.URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
+                if ("position".equals(key)) position = value;
+            }
+        }
+
+        if (position == null || position.isEmpty()) {
+            sendResponse(exchange, 400, "{\"error\":\"'position' parameter is required\"}");
+            return;
+        }
+
+        if (!digitalMapProcessor.isMapLoaded()) {
+            sendResponse(exchange, 503, "{\"error\":\"No digital map loaded\"}");
+            return;
+        }
+
+        String standby = digitalMapProcessor.findStandbyLocation(position);
+
+        String json;
+        if (standby == null) {
+            json = "{\"position\":" + JsonSerializer.serialize(position)
+                    + ",\"found\":false}";
+        } else {
+            json = "{\"position\":" + JsonSerializer.serialize(position)
+                    + ",\"standby\":" + JsonSerializer.serialize(standby)
+                    + ",\"found\":true}";
+        }
+
+        exchange.getResponseHeaders().set("Content-Type", "application/json");
+        sendResponse(exchange, 200, json);
+    }
+
     private void handleGetState(HttpExchange exchange) throws IOException {
         if (!"GET".equals(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
@@ -814,11 +1062,13 @@ public class DemoServer {
 
         try {
             Map<String, String> body = readJsonBody(exchange);
+            String eventType = body.getOrDefault("eventType", "");
             long workInstructionId = Long.parseLong(requireField(body, "workInstructionId"));
             long workQueueId = Long.parseLong(requireField(body, "workQueueId"));
             String fetchChe = body.getOrDefault("fetchChe", "");
-            String statusStr = body.getOrDefault("status", "PENDING");
-            WorkInstructionStatus status = WorkInstructionStatus.valueOf(statusStr);
+            String workInstructionMoveStage = body.containsKey("workInstructionMoveStage")
+                    ? body.get("workInstructionMoveStage")
+                    : body.getOrDefault("status", "Planned");
             String estimatedMoveTimeStr = body.get("estimatedMoveTime");
             Instant estimatedMoveTime = estimatedMoveTimeStr != null
                     ? Instant.parse(estimatedMoveTimeStr) : null;
@@ -838,7 +1088,7 @@ public class DemoServer {
             String containerId = body.getOrDefault("containerId", "");
 
             WorkInstructionEvent event = new WorkInstructionEvent(
-                    workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
+                    eventType, workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                     estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                     putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
                     toPosition, containerId);
@@ -973,6 +1223,16 @@ public class DemoServer {
         }
     }
 
+    private void handleSnapshot(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+        createSnapshot();
+        broadcastState();
+        sendJsonResponse(exchange, 200, JsonSerializer.serialize(getState()));
+    }
+
     private void handleStepBackTo(HttpExchange exchange) throws IOException {
         if (!"POST".equals(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
@@ -1048,9 +1308,7 @@ public class DemoServer {
             List<Map<String, String>> entries = parseImportArray(body);
 
             // Reset engine to initial state
-            stepBackTo(0);
-            currentTime = initialTime;
-            engine.clearHistory();
+            resetToInitial();
 
             // Replay events
             for (Map<String, String> entry : entries) {

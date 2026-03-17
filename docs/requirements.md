@@ -1051,3 +1051,66 @@ mvn test -Dtest="DemoServerTest"
 - `src/main/resources/workinstructions.html` (new — Work Instructions UI page)
 - `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — added `/workinstructions` route)
 - `src/test/java/com/wonderingwizard/server/DemoServerTest.java` (modified — added HTTP endpoint tests)
+
+### F-16: Digital Map Processor and Schedule Creation Pipeline
+
+**Status:** Implemented
+
+**Description:**
+Implement a DigitalMapProcessor that handles digital map events and provides pathfinding-based duration enrichment for TT drive actions during schedule creation. The processor has a dual role:
+
+1. **EventProcessor:** Reacts to `DigitalMapEvent` to parse and store a terminal map graph. Produces no side effects.
+2. **SchedulePipelineStep:** Registered with `WorkQueueProcessor` as a step in the schedule creation pipeline. Computes travel durations between yard positions using pathfinding and adjusts TT drive action durations before takt fitting.
+
+**Schedule Creation Pipeline:**
+The schedule creation is now a three-step pipeline:
+1. **Template creation** — `GraphScheduleBuilder` builds action templates with default durations
+2. **Duration enrichment** — Pipeline steps (e.g., `DigitalMapProcessor`) modify action durations based on external data
+3. **Takt fitting** — Actions with final durations are fitted into takts, introducing additional takts if actions don't fit
+
+Pipeline steps are registered dynamically with `WorkQueueProcessor.registerStep()`. If no steps are registered, templates pass directly to takt fitting with default durations.
+
+**Key Design Decisions:**
+- Existing schedules are **not** affected when a new map arrives; only new schedules use updated map data
+- The digital map is parsed into a bidirectional adjacency graph for pathfinding
+- TT drive durations are scaled proportionally based on the ratio of map path duration to default total drive duration
+- The pipeline step interface (`SchedulePipelineStep`) is extensible — additional enrichers can be added without modifying existing code
+
+**Digital Map Event Format:**
+```json
+{
+    "edges": [
+        {"from": "Y-PTM-1L20E4", "to": "QC-01", "durationSeconds": 180},
+        {"from": "QC-01", "to": "Y-PTM-2R10A1", "durationSeconds": 200}
+    ]
+}
+```
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Process `DigitalMapEvent` with valid map | Map parsed, no side effects, `isMapLoaded()` is true |
+| 2 | Process `DigitalMapEvent` with empty payload | Map not loaded, no side effects |
+| 3 | Find path duration between connected nodes | Returns shortest path duration |
+| 4 | Find path between disconnected nodes | Returns -1 |
+| 5 | Create schedule with map loaded | TT drive durations adjusted by map pathfinding |
+| 6 | Create schedule without map loaded | Default durations used (passthrough) |
+| 7 | Load new map over existing map | Old map replaced, new durations used |
+| 8 | Capture and restore state | Map state correctly saved and restored |
+
+**Test Execution:**
+```bash
+mvn test -Dtest="DigitalMapProcessorTest"
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/events/DigitalMapEvent.java` (new — digital map event record)
+- `src/main/java/com/wonderingwizard/processors/DigitalMapProcessor.java` (new — dual-role processor)
+- `src/main/java/com/wonderingwizard/processors/SchedulePipelineStep.java` (new — pipeline step interface)
+- `src/main/java/com/wonderingwizard/processors/GraphScheduleBuilder.java` (modified — added pipeline-aware `createTakts` overload and `withDuration` on ActionTemplate)
+- `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java` (modified — added `registerStep()` and passes pipeline steps to schedule builder)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — registers DigitalMapProcessor)
+- `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — added DigitalMapEvent serialization)
+- `src/main/java/com/wonderingwizard/server/EventDeserializer.java` (modified — added DigitalMapEvent deserialization)
+- `src/test/java/com/wonderingwizard/processors/DigitalMapProcessorTest.java` (new — comprehensive test suite)

@@ -7,7 +7,7 @@ import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
+import com.wonderingwizard.events.MoveStage;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import org.junit.jupiter.api.DisplayName;
@@ -94,7 +94,7 @@ class EventDeserializerTest {
                     Map.entry("workInstructionId", "100"),
                     Map.entry("workQueueId", "1"),
                     Map.entry("fetchChe", "RTG-01"),
-                    Map.entry("status", "PENDING"),
+                    Map.entry("workInstructionMoveStage", "Planned"),
                     Map.entry("estimatedMoveTime", "2025-01-01T12:30:00Z"),
                     Map.entry("estimatedCycleTimeSeconds", "120"),
                     Map.entry("estimatedRtgCycleTimeSeconds", "60"),
@@ -112,7 +112,7 @@ class EventDeserializerTest {
             assertEquals(100L, wie.workInstructionId());
             assertEquals(1L, wie.workQueueId());
             assertEquals("RTG-01", wie.fetchChe());
-            assertEquals(WorkInstructionStatus.PENDING, wie.status());
+            assertEquals("Planned", wie.workInstructionMoveStage());
             assertEquals(Instant.parse("2025-01-01T12:30:00Z"), wie.estimatedMoveTime());
             assertEquals(120, wie.estimatedCycleTimeSeconds());
             assertEquals(60, wie.estimatedRtgCycleTimeSeconds());
@@ -121,6 +121,26 @@ class EventDeserializerTest {
             assertFalse(wie.isTwinPut());
             assertEquals(101L, wie.twinCompanionWorkInstruction());
             assertEquals("Y-PTM-1L20E4", wie.toPosition());
+        }
+
+        @Test
+        @DisplayName("Should deserialize WorkInstructionEvent with legacy 'status' key")
+        void deserializesWorkInstructionEventWithLegacyStatusKey() {
+            Map<String, String> fields = Map.ofEntries(
+                    Map.entry("type", "WorkInstructionEvent"),
+                    Map.entry("workInstructionId", "100"),
+                    Map.entry("workQueueId", "1"),
+                    Map.entry("fetchChe", "RTG-01"),
+                    Map.entry("status", "Carry Underway"),
+                    Map.entry("estimatedMoveTime", "2025-01-01T12:30:00Z"),
+                    Map.entry("estimatedCycleTimeSeconds", "120"),
+                    Map.entry("estimatedRtgCycleTimeSeconds", "60"));
+
+            Event event = EventDeserializer.deserialize(fields);
+
+            assertInstanceOf(WorkInstructionEvent.class, event);
+            WorkInstructionEvent wie = (WorkInstructionEvent) event;
+            assertEquals("Carry Underway", wie.workInstructionMoveStage());
         }
     }
 
@@ -246,7 +266,7 @@ class EventDeserializerTest {
         @DisplayName("Should roundtrip WorkInstructionEvent through serialization")
         void roundtripWorkInstructionEvent() {
             WorkInstructionEvent original = new WorkInstructionEvent(
-                    100L, 1L, "RTG-01", WorkInstructionStatus.PENDING,
+                    100L, 1L, "RTG-01", MoveStage.PLANNED,
                     Instant.parse("2025-01-01T12:30:00Z"), 120, 60,
                     "QC-01", true, false, false, 101L, "Y-PTM-1L20E4");
             String json = JsonSerializer.serialize(original);
