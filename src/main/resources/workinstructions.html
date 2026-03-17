@@ -73,6 +73,8 @@
   }
   tbody tr:hover td { background: var(--surface2); }
   tr.send-success td { background: var(--success-bg); transition: background 0.3s; }
+  tr.stale td { background: rgba(239, 68, 68, 0.15); }
+  tr.stale td input, tr.stale td select { border-color: var(--danger); }
   .status-PENDING { color: var(--text-muted); }
   .status-IN_PROGRESS { color: var(--active); }
   .status-COMPLETED { color: var(--completed); }
@@ -123,8 +125,12 @@ const WI_FIELDS = [
   { key: 'containerId', label: 'Container ID', type: 'text' },
 ];
 
-// Map of workInstructionId -> latest field values
+// Map of workInstructionId -> latest field values (what the user sees/edits)
 let workInstructions = new Map();
+// Map of workInstructionId -> latest server field values (for stale detection)
+let serverWorkInstructions = new Map();
+// Set of workInstructionId currently being edited
+let editingRows = new Set();
 
 async function apiCall(path, body) {
   const opts = body
@@ -157,8 +163,31 @@ function extractWorkInstructions(state) {
   return wiMap;
 }
 
+function rowsDiffer(a, b) {
+  if (!a || !b) return true;
+  for (const f of WI_FIELDS) {
+    if (String(a[f.key] ?? '') !== String(b[f.key] ?? '')) return true;
+  }
+  return false;
+}
+
 function refresh(state) {
-  workInstructions = extractWorkInstructions(state);
+  const incoming = extractWorkInstructions(state);
+  serverWorkInstructions = incoming;
+
+  // For rows NOT being edited, update their data directly
+  for (const [id, row] of incoming) {
+    if (!editingRows.has(id)) {
+      workInstructions.set(id, row);
+    }
+  }
+  // Add any new rows
+  for (const [id, row] of incoming) {
+    if (!workInstructions.has(id)) {
+      workInstructions.set(id, row);
+    }
+  }
+
   render();
 }
 
@@ -169,6 +198,14 @@ function render() {
     return;
   }
 
+  // If table already exists, update in-place to preserve editing state
+  const existingTable = content.querySelector('table');
+  if (existingTable) {
+    updateExistingTable(existingTable);
+    return;
+  }
+
+  // First render – build full table
   let html = '<div class="table-wrap"><table><thead><tr>';
   for (const f of WI_FIELDS) {
     html += '<th>' + f.label + '</th>';
@@ -176,23 +213,96 @@ function render() {
   html += '<th>Actions</th></tr></thead><tbody>';
 
   for (const [id, row] of workInstructions) {
-    html += '<tr data-wi-id="' + id + '">';
-    for (const f of WI_FIELDS) {
-      html += '<td>' + inputFor(f, row, id) + '</td>';
-    }
-    html += '<td class="row-actions">';
-    html += '<button data-send="' + id + '">Send</button>';
-    html += '</td></tr>';
+    html += buildRowHtml(id, row);
   }
 
   html += '</tbody></table></div>';
   content.innerHTML = html;
 
-  // Bind change handlers
-  content.querySelectorAll('[data-field]').forEach(el => {
-    const wiId = Number(el.dataset.wiId);
+  bindAllRows(content);
+}
+
+function buildRowHtml(id, row) {
+  const stale = rowsDiffer(row, serverWorkInstructions.get(id));
+  let html = '<tr data-wi-id="' + id + '"' + (stale ? ' class="stale"' : '') + '>';
+  for (const f of WI_FIELDS) {
+    html += '<td>' + inputFor(f, row, id) + '</td>';
+  }
+  html += '<td class="row-actions">';
+  html += '<button data-send="' + id + '">Send</button>';
+  html += '</td></tr>';
+  return html;
+}
+
+function updateExistingTable(table) {
+  const tbody = table.querySelector('tbody');
+  const existingIds = new Set();
+
+  // Update existing rows
+  tbody.querySelectorAll('tr[data-wi-id]').forEach(tr => {
+    const id = Number(tr.dataset.wiId);
+    existingIds.add(id);
+
+    if (!workInstructions.has(id)) {
+      tr.remove();
+      return;
+    }
+
+    const row = workInstructions.get(id);
+    const serverRow = serverWorkInstructions.get(id);
+    const stale = rowsDiffer(row, serverRow);
+
+    if (editingRows.has(id)) {
+      // Row is being edited – don't touch inputs, just toggle stale class
+      tr.classList.toggle('stale', stale);
+      return;
+    }
+
+    // Not editing – update cell values in place
+    tr.classList.toggle('stale', stale);
+    tr.querySelectorAll('[data-field]').forEach(el => {
+      const key = el.dataset.field;
+      const field = WI_FIELDS.find(f => f.key === key);
+      if (field.type === 'checkbox') {
+        el.checked = !!row[key];
+      } else if (el.tagName === 'SELECT') {
+        el.value = row[key] ?? '';
+      } else {
+        el.value = row[key] ?? '';
+      }
+    });
+  });
+
+  // Add new rows
+  for (const [id, row] of workInstructions) {
+    if (!existingIds.has(id)) {
+      const temp = document.createElement('template');
+      temp.innerHTML = buildRowHtml(id, row);
+      const newRow = temp.content.firstElementChild;
+      tbody.appendChild(newRow);
+      bindRow(newRow, id);
+    }
+  }
+}
+
+function bindRow(container, wiId) {
+  container.querySelectorAll('[data-field]').forEach(el => {
     const key = el.dataset.field;
     const field = WI_FIELDS.find(f => f.key === key);
+
+    // Track editing state
+    el.addEventListener('focus', () => editingRows.add(wiId));
+    el.addEventListener('blur', () => {
+      editingRows.delete(wiId);
+      // On blur, check if server data differs and mark stale
+      const tr = el.closest('tr');
+      const row = workInstructions.get(wiId);
+      const serverRow = serverWorkInstructions.get(wiId);
+      if (tr && rowsDiffer(row, serverRow)) {
+        tr.classList.add('stale');
+      }
+    });
+
     el.addEventListener('change', () => {
       const row = workInstructions.get(wiId);
       if (!row) return;
@@ -203,23 +313,24 @@ function render() {
       } else {
         row[key] = el.value;
       }
+      // Update stale indicator after user edit
+      const tr = el.closest('tr');
+      const serverRow = serverWorkInstructions.get(wiId);
+      if (tr) {
+        tr.classList.toggle('stale', rowsDiffer(row, serverRow));
+      }
     });
   });
 
-  // Bind send buttons
-  content.querySelectorAll('[data-send]').forEach(btn => {
+  // Bind send button
+  container.querySelectorAll('[data-send]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const wiId = Number(btn.dataset.send);
       const row = workInstructions.get(wiId);
       if (!row) return;
 
       const data = {};
       for (const f of WI_FIELDS) {
-        if (f.type === 'checkbox') {
-          data[f.key] = String(row[f.key]);
-        } else {
-          data[f.key] = String(row[f.key]);
-        }
+        data[f.key] = String(row[f.key]);
       }
 
       btn.disabled = true;
@@ -228,6 +339,7 @@ function render() {
         await apiCall(API + '/api/work-instruction', data);
         const tr = btn.closest('tr');
         tr.classList.add('send-success');
+        tr.classList.remove('stale');
         setTimeout(() => tr.classList.remove('send-success'), 1500);
       } catch (err) {
         alert('Failed to send: ' + err.message);
@@ -237,6 +349,13 @@ function render() {
       }
     });
   });
+}
+
+function bindAllRows(content) {
+  for (const [id] of workInstructions) {
+    const tr = content.querySelector('tr[data-wi-id="' + id + '"]');
+    if (tr) bindRow(tr, id);
+  }
 }
 
 function inputFor(field, row, wiId) {
