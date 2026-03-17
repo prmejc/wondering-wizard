@@ -566,9 +566,11 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                         gatesSatisfied = true;
                     }
                 }
-                // If any gates were satisfied, try activating eligible actions
+                // If any gates were satisfied, auto-complete active skipWhenGatesSatisfied
+                // actions whose gates are now all satisfied, then try activating eligible actions
                 if (gatesSatisfied) {
                     long workQueueId = findWorkQueueId(state);
+                    sideEffects.addAll(autoCompleteGatedActions(workQueueId, state));
                     for (Takt t : state.takts) {
                         if (state.taktStates.get(t.name()) == TaktState.ACTIVE) {
                             sideEffects.addAll(activateEligibleActions(workQueueId, state, t.name()));
@@ -908,6 +910,32 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             }
         }
 
+        return sideEffects;
+    }
+
+    /**
+     * Auto-completes any currently active actions that have skipWhenGatesSatisfied=true
+     * and whose event gates are now all satisfied. This handles the case where a
+     * conditional action was activated (gates not yet satisfied) and then all gates
+     * become satisfied while the action is still active.
+     */
+    private List<SideEffect> autoCompleteGatedActions(long workQueueId, ScheduleState state) {
+        List<SideEffect> sideEffects = new ArrayList<>();
+        for (UUID actionId : List.copyOf(state.activeActionIds)) {
+            ActionInfo info = state.actionLookup.get(actionId);
+            if (info == null) continue;
+            Action action = info.action();
+            if (!action.skipWhenGatesSatisfied()) continue;
+            Set<String> overrides = state.overriddenActionConditions.getOrDefault(actionId, Set.of());
+            if (!state.areEventGatesSatisfied(actionId, action, overrides)) continue;
+
+            state.activeActionIds.remove(actionId);
+            state.completedActionIds.add(actionId);
+            sideEffects.add(new ActionCompleted(
+                    actionId, workQueueId, info.taktName(),
+                    action.description(), this.currentTime
+            ));
+        }
         return sideEffects;
     }
 

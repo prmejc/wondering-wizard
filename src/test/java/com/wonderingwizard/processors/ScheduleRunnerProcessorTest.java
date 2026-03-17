@@ -713,5 +713,66 @@ class ScheduleRunnerProcessorTest {
             assertEquals(1, activated.size(), "Buffer action should activate normally");
             assertEquals(ttBuffer.id(), activated.getFirst().actionId());
         }
+
+        @Test
+        @DisplayName("Should auto-complete active action when gates become satisfied while active")
+        void autoCompletesWhenGatesSatisfiedWhileActive() {
+            var wiEvent = new WorkInstructionEvent(
+                    EventType.QC_DISCHARGED_CONTAINER,
+                    100L, 1L, "QC1", "Carry Underway", EMT, 120, 60,
+                    "QC1", false, false, false, 0, "A01-01-01", "CONT1");
+            var eventGate = new EventGateCondition(
+                    DeviceType.QC, ActionType.QC_LIFT, EventType.QC_DISCHARGED_CONTAINER);
+
+            Action qcLift = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.QC_LIFT,
+                    "QC Lift", Set.of(), 0, 20, 0, List.of(wiEvent), List.of(), false);
+
+            Action ttBuffer = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_TO_BUFFER,
+                    "drive to buffer", new HashSet<>(Set.of(qcLift.id())), 0, 30, 0,
+                    List.of(wiEvent), List.of(eventGate), true);
+
+            Action ttRtgPull = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_TO_RTG_PULL,
+                    "drive to RTG pull", new HashSet<>(Set.of(ttBuffer.id())), 0, 30, 0,
+                    List.of(wiEvent), List.of(), false);
+
+            List<Takt> takts = List.of(
+                    new Takt(0, new ArrayList<>(List.of(qcLift)), EMT, EMT, 120),
+                    new Takt(1, new ArrayList<>(List.of(ttBuffer, ttRtgPull)),
+                            EMT.plusSeconds(120), EMT.plusSeconds(120), 120)
+            );
+
+            processor.process(new ScheduleCreated(1L, takts, EMT));
+
+            // Activate TAKT100 + QC_LIFT
+            processor.process(new TimeEvent(EMT.plusSeconds(1)));
+
+            // Complete QC_LIFT WITHOUT discharge event — gates not satisfied
+            processor.process(new ActionCompletedEvent(qcLift.id(), 1L));
+
+            // Activate TAKT101 — buffer activates normally (gates unsatisfied)
+            List<SideEffect> activationEffects = processor.process(new TimeEvent(EMT.plusSeconds(121)));
+            var bufferActivated = activationEffects.stream()
+                    .filter(e -> e instanceof ActionActivated)
+                    .anyMatch(e -> ((ActionActivated) e).actionId().equals(ttBuffer.id()));
+            assertTrue(bufferActivated, "Buffer should activate normally");
+
+            // Now the QC_DISCHARGED_CONTAINER event arrives while buffer is active
+            List<SideEffect> gateEffects = processor.process(wiEvent);
+
+            var completed = gateEffects.stream()
+                    .filter(e -> e instanceof ActionCompleted)
+                    .map(e -> (ActionCompleted) e)
+                    .toList();
+            var activated = gateEffects.stream()
+                    .filter(e -> e instanceof ActionActivated)
+                    .map(e -> (ActionActivated) e)
+                    .toList();
+
+            assertEquals(1, completed.size(), "Buffer should auto-complete when gates satisfied while active");
+            assertEquals(ttBuffer.id(), completed.getFirst().actionId());
+
+            assertEquals(1, activated.size(), "RTG pull should activate after buffer auto-completes");
+            assertEquals(ttRtgPull.id(), activated.getFirst().actionId());
+        }
     }
 }
