@@ -70,59 +70,76 @@ public class GraphScheduleBuilder {
             boolean independentAcrossContainers,
             int containerSuffix,
             SyncRef dependsOn,
-            EventGate eventGate
+            List<EventGate> eventGates
     ) {
         static ActionTemplate of(ActionType actionType, DeviceType type, int duration) {
-            return new ActionTemplate(actionType, actionType.displayName(), type, duration, false, false, null, false, 0, false, 0, null, null);
+            return new ActionTemplate(actionType, actionType.displayName(), type, duration, false, false, null, false, 0, false, 0, null, List.of());
         }
 
         static ActionTemplate of(ActionType actionType, int containerSuffix, DeviceType type, int duration) {
-            return new ActionTemplate(actionType, actionType.displayName(containerSuffix), type, duration, false, false, null, false, 0, false, containerSuffix, null, null);
+            return new ActionTemplate(actionType, actionType.displayName(containerSuffix), type, duration, false, false, null, false, 0, false, containerSuffix, null, List.of());
         }
 
         ActionTemplate withFirstInTakt() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, true, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGate);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, true, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates);
         }
 
         ActionTemplate withAnchor() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, true, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGate);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, true, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates);
         }
 
         ActionTemplate withSyncWith(DeviceType type, ActionType refActionType) {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, new SyncRef(type, refActionType), onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGate);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, new SyncRef(type, refActionType), onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates);
         }
 
         ActionTemplate withOnlyOnePerTakt() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, true, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGate);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, true, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates);
         }
 
         ActionTemplate withDeviceIndex(int deviceIndex) {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGate);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates);
         }
 
         ActionTemplate withIndependentAcrossContainers() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, true, containerSuffix, dependsOn, eventGate);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, true, containerSuffix, dependsOn, eventGates);
         }
 
         /**
          * Creates a copy of this template with a different duration.
          */
         public ActionTemplate withDuration(int newDurationSeconds) {
-            return new ActionTemplate(actionType, name, deviceType, newDurationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGate);
+            return new ActionTemplate(actionType, name, deviceType, newDurationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates);
         }
 
         ActionTemplate withDependsOn(DeviceType type, ActionType refActionType) {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, new SyncRef(type, refActionType), eventGate);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, new SyncRef(type, refActionType), eventGates);
         }
 
         ActionTemplate withEventGate(DeviceType sourceDeviceType, ActionType sourceActionType, String requiredEventType) {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, new EventGate(sourceDeviceType, sourceActionType, requiredEventType));
+            var gate = new EventGate(sourceDeviceType, sourceActionType, requiredEventType, 0);
+            var newGates = new java.util.ArrayList<>(eventGates);
+            newGates.add(gate);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, List.copyOf(newGates));
+        }
+
+        /**
+         * Adds an event gate scoped to a specific container suffix (1-based).
+         * When containerSuffix > 0, the gate is only satisfied by events from that specific WI.
+         */
+        ActionTemplate withEventGate(DeviceType sourceDeviceType, ActionType sourceActionType, String requiredEventType, int gateContainerSuffix) {
+            var gate = new EventGate(sourceDeviceType, sourceActionType, requiredEventType, gateContainerSuffix);
+            var newGates = new java.util.ArrayList<>(eventGates);
+            newGates.add(gate);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, List.copyOf(newGates));
         }
     }
 
     public record SyncRef(DeviceType deviceType, ActionType actionType) {}
 
-    public record EventGate(DeviceType sourceDeviceType, ActionType sourceActionType, String requiredEventType) {}
+    /**
+     * @param containerSuffix 0 = any WI satisfies, 1+ = only the Nth WI satisfies this gate
+     */
+    public record EventGate(DeviceType sourceDeviceType, ActionType sourceActionType, String requiredEventType, int containerSuffix) {}
 
     // ── Segment: group of actions that go into the same takt ───────────
 
@@ -391,7 +408,8 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(RTG_WAIT_FOR_TRUCK, 1, RTG, 0),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 1, RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, driveToUnderRtg + rtgPlaceDuration),
-                ActionTemplate.of(RTG_DRIVE, 2, RTG, RTG_DRIVE_SECONDS),
+                ActionTemplate.of(RTG_DRIVE, 2, RTG, RTG_DRIVE_SECONDS)
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 2, RTG, driveToUnderRtg + rtgPlaceDuration)
         );
@@ -440,7 +458,8 @@ public class GraphScheduleBuilder {
                         .withFirstInTakt()
                         .withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDependsOn(QC, QC_PLACE)
-                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER),
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 1)
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 2),
                 ActionTemplate.of(RTG_WAIT_FOR_TRUCK,  RTG, 0),
                 ActionTemplate.of(RTG_LIFT_FROM_TT,  RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, RTG, driveToUnderRtg + rtgPlaceDuration)
@@ -689,10 +708,10 @@ public class GraphScheduleBuilder {
             var takt = takts.get(taktIndex);
             for (var tmpl : segment.templates()) {
                 var actionWis = filterWorkInstructions(workInstructions, tmpl.containerSuffix());
-                var gates = tmpl.eventGate() != null
-                        ? List.of(new EventGateCondition(tmpl.eventGate().sourceDeviceType(),
-                                tmpl.eventGate().sourceActionType(), tmpl.eventGate().requiredEventType()))
-                        : List.<EventGateCondition>of();
+                var gates = tmpl.eventGates().stream()
+                        .map(g -> new EventGateCondition(g.sourceDeviceType(), g.sourceActionType(),
+                                g.requiredEventType(), g.containerSuffix()))
+                        .toList();
                 var action = new Action(UUID.randomUUID(), segment.deviceType(), tmpl.actionType(), tmpl.name(),
                         new HashSet<>(), containerIndex, tmpl.durationSeconds(), tmpl.deviceIndex(), actionWis, gates);
                 takt.actions().add(action);

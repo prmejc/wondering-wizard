@@ -535,19 +535,28 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                     if (gatedInfo == null) continue;
 
                     // Match against the gated action's own WIs — each action carries the WIs it's responsible for.
-                    // In twin templates (single RTG), RTG_DRIVE carries both WIs so either discharge matches.
                     // In different-bay templates (two RTGs), each RTG_DRIVE carries only its own WI.
+                    // Gates with containerSuffix > 0 only match the specific WI at that index.
                     boolean wiMatches = gatedInfo.action().workInstructions().stream()
                             .anyMatch(wi -> wi.workInstructionId() == event.workInstructionId());
                     if (!wiMatches) continue;
 
                     for (EventGateCondition gate : gatedInfo.action().eventGates()) {
-                        if (gate.requiredEventType().equals(event.eventType()) && armed.contains(gate.id())) {
-                            state.satisfiedEventGates
-                                    .computeIfAbsent(gatedActionId, k -> new HashSet<>())
-                                    .add(gate.id());
-                            gatesSatisfied = true;
+                        if (!gate.requiredEventType().equals(event.eventType()) || !armed.contains(gate.id())) {
+                            continue;
                         }
+                        // If gate is scoped to a specific container, only that WI can satisfy it
+                        if (gate.containerSuffix() > 0) {
+                            var wis = gatedInfo.action().workInstructions();
+                            int idx = gate.containerSuffix() - 1;
+                            if (idx >= wis.size() || wis.get(idx).workInstructionId() != event.workInstructionId()) {
+                                continue;
+                            }
+                        }
+                        state.satisfiedEventGates
+                                .computeIfAbsent(gatedActionId, k -> new HashSet<>())
+                                .add(gate.id());
+                        gatesSatisfied = true;
                     }
                 }
                 // If any gates were satisfied, try activating eligible actions

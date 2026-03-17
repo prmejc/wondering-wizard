@@ -16,12 +16,20 @@ package com.wonderingwizard.domain.takt;
  * @param sourceDeviceType the device type of the action that arms this gate
  * @param sourceActionType the action type that arms this gate when activated
  * @param requiredEventType the WorkInstructionEvent eventType that satisfies this gate
+ * @param containerSuffix 0 = any WI satisfies, 1+ = only the Nth WI satisfies this gate
  */
 public record EventGateCondition(String id, DeviceType sourceDeviceType, ActionType sourceActionType,
-                                  String requiredEventType) implements ActionCondition {
+                                  String requiredEventType, int containerSuffix) implements ActionCondition {
 
     public EventGateCondition(DeviceType sourceDeviceType, ActionType sourceActionType, String requiredEventType) {
-        this("event-gate:" + requiredEventType, sourceDeviceType, sourceActionType, requiredEventType);
+        this("event-gate:" + requiredEventType, sourceDeviceType, sourceActionType, requiredEventType, 0);
+    }
+
+    public EventGateCondition(DeviceType sourceDeviceType, ActionType sourceActionType, String requiredEventType, int containerSuffix) {
+        this(containerSuffix > 0
+                        ? "event-gate:" + requiredEventType + ":" + containerSuffix
+                        : "event-gate:" + requiredEventType,
+                sourceDeviceType, sourceActionType, requiredEventType, containerSuffix);
     }
 
     @Override

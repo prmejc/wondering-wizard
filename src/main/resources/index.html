@@ -434,7 +434,7 @@ class ScheduleView extends HTMLElement {
     this.classList.add('panel');
     this.setAttribute('data-refresh', '');
     this._pxPerSec = 3;
-    this.innerHTML = '<h2 style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">Schedule <label style="font-size:11px;font-weight:400;display:flex;align-items:center;gap:6px;color:var(--text-muted)">Scale <input id="scale-slider" type="range" min="3" max="15" value="3" style="width:80px"> <span id="scale-val">3</span>px/s</label><span id="schedule-pager" style="font-size:12px;font-weight:400;display:flex;align-items:center;gap:6px;margin-left:auto"></span></h2><div id="schedule-content"><p style="color:var(--text-muted)">No schedules yet. Add work instructions and activate a work queue.</p></div>';
+    this.innerHTML = '<h2 style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">Schedule <label style="font-size:11px;font-weight:400;display:flex;align-items:center;gap:6px;color:var(--text-muted)">Scale <input id="scale-slider" type="range" min="3" max="50" value="3" style="width:80px"> <span id="scale-val">3</span>px/s</label><span id="schedule-pager" style="font-size:12px;font-weight:400;display:flex;align-items:center;gap:6px;margin-left:auto"></span></h2><div id="schedule-content"><p style="color:var(--text-muted)">No schedules yet. Add work instructions and activate a work queue.</p></div>';
     this.querySelector('#scale-slider').addEventListener('input', e => {
       this._pxPerSec = parseInt(e.target.value);
       this.querySelector('#scale-val').textContent = this._pxPerSec;

@@ -124,10 +124,12 @@ public class WorkQueueProcessor implements EventProcessor {
         long sourceQueueId = findQueueForInstruction(workInstructionId);
 
         // Determine expected next WI BEFORE updating the map (so current event's
-        // post-fetch status doesn't affect the lookup)
+        // post-discharge status doesn't affect the lookup). Excludes already-discharged WIs
+        // so that late discharges from previous takts don't cause false mismatches.
         WorkInstructionEvent expectedWi = null;
-        if (EventType.QC_DISCHARGED_CONTAINER.equals(event.eventType())
-                && activeSchedules.containsKey(workQueueId)) {
+        boolean isDischargeEvent = EventType.QC_DISCHARGED_CONTAINER.equals(event.eventType())
+                && activeSchedules.containsKey(workQueueId);
+        if (isDischargeEvent) {
             expectedWi = findExpectedNextWi(workQueueId);
         }
 
@@ -141,43 +143,54 @@ public class WorkQueueProcessor implements EventProcessor {
                 .computeIfAbsent(workQueueId, k -> new ArrayList<>())
                 .add(event);
 
-        if (expectedWi == null) {
+        if (!isDischargeEvent) {
             return List.of();
         }
 
         boolean needsReschedule = false;
         WorkInstructionEvent movedWi = null;
 
-        // Check 1: Was the right WI fetched? If not, handle the swap
-        // Twin companions are interchangeable — either WI from the same twin pair is expected
-        boolean isTwinCompanion = expectedWi.isTwinCarry()
-                && expectedWi.twinCompanionWorkInstruction() == workInstructionId;
-        if (expectedWi.workInstructionId() != workInstructionId && !isTwinCompanion) {
-            boolean crossQueueSwap = sourceQueueId != -1 && sourceQueueId != workQueueId;
+        // A QC Discharged Container is valid for any WI that was already instructed to
+        // be lifted (current or previous takt). Reschedule only if:
+        //   1. Unknown WI (not previously registered in any queue)
+        //   2. WI from a different work queue (cross-queue swap)
+        //   3. WI not yet instructed — it jumped ahead of the next expected WI
+        boolean unknownWi = oldInstruction == null;
+        boolean crossQueueSwap = sourceQueueId != -1 && sourceQueueId != workQueueId;
 
-            if (crossQueueSwap) {
-                // Cross-queue swap: move the displaced expected WI to the source queue
-                movedWi = moveWorkInstruction(expectedWi, sourceQueueId);
-            } else {
-                // Same-queue swap: just swap estimatedMoveTime within the queue
-                swapEstimatedMoveTime(workQueueId, event, expectedWi);
+        if (unknownWi || crossQueueSwap) {
+            if (expectedWi != null) {
+                if (crossQueueSwap) {
+                    movedWi = moveWorkInstruction(expectedWi, sourceQueueId);
+                } else {
+                    swapEstimatedMoveTime(workQueueId, event, expectedWi);
+                }
             }
             needsReschedule = true;
+        } else if (expectedWi != null) {
+            // WI is from this queue — check if it was already instructed to lift.
+            // The next expected WI (first non-discharged, by estimatedMoveTime) represents
+            // the boundary: any WI at or before it was already instructed.
+            // Twin companions are interchangeable — either WI from the same pair is accepted.
+            boolean isExpected = expectedWi.workInstructionId() == workInstructionId
+                    || (expectedWi.isTwinCarry() && expectedWi.twinCompanionWorkInstruction() == workInstructionId);
+            if (!isExpected) {
+                swapEstimatedMoveTime(workQueueId, event, expectedWi);
+                needsReschedule = true;
+            }
         }
 
-        // Check 2: Did twin flags change?
+        // Check: Did twin flags change?
         if (oldInstruction != null && hasTwinFlagsMismatch(oldInstruction, event)) {
             needsReschedule = true;
         }
 
         if (needsReschedule) {
             var effects = new ArrayList<SideEffect>();
-            // Emit reassignment side effect first so it appears in the event log
             if (movedWi != null) {
                 effects.add(new WorkInstructionReassigned(movedWi));
             }
             effects.addAll(handleReschedule(workQueueId));
-            // If a cross-queue swap occurred, also reschedule the source queue
             if (movedWi != null && activeSchedules.containsKey(sourceQueueId)) {
                 effects.addAll(handleReschedule(sourceQueueId));
             }
@@ -242,7 +255,8 @@ public class WorkQueueProcessor implements EventProcessor {
     }
 
     /**
-     * Finds the next expected WI to be fetched: the first WI still in Planned/Ready stage in schedule order.
+     * Finds the next expected WI to be fetched: the first WI still in Planned/Ready stage
+     * that has not already been discharged, in schedule order.
      */
     private WorkInstructionEvent findExpectedNextWi(long workQueueId) {
         List<WorkInstructionEvent> allInstructions = workInstructions.getOrDefault(workQueueId, List.of());
@@ -250,6 +264,7 @@ public class WorkQueueProcessor implements EventProcessor {
         return allInstructions.stream()
                 .sorted(Comparator.comparing(WorkInstructionEvent::estimatedMoveTime))
                 .filter(wi -> MoveStage.isPreFetch(wi.workInstructionMoveStage()))
+                .filter(wi -> !EventType.QC_DISCHARGED_CONTAINER.equals(wi.eventType()))
                 .findFirst()
                 .orElse(null);
     }
