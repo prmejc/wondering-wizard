@@ -588,7 +588,7 @@ class ScheduleView extends HTMLElement {
       const rtgDeviceA = sortedRtgDeviceIndices[0] ?? 0;
       const rtgDeviceB = sortedRtgDeviceIndices[1] ?? -1;
 
-      const SRH = 40; // sub-row height
+      const SRH = 60; // sub-row height
       const rtgSubRows = hasMultipleRtgDevices ? 2 : 1;
       const subRowCount = rtgSubRows + 1; // +1 for TT
       const laneHeight = SRH * subRowCount + (subRowCount - 1); // height + borders
