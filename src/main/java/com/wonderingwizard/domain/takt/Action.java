@@ -25,14 +25,23 @@ import java.util.UUID;
  */
 public record Action(UUID id, DeviceType deviceType, ActionType actionType, String description, Set<UUID> dependsOn,
                      int containerIndex, int durationSeconds, int deviceIndex, List<WorkInstructionEvent> workInstructions,
-                     List<EventGateCondition> eventGates) {
+                     List<EventGateCondition> eventGates, boolean skipWhenGatesSatisfied) {
+
+    /**
+     * Constructor without skipWhenGatesSatisfied.
+     */
+    public Action(UUID id, DeviceType deviceType, ActionType actionType, String description, Set<UUID> dependsOn,
+                  int containerIndex, int durationSeconds, int deviceIndex, List<WorkInstructionEvent> workInstructions,
+                  List<EventGateCondition> eventGates) {
+        this(id, deviceType, actionType, description, dependsOn, containerIndex, durationSeconds, deviceIndex, workInstructions, eventGates, false);
+    }
 
     /**
      * Constructor without eventGates.
      */
     public Action(UUID id, DeviceType deviceType, ActionType actionType, String description, Set<UUID> dependsOn,
                   int containerIndex, int durationSeconds, int deviceIndex, List<WorkInstructionEvent> workInstructions) {
-        this(id, deviceType, actionType, description, dependsOn, containerIndex, durationSeconds, deviceIndex, workInstructions, List.of());
+        this(id, deviceType, actionType, description, dependsOn, containerIndex, durationSeconds, deviceIndex, workInstructions, List.of(), false);
     }
 
     /**
@@ -40,63 +49,63 @@ public record Action(UUID id, DeviceType deviceType, ActionType actionType, Stri
      */
     public Action(UUID id, DeviceType deviceType, ActionType actionType, String description, Set<UUID> dependsOn,
                   int containerIndex, int durationSeconds) {
-        this(id, deviceType, actionType, description, dependsOn, containerIndex, durationSeconds, 0, List.of(), List.of());
+        this(id, deviceType, actionType, description, dependsOn, containerIndex, durationSeconds, 0, List.of(), List.of(), false);
     }
 
     /**
      * Constructor without containerIndex, duration, deviceIndex, workInstructions, and eventGates.
      */
     public Action(UUID id, DeviceType deviceType, ActionType actionType, String description, Set<UUID> dependsOn) {
-        this(id, deviceType, actionType, description, dependsOn, 0, DeviceActionTemplate.DEFAULT_DURATION_SECONDS, 0, List.of(), List.of());
+        this(id, deviceType, actionType, description, dependsOn, 0, DeviceActionTemplate.DEFAULT_DURATION_SECONDS, 0, List.of(), List.of(), false);
     }
 
     /**
      * Creates an action with a generated UUID and no dependencies.
      */
     public static Action create(DeviceType deviceType, ActionType actionType) {
-        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(), 0, DeviceActionTemplate.DEFAULT_DURATION_SECONDS, 0, List.of(), List.of());
+        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(), 0, DeviceActionTemplate.DEFAULT_DURATION_SECONDS, 0, List.of(), List.of(), false);
     }
 
     /**
      * Creates an action with a generated UUID, no dependencies, and a container index.
      */
     public static Action create(DeviceType deviceType, ActionType actionType, int containerIndex) {
-        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(), containerIndex, DeviceActionTemplate.DEFAULT_DURATION_SECONDS, 0, List.of(), List.of());
+        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(), containerIndex, DeviceActionTemplate.DEFAULT_DURATION_SECONDS, 0, List.of(), List.of(), false);
     }
 
     /**
      * Creates an action with a generated UUID, no dependencies, a container index, and custom duration.
      */
     public static Action create(DeviceType deviceType, ActionType actionType, int containerIndex, int durationSeconds) {
-        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(), containerIndex, durationSeconds, 0, List.of(), List.of());
+        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(), containerIndex, durationSeconds, 0, List.of(), List.of(), false);
     }
 
     /**
      * Creates an action with a generated UUID, no dependencies, a container index, custom duration, and display suffix.
      */
     public static Action create(DeviceType deviceType, ActionType actionType, int containerSuffix, int containerIndex, int durationSeconds) {
-        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(containerSuffix), Set.of(), containerIndex, durationSeconds, 0, List.of(), List.of());
+        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(containerSuffix), Set.of(), containerIndex, durationSeconds, 0, List.of(), List.of(), false);
     }
 
     /**
      * Creates a copy of this action with the specified dependencies.
      */
     public Action withDependencies(Set<UUID> dependsOn) {
-        return new Action(this.id, this.deviceType, this.actionType, this.description, dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, this.workInstructions, this.eventGates);
+        return new Action(this.id, this.deviceType, this.actionType, this.description, dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, this.workInstructions, this.eventGates, this.skipWhenGatesSatisfied);
     }
 
     /**
      * Creates a copy of this action with the specified work instructions.
      */
     public Action withWorkInstructions(List<WorkInstructionEvent> workInstructions) {
-        return new Action(this.id, this.deviceType, this.actionType, this.description, this.dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, workInstructions, this.eventGates);
+        return new Action(this.id, this.deviceType, this.actionType, this.description, this.dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, workInstructions, this.eventGates, this.skipWhenGatesSatisfied);
     }
 
     /**
      * Creates a copy of this action with the specified event gates.
      */
     public Action withEventGates(List<EventGateCondition> eventGates) {
-        return new Action(this.id, this.deviceType, this.actionType, this.description, this.dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, this.workInstructions, eventGates);
+        return new Action(this.id, this.deviceType, this.actionType, this.description, this.dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, this.workInstructions, eventGates, this.skipWhenGatesSatisfied);
     }
 
     /**

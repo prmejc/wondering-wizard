@@ -1158,3 +1158,73 @@ mvn test -Pe2e -De2e.baseUrl=http://localhost:9090
 **Implementation Files:**
 - `src/test/java/com/wonderingwizard/e2e/ScheduleCreationPerformanceE2ETest.java` (new — e2e performance test)
 - `pom.xml` (modified — added `e2e` profile and `excludedGroups` for surefire)
+
+### F-18: Conditional Buffer Action (skipWhenGatesSatisfied)
+
+**Status:** Implemented
+
+**Description:**
+Add a conditional `TT_DRIVE_TO_BUFFER` action between `TT_HANDOVER_FROM_QC` and `TT_DRIVE_TO_RTG_PULL` in all discharge templates. This action should only execute when `QC_DISCHARGED_CONTAINER` events have NOT yet arrived — if they have already arrived (RTG is ready), the action is automatically skipped.
+
+This is implemented via a new `skipWhenGatesSatisfied` flag on `ActionTemplate` and `Action`:
+- Event gates on the action define the **skip condition**, not an activation barrier
+- At activation time: if all event gates are already satisfied → auto-complete (skip)
+- At activation time: if event gates are NOT satisfied → activate normally (TT drives to buffer)
+
+**Behavior:**
+- **Happy path:** QC discharges both containers before TT reaches the buffer action → gates are pre-satisfied → action auto-completes → TT goes straight to RTG
+- **Buffer path:** QC hasn't discharged yet → TT drives to buffer → TT continues to RTG after buffer action completes externally
+
+**Templates modified:**
+All discharge templates with `QC_DISCHARGED_CONTAINER` event gates:
+- `getDischargeTwinTemplate` (gates with suffix 1 and 2)
+- `getDischargeSingleTemplate`
+- `getDischargeLiftSinglesDropTwin`
+- `getDischargeLiftSinglesDropSinglesSameBay`
+- `getDischargeLiftSinglesDropSinglesDifferentBay`
+- `getDischargeLiftTwinsDropSinglesSameBay`
+- `getDischargeLiftTwinsDropSinglesDifferentBay`
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Gates satisfied before activation | Action auto-completes, next action activates immediately |
+| 2 | Gates NOT satisfied at activation | Action activates normally (TT drives to buffer) |
+| 3 | All 389 tests pass | No regressions |
+
+### F-19: Nuke Work Queue
+
+**Status:** Implemented
+
+**Description:**
+Add a "Nuke" button to the Work Queues editor page that completely deletes a work queue, all its work instructions, and any active schedule. This is a destructive operation with a confirmation dialog.
+
+**Event Flow:**
+1. User clicks "Nuke" button on a work queue row → confirmation dialog
+2. Frontend sends `POST /api/nuke-work-queue` with `{ workQueueId }`
+3. Server creates `NukeWorkQueueEvent` and processes it through the engine
+4. `WorkQueueProcessor` removes the WQ from all internal maps (`activeSchedules`, `workInstructions`, `qcMudaByQueue`, `loadModeByQueue`) and emits `ScheduleAborted` if there was an active schedule
+5. `ScheduleRunnerProcessor` removes the schedule state for that WQ
+6. Frontend removes the row from the table
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Nuke an active work queue | ScheduleAborted emitted, all data cleared, row removed |
+| 2 | Nuke a non-existent work queue | No side effects, no errors |
+| 3 | Re-activate after nuke | Creates fresh empty schedule (no WIs) |
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/events/NukeWorkQueueEvent.java` (new — event record)
+- `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java` (modified — handles NukeWorkQueueEvent)
+- `src/main/java/com/wonderingwizard/processors/ScheduleRunnerProcessor.java` (modified — handles NukeWorkQueueEvent)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — new `/api/nuke-work-queue` endpoint)
+- `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — serialization support)
+- `src/main/java/com/wonderingwizard/server/EventDeserializer.java` (modified — deserialization support)
+- `src/main/resources/workqueues.html` (modified — Nuke button with confirmation)
+- `src/test/java/com/wonderingwizard/processors/WorkQueueProcessorTest.java` (modified — 2 new nuke tests)
+- `src/main/java/com/wonderingwizard/processors/GraphScheduleBuilder.java` (modified — added `skipWhenGatesSatisfied` to `ActionTemplate`, added conditional buffer to all discharge templates)
+- `src/main/java/com/wonderingwizard/processors/ScheduleRunnerProcessor.java` (modified — skip event gate check for `skipWhenGatesSatisfied` actions, auto-complete when gates pre-satisfied)
+- `src/test/java/com/wonderingwizard/processors/ScheduleRunnerProcessorTest.java` (modified — 2 new tests for skip behavior)

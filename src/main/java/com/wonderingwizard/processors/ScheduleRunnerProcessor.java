@@ -11,6 +11,7 @@ import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.NukeWorkQueueEvent;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.TimeEvent;
@@ -148,8 +149,10 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 if (!depsSatisfied) {
                     continue;
                 }
-                // Check event gates
-                if (!areEventGatesSatisfied(actionId, info.action(), actionOverrides)) {
+                // For skipWhenGatesSatisfied actions, event gates define the skip condition,
+                // not an activation barrier — so don't block on them.
+                if (!info.action().skipWhenGatesSatisfied()
+                        && !areEventGatesSatisfied(actionId, info.action(), actionOverrides)) {
                     continue;
                 }
                 result.add(actionId);
@@ -291,6 +294,10 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
         if (event instanceof OverrideActionConditionEvent override) {
             return handleOverrideActionCondition(override);
+        }
+        if (event instanceof NukeWorkQueueEvent nuke) {
+            scheduleStates.remove(nuke.workQueueId());
+            return List.of();
         }
         return List.of();
     }
@@ -707,9 +714,20 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             }
         }
 
-        // Check event gates
-        if (!state.areEventGatesSatisfied(actionId, action, overrides)) {
+        // Check event gates (skip check for skipWhenGatesSatisfied actions)
+        if (!action.skipWhenGatesSatisfied()
+                && !state.areEventGatesSatisfied(actionId, action, overrides)) {
             return List.of();
+        }
+
+        // Auto-complete: if skipWhenGatesSatisfied and all gates are already satisfied, skip
+        if (action.skipWhenGatesSatisfied()
+                && state.areEventGatesSatisfied(actionId, action, overrides)) {
+            state.completedActionIds.add(actionId);
+            return List.of(new ActionCompleted(
+                    actionId, workQueueId, taktName,
+                    action.description(), this.currentTime
+            ));
         }
 
         // All conditions met — activate the action
@@ -852,22 +870,42 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     private List<SideEffect> activateEligibleActions(long workQueueId, ScheduleState state, String taktName) {
         List<SideEffect> sideEffects = new ArrayList<>();
 
-        List<UUID> actionsToActivate = state.getActivatableActionsInTakt(taktName);
-        for (UUID actionId : actionsToActivate) {
-            state.activeActionIds.add(actionId);
-            armEventGatesForAction(state, actionId);
-            ActionInfo actionInfo = state.actionLookup.get(actionId);
+        boolean progress = true;
+        while (progress) {
+            progress = false;
+            List<UUID> actionsToActivate = state.getActivatableActionsInTakt(taktName);
+            for (UUID actionId : actionsToActivate) {
+                ActionInfo actionInfo = state.actionLookup.get(actionId);
+                Action action = actionInfo.action();
+                Set<String> overrides = state.overriddenActionConditions.getOrDefault(actionId, Set.of());
 
-            sideEffects.add(new ActionActivated(
-                    actionId,
-                    workQueueId,
-                    actionInfo.taktName(),
-                    actionInfo.action().actionType(),
-                    actionInfo.action().description(),
-                    this.currentTime,
-                    actionInfo.action().deviceType(),
-                    actionInfo.action().workInstructions()
-            ));
+                // Auto-complete: if skipWhenGatesSatisfied and all gates are already satisfied,
+                // skip this action (mark completed without activating).
+                if (action.skipWhenGatesSatisfied()
+                        && state.areEventGatesSatisfied(actionId, action, overrides)) {
+                    state.completedActionIds.add(actionId);
+                    sideEffects.add(new ActionCompleted(
+                            actionId, workQueueId, actionInfo.taktName(),
+                            action.description(), this.currentTime
+                    ));
+                    progress = true;
+                    continue;
+                }
+
+                state.activeActionIds.add(actionId);
+                armEventGatesForAction(state, actionId);
+
+                sideEffects.add(new ActionActivated(
+                        actionId,
+                        workQueueId,
+                        actionInfo.taktName(),
+                        actionInfo.action().actionType(),
+                        actionInfo.action().description(),
+                        this.currentTime,
+                        actionInfo.action().deviceType(),
+                        actionInfo.action().workInstructions()
+                ));
+            }
         }
 
         return sideEffects;

@@ -5,6 +5,7 @@ import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.EventProcessingEngine;
 import com.wonderingwizard.engine.SideEffect;
+import com.wonderingwizard.events.NukeWorkQueueEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
@@ -1571,6 +1572,42 @@ class WorkQueueProcessorTest {
             assertEquals(1, effects.size());
             var schedule = (ScheduleCreated) effects.get(0);
             assertEquals(1L, schedule.workQueueId());
+        }
+    }
+
+    @Nested
+    @DisplayName("Nuke Work Queue")
+    class NukeWorkQueue {
+
+        @Test
+        @DisplayName("Nuke should abort schedule and clear all data for that work queue")
+        void nukeRemovesEverything() {
+            // Set up: create WQ with WI and active schedule
+            engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "QC1", PLANNED, EMT, 120, 60, "QC1",
+                    false, false, false, 0, "A01-01-01", "CONT1"));
+            engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, null));
+
+            // Nuke it
+            List<SideEffect> effects = engine.processEvent(new NukeWorkQueueEvent(1L));
+
+            // Should emit ScheduleAborted
+            assertEquals(1, effects.size());
+            assertInstanceOf(ScheduleAborted.class, effects.getFirst());
+            assertEquals(1L, ((ScheduleAborted) effects.getFirst()).workQueueId());
+
+            // Re-activating should create a fresh empty schedule (no WIs)
+            List<SideEffect> reactivate = engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, null));
+            assertEquals(1, reactivate.size());
+            var schedule = (ScheduleCreated) reactivate.getFirst();
+            assertTrue(schedule.takts().isEmpty(), "Schedule should have no takts after nuke");
+        }
+
+        @Test
+        @DisplayName("Nuke on non-existent work queue produces no side effects")
+        void nukeNonExistentIsNoOp() {
+            List<SideEffect> effects = engine.processEvent(new NukeWorkQueueEvent(999L));
+            assertTrue(effects.isEmpty());
         }
     }
 }

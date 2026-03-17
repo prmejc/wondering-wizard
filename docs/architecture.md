@@ -18,6 +18,7 @@ Marker interface for all events. Enables pattern matching in processors.
 - `WorkQueueMessage` - Work queue message with status and load mode for schedule management
 - `WorkInstructionEvent` - Work instruction with workQueueId association and estimatedMoveTime
 - `ActionCompletedEvent` - Notification that an action has been completed (with UUID validation)
+- `NukeWorkQueueEvent` - Deletes all data for a work queue (WQ, WIs, schedule)
 - `DigitalMapEvent` - Digital map update with edges and travel durations for pathfinding
 
 ### SideEffect (Sealed Interface)
@@ -278,6 +279,15 @@ The `WorkQueueProcessor` supports a pluggable pipeline for schedule creation. Pi
 - **DigitalMapProcessor**: Dual-role processor — receives `DigitalMapEvent` as `EventProcessor` to store map state, and enriches TT drive durations as `SchedulePipelineStep` during schedule creation.
 - **Registration**: Steps are registered via `WorkQueueProcessor.registerStep()` at startup.
 - **Passthrough**: If no steps are registered or a step has no applicable data, templates pass through unchanged.
+
+### Conditional Actions (skipWhenGatesSatisfied)
+
+Actions can be marked with `skipWhenGatesSatisfied` to create conditional behavior. Unlike normal event gates (which block activation until satisfied), these gates define a **skip condition**:
+
+- **Gates NOT satisfied at activation time** → action activates normally
+- **Gates already satisfied at activation time** → action auto-completes (skipped)
+
+This is used for the conditional `TT_DRIVE_TO_BUFFER` action in discharge templates: the TT drives to buffer only when `QC_DISCHARGED_CONTAINER` events haven't arrived yet. If discharge is already complete, the buffer step is skipped and the TT proceeds directly to RTG.
 
 ## HTTP Demo Server (F-7)
 

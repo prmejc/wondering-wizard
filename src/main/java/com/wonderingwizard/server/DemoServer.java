@@ -31,6 +31,7 @@ import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.SystemTimeSet;
 import com.wonderingwizard.events.TimeEvent;
+import com.wonderingwizard.events.NukeWorkQueueEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
@@ -249,6 +250,7 @@ public class DemoServer {
         httpServer.createContext("/api/state", this::handleGetState);
         httpServer.createContext("/api/work-instruction", this::handleWorkInstruction);
         httpServer.createContext("/api/work-queue", this::handleWorkQueue);
+        httpServer.createContext("/api/nuke-work-queue", this::handleNukeWorkQueue);
         httpServer.createContext("/api/tick", this::handleTick);
         httpServer.createContext("/api/action-completed", this::handleActionCompleted);
         httpServer.createContext("/api/override-condition", this::handleOverrideCondition);
@@ -1349,6 +1351,26 @@ public class DemoServer {
 
             WorkQueueMessage event = new WorkQueueMessage(workQueueId, status, qcMudaSeconds, loadMode);
             StepResult result = processStep("WorkQueue " + statusStr + ": " + workQueueId, event);
+
+            sendJsonResponse(exchange, 200, JsonSerializer.serialize(
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handleNukeWorkQueue(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            long workQueueId = Long.parseLong(requireField(body, "workQueueId"));
+
+            NukeWorkQueueEvent event = new NukeWorkQueueEvent(workQueueId);
+            StepResult result = processStep("Nuke WorkQueue: " + workQueueId, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
                     Map.of("step", result.step(), "sideEffects", result.sideEffects())));

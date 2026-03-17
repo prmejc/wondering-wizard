@@ -7,6 +7,7 @@ import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.DigitalMapEvent;
+import com.wonderingwizard.events.NukeWorkQueueEvent;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.SetTimeAlarm;
@@ -216,6 +217,12 @@ public final class JsonSerializer {
                 sb.append('{');
                 writeField(sb, "type", "DigitalMapEvent", true);
                 writeField(sb, "mapPayload", e.mapPayload(), false);
+                sb.append('}');
+            }
+            case NukeWorkQueueEvent e -> {
+                sb.append('{');
+                writeField(sb, "type", "NukeWorkQueueEvent", true);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
                 sb.append('}');
             }
             case WorkInstructionReassigned e -> {

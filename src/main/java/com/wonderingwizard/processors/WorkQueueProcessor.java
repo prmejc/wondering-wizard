@@ -10,6 +10,7 @@ import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.LoadMode;
+import com.wonderingwizard.events.NukeWorkQueueEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.EventType;
 import com.wonderingwizard.events.MoveStage;
@@ -109,6 +110,9 @@ public class WorkQueueProcessor implements EventProcessor {
         }
         if (event instanceof WorkInstructionEvent instruction) {
             return handleWorkInstructionEvent(instruction);
+        }
+        if (event instanceof NukeWorkQueueEvent nuke) {
+            return handleNukeWorkQueue(nuke.workQueueId());
         }
         return List.of();
     }
@@ -631,6 +635,18 @@ public class WorkQueueProcessor implements EventProcessor {
         // Abort the schedule (work instructions remain stored)
         activeSchedules.remove(workQueueId);
         return List.of(new ScheduleAborted(workQueueId));
+    }
+
+    private List<SideEffect> handleNukeWorkQueue(long workQueueId) {
+        List<SideEffect> sideEffects = new ArrayList<>();
+        if (activeSchedules.containsKey(workQueueId)) {
+            sideEffects.add(new ScheduleAborted(workQueueId));
+        }
+        activeSchedules.remove(workQueueId);
+        workInstructions.remove(workQueueId);
+        qcMudaByQueue.remove(workQueueId);
+        loadModeByQueue.remove(workQueueId);
+        return sideEffects;
     }
 
     @Override

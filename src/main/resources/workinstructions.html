@@ -159,6 +159,14 @@ function extractWorkInstructions(state) {
       }
       wiMap.set(id, row);
     }
+    if (evt && evt.type === 'NukeWorkQueueEvent') {
+      const nukedWqId = Number(evt.workQueueId);
+      for (const [id, row] of wiMap) {
+        if (Number(row.workQueueId) === nukedWqId) {
+          wiMap.delete(id);
+        }
+      }
+    }
   }
   return wiMap;
 }

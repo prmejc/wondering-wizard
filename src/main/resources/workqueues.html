@@ -65,6 +65,7 @@
     border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;
   }
   button:hover { opacity: 0.9; }
+  button.nuke { background: var(--danger); }
   .empty-state {
     text-align: center; padding: 60px 20px; color: var(--text-muted);
   }
@@ -135,6 +136,9 @@ function extractWorkQueues(state) {
       }
       wqMap.set(id, row);
     }
+    if (evt && evt.type === 'NukeWorkQueueEvent') {
+      wqMap.delete(evt.workQueueId);
+    }
   }
   return wqMap;
 }
@@ -202,6 +206,7 @@ function buildRowHtml(id, row) {
   }
   html += '<td class="row-actions">';
   html += '<button data-send="' + id + '">Send</button>';
+  html += '<button class="nuke" data-nuke="' + id + '">Nuke</button>';
   html += '</td></tr>';
   return html;
 }
@@ -306,6 +311,29 @@ function bindRow(container, wqId) {
       } finally {
         btn.disabled = false;
         btn.textContent = 'Send';
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-nuke]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Delete WQ ' + wqId + ' and all its work instructions and schedule?')) return;
+
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        await apiCall(API + '/api/nuke-work-queue', { workQueueId: String(wqId) });
+        workQueues.delete(wqId);
+        serverWorkQueues.delete(wqId);
+        editingRows.delete(wqId);
+        const tr = btn.closest('tr');
+        if (tr) tr.remove();
+        if (workQueues.size === 0) render();
+      } catch (err) {
+        alert('Failed to nuke: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Nuke';
       }
     });
   });

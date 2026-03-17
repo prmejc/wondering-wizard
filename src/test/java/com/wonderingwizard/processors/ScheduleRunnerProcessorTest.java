@@ -3,9 +3,11 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.DeviceType;
+import com.wonderingwizard.domain.takt.EventGateCondition;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.EventType;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
@@ -20,6 +22,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -586,6 +590,128 @@ class ScheduleRunnerProcessorTest {
             // Completing new TAKT100 QC_LIFT should be ignored (already completed)
             List<SideEffect> noOp = processor.process(new ActionCompletedEvent(newTakt1Action1, 1L));
             assertTrue(noOp.isEmpty(), "Completing action in already-completed takt should be no-op");
+        }
+    }
+
+    @Nested
+    @DisplayName("skipWhenGatesSatisfied behavior")
+    class SkipWhenGatesSatisfiedTests {
+
+        @Test
+        @DisplayName("Should auto-complete action when gates are already satisfied at activation time")
+        void autoCompletesWhenGatesPreSatisfied() {
+            // Build a schedule with:
+            // TAKT100: QC_LIFT (source action that arms gates)
+            // TAKT101: TT_DRIVE_TO_BUFFER (skipWhenGatesSatisfied, gated on QC_DISCHARGED_CONTAINER)
+            //          + TT_DRIVE_TO_RTG_PULL (depends on buffer)
+            var wiEvent = new WorkInstructionEvent(
+                    EventType.QC_DISCHARGED_CONTAINER,
+                    100L, 1L, "QC1", "Carry Underway", EMT, 120, 60,
+                    "QC1", false, false, false, 0, "A01-01-01", "CONT1");
+            var eventGate = new EventGateCondition(
+                    DeviceType.QC, ActionType.QC_LIFT, EventType.QC_DISCHARGED_CONTAINER);
+
+            // QC_LIFT in takt 0 — this is the gate source action
+            Action qcLift = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.QC_LIFT,
+                    "QC Lift", Set.of(), 0, 20, 0, List.of(wiEvent), List.of(), false);
+
+            // TT_DRIVE_TO_BUFFER in takt 1 — skipWhenGatesSatisfied with event gate
+            Action ttBuffer = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_TO_BUFFER,
+                    "drive to buffer", new HashSet<>(Set.of(qcLift.id())), 0, 30, 0,
+                    List.of(wiEvent), List.of(eventGate), true);
+
+            // TT_DRIVE_TO_RTG_PULL in takt 1 — depends on buffer
+            Action ttRtgPull = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_TO_RTG_PULL,
+                    "drive to RTG pull", new HashSet<>(Set.of(ttBuffer.id())), 0, 30, 0,
+                    List.of(wiEvent), List.of(), false);
+
+            List<Takt> takts = List.of(
+                    new Takt(0, new ArrayList<>(List.of(qcLift)), EMT, EMT, 120),
+                    new Takt(1, new ArrayList<>(List.of(ttBuffer, ttRtgPull)),
+                            EMT.plusSeconds(120), EMT.plusSeconds(120), 120)
+            );
+
+            processor.process(new ScheduleCreated(1L, takts, EMT));
+
+            // Advance time to activate TAKT100 + QC_LIFT
+            processor.process(new TimeEvent(EMT.plusSeconds(1)));
+
+            // Send QC_DISCHARGED_CONTAINER event — this satisfies the gate
+            processor.process(wiEvent);
+
+            // Complete QC_LIFT to unblock TAKT101
+            processor.process(new ActionCompletedEvent(qcLift.id(), 1L));
+
+            // Advance time to activate TAKT101 — buffer should auto-complete
+            List<SideEffect> effects = processor.process(new TimeEvent(EMT.plusSeconds(121)));
+
+            // Expect: TaktActivated + ActionCompleted(buffer auto-skipped) + ActionActivated(RTG pull)
+            var completed = effects.stream()
+                    .filter(e -> e instanceof ActionCompleted)
+                    .map(e -> (ActionCompleted) e)
+                    .toList();
+            var activated = effects.stream()
+                    .filter(e -> e instanceof ActionActivated)
+                    .map(e -> (ActionActivated) e)
+                    .toList();
+
+            assertEquals(1, completed.size(), "Buffer action should be auto-completed");
+            assertEquals(ttBuffer.id(), completed.getFirst().actionId());
+
+            assertEquals(1, activated.size(), "RTG pull should be activated after buffer skip");
+            assertEquals(ttRtgPull.id(), activated.getFirst().actionId());
+        }
+
+        @Test
+        @DisplayName("Should activate action normally when gates are NOT yet satisfied")
+        void activatesNormallyWhenGatesNotSatisfied() {
+            var wiEvent = new WorkInstructionEvent(
+                    EventType.QC_DISCHARGED_CONTAINER,
+                    100L, 1L, "QC1", "Carry Underway", EMT, 120, 60,
+                    "QC1", false, false, false, 0, "A01-01-01", "CONT1");
+            var eventGate = new EventGateCondition(
+                    DeviceType.QC, ActionType.QC_LIFT, EventType.QC_DISCHARGED_CONTAINER);
+
+            Action qcLift = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.QC_LIFT,
+                    "QC Lift", Set.of(), 0, 20, 0, List.of(wiEvent), List.of(), false);
+
+            Action ttBuffer = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_TO_BUFFER,
+                    "drive to buffer", new HashSet<>(Set.of(qcLift.id())), 0, 30, 0,
+                    List.of(wiEvent), List.of(eventGate), true);
+
+            Action ttRtgPull = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_TO_RTG_PULL,
+                    "drive to RTG pull", new HashSet<>(Set.of(ttBuffer.id())), 0, 30, 0,
+                    List.of(wiEvent), List.of(), false);
+
+            List<Takt> takts = List.of(
+                    new Takt(0, new ArrayList<>(List.of(qcLift)), EMT, EMT, 120),
+                    new Takt(1, new ArrayList<>(List.of(ttBuffer, ttRtgPull)),
+                            EMT.plusSeconds(120), EMT.plusSeconds(120), 120)
+            );
+
+            processor.process(new ScheduleCreated(1L, takts, EMT));
+
+            // Activate TAKT100 + QC_LIFT
+            processor.process(new TimeEvent(EMT.plusSeconds(1)));
+
+            // Complete QC_LIFT WITHOUT sending QC_DISCHARGED_CONTAINER event
+            processor.process(new ActionCompletedEvent(qcLift.id(), 1L));
+
+            // Activate TAKT101 — buffer gates are NOT satisfied, should activate normally
+            List<SideEffect> effects = processor.process(new TimeEvent(EMT.plusSeconds(121)));
+
+            var activated = effects.stream()
+                    .filter(e -> e instanceof ActionActivated)
+                    .map(e -> (ActionActivated) e)
+                    .toList();
+            var completed = effects.stream()
+                    .filter(e -> e instanceof ActionCompleted)
+                    .map(e -> (ActionCompleted) e)
+                    .toList();
+
+            assertTrue(completed.isEmpty(), "Buffer should NOT be auto-completed when gates unsatisfied");
+            assertEquals(1, activated.size(), "Buffer action should activate normally");
+            assertEquals(ttBuffer.id(), activated.getFirst().actionId());
         }
     }
 }

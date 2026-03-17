@@ -4,6 +4,7 @@ import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.DigitalMapEvent;
 import com.wonderingwizard.events.LoadMode;
+import com.wonderingwizard.events.NukeWorkQueueEvent;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.SystemTimeSet;
@@ -86,6 +87,9 @@ public final class EventDeserializer {
 
             case "DigitalMapEvent" -> new DigitalMapEvent(
                     fields.getOrDefault("mapPayload", ""));
+
+            case "NukeWorkQueueEvent" -> new NukeWorkQueueEvent(
+                    Long.parseLong(requireField(fields, "workQueueId")));
 
             default -> throw new IllegalArgumentException("Unknown event type: " + type);
         };
