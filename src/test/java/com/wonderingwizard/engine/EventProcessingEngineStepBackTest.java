@@ -50,6 +50,7 @@ class EventProcessingEngineStepBackTest {
         @DisplayName("stepBack returns true and reverts state after one event")
         void stepBackAfterOneEvent() {
             Instant triggerTime = Instant.parse("2024-01-01T12:00:00Z");
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm1", triggerTime));
 
             assertEquals(1, engine.getHistorySize());
@@ -69,8 +70,11 @@ class EventProcessingEngineStepBackTest {
         @Test
         @DisplayName("stepBack reverts multiple events one at a time")
         void stepBackMultipleEvents() {
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm1", Instant.parse("2024-01-01T12:00:00Z")));
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm2", Instant.parse("2024-01-01T13:00:00Z")));
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm3", Instant.parse("2024-01-01T14:00:00Z")));
 
             assertEquals(3, engine.getHistorySize());
@@ -105,6 +109,7 @@ class EventProcessingEngineStepBackTest {
         @DisplayName("stepBack reverts alarm creation")
         void stepBackRevertsAlarmCreation() {
             Instant triggerTime = Instant.parse("2024-01-01T12:00:00Z");
+            engine.snapshot();
             List<SideEffect> createEffects = engine.processEvent(new SetTimeAlarm("alarm1", triggerTime));
 
             // Alarm was set
@@ -122,10 +127,12 @@ class EventProcessingEngineStepBackTest {
         @DisplayName("stepBack restores triggered alarms")
         void stepBackRestoresTriggeredAlarms() {
             Instant triggerTime = Instant.parse("2024-01-01T12:00:00Z");
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm1", triggerTime));
 
             // Trigger the alarm
             Instant afterTrigger = Instant.parse("2024-01-01T13:00:00Z");
+            engine.snapshot();
             List<SideEffect> triggerEffects = engine.processEvent(new TimeEvent(afterTrigger));
             assertTrue(triggerEffects.stream().anyMatch(se -> se instanceof AlarmTriggered));
 
@@ -145,6 +152,7 @@ class EventProcessingEngineStepBackTest {
         @Test
         @DisplayName("stepBack reverts schedule creation")
         void stepBackRevertsScheduleCreation() {
+            engine.snapshot();
             List<SideEffect> createEffects = engine.processEvent(
                     new WorkQueueMessage(1, WorkQueueStatus.ACTIVE, 0, null));
 
@@ -164,9 +172,11 @@ class EventProcessingEngineStepBackTest {
         @DisplayName("stepBack reverts schedule abortion")
         void stepBackRevertsScheduleAbortion() {
             // Create schedule
+            engine.snapshot();
             engine.processEvent(new WorkQueueMessage(1, WorkQueueStatus.ACTIVE, 0, null));
 
             // Abort schedule
+            engine.snapshot();
             engine.processEvent(new WorkQueueMessage(1, WorkQueueStatus.INACTIVE, 0, null));
 
             // Step back - schedule should be active again
@@ -188,7 +198,9 @@ class EventProcessingEngineStepBackTest {
         @DisplayName("stepBack reverts state in all processors simultaneously")
         void stepBackRevertsAllProcessors() {
             // Set an alarm and create a schedule in one go (process both events)
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm1", Instant.parse("2024-01-01T12:00:00Z")));
+            engine.snapshot();
             engine.processEvent(new WorkQueueMessage(1, WorkQueueStatus.ACTIVE, 0, null));
 
             assertEquals(2, engine.getHistorySize());
@@ -217,9 +229,11 @@ class EventProcessingEngineStepBackTest {
         void getHistorySizeReturnsCorrectCount() {
             assertEquals(0, engine.getHistorySize());
 
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm1", Instant.now()));
             assertEquals(1, engine.getHistorySize());
 
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm2", Instant.now()));
             assertEquals(2, engine.getHistorySize());
 
@@ -230,8 +244,11 @@ class EventProcessingEngineStepBackTest {
         @Test
         @DisplayName("clearHistory removes all history")
         void clearHistoryRemovesAllHistory() {
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm1", Instant.now()));
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm2", Instant.now()));
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm3", Instant.now()));
 
             assertEquals(3, engine.getHistorySize());
@@ -246,6 +263,7 @@ class EventProcessingEngineStepBackTest {
         @DisplayName("clearHistory does not affect current state")
         void clearHistoryDoesNotAffectCurrentState() {
             Instant triggerTime = Instant.parse("2024-01-01T12:00:00Z");
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm1", triggerTime));
 
             engine.clearHistory();
@@ -265,7 +283,9 @@ class EventProcessingEngineStepBackTest {
         @Test
         @DisplayName("multiple stepBacks followed by events work correctly")
         void multipleStepBacksThenEvents() {
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm1", Instant.parse("2024-01-01T10:00:00Z")));
+            engine.snapshot();
             engine.processEvent(new SetTimeAlarm("alarm2", Instant.parse("2024-01-01T11:00:00Z")));
 
             // Step back twice
@@ -290,6 +310,7 @@ class EventProcessingEngineStepBackTest {
         @DisplayName("stepBack with no-op events still creates history")
         void stepBackWithNoOpEvents() {
             // Process an event that produces no side effects
+            engine.snapshot();
             engine.processEvent(new WorkQueueMessage(1, WorkQueueStatus.INACTIVE, 0, null));
 
             assertEquals(1, engine.getHistorySize());

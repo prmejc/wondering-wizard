@@ -39,12 +39,13 @@ public class EventProcessingEngine implements Engine {
      * @param event the event to process
      * @return all side effects produced by all processors
      */
+    @Override
+    public void snapshot() {
+        stateHistory.add(captureAllStates());
+    }
+
     public List<SideEffect> processEvent(Event event) {
         logger.info("Processing event: " + event);
-
-        // Capture state before processing
-        Map<EventProcessor, Object> snapshot = captureAllStates();
-        stateHistory.add(snapshot);
 
         List<SideEffect> allSideEffects = new ArrayList<>();
 

@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static com.wonderingwizard.events.EventType.QC_DISCHARGED_CONTAINER;
 import static com.wonderingwizard.events.MoveStage.*;
 import static com.wonderingwizard.domain.takt.DeviceActionTemplate.DEFAULT_DURATION_SECONDS;
 import static com.wonderingwizard.events.WorkQueueStatus.ACTIVE;
@@ -540,12 +541,15 @@ class WorkQueueProcessorTest {
             @DisplayName("Should restore work instructions state on step back")
             void stepBack_restoresWorkInstructionsState() {
                 // Register work instruction
+                engine.snapshot();
                 engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 // Activate queue
+                engine.snapshot();
                 engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, null));
 
                 // Add another work instruction
+                engine.snapshot();
                 engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
 
                 // Step back - should remove wi-2
@@ -1248,8 +1252,9 @@ class WorkQueueProcessorTest {
 
             // Now: FETCH_COMPLETE arrives with changed twin flags (no longer twin put)
             List<SideEffect> rescheduleEffects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
                     1L, 1L, "CHE-001", CARRY_UNDERWAY, EMT, 120, 60,
-                    "CHE-QC", true, false, true, 2L, "A01-01-01"));
+                    "CHE-QC", true, false, true, 2L, "A01-01-01", ""));
 
             // Should produce a ScheduleCreated
             assertEquals(1, rescheduleEffects.size(),
@@ -1276,8 +1281,9 @@ class WorkQueueProcessorTest {
 
             // FETCH_COMPLETE with same flags
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
                     1L, 1L, "CHE-001", CARRY_UNDERWAY, EMT, 120, 60,
-                    "CHE-QC", false, false, false));
+                    "CHE-QC", false, false, false, 0, "", ""));
 
             assertTrue(effects.isEmpty(),
                     "No reschedule should happen when twin flags haven't changed");
@@ -1293,8 +1299,9 @@ class WorkQueueProcessorTest {
 
             // FETCH_COMPLETE with changed flags but no active schedule
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
                     1L, 1L, "CHE-001", CARRY_UNDERWAY, EMT, 120, 60,
-                    "CHE-QC", false, false, false));
+                    "CHE-QC", false, false, false, 0, "", ""));
 
             assertTrue(effects.isEmpty(),
                     "No reschedule should happen without an active schedule");
@@ -1322,8 +1329,9 @@ class WorkQueueProcessorTest {
 
             // FETCH_COMPLETE: WI 2 twin flags changed (no longer twin fetch/put)
             List<SideEffect> rescheduleEffects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
                     2L, 1L, "CHE-002", CARRY_UNDERWAY, EMT.plusSeconds(120), 120, 60,
-                    "CHE-QC", false, false, false, 3L, "A01-01-01"));
+                    "CHE-QC", false, false, false, 3L, "A01-01-01", ""));
 
             assertEquals(1, rescheduleEffects.size());
             var modified = (com.wonderingwizard.sideeffects.ScheduleCreated) rescheduleEffects.get(0);
@@ -1355,8 +1363,9 @@ class WorkQueueProcessorTest {
 
             // FETCH_COMPLETE for WI 3 (expected WI 1) — order mismatch!
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
                     3L, 1L, "CHE-003", CARRY_UNDERWAY, EMT.plusSeconds(240), 120, 60,
-                    "CHE-QC", false, false, false));
+                    "CHE-QC", false, false, false, 0, "", ""));
 
             assertEquals(1, effects.size(),
                     "Should produce ScheduleCreated when wrong WI is fetched");
@@ -1381,8 +1390,9 @@ class WorkQueueProcessorTest {
 
             // FETCH_COMPLETE for WI 1 (the expected one) with same flags
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
                     1L, 1L, "CHE-001", CARRY_UNDERWAY, EMT, 120, 60,
-                    "CHE-QC", false, false, false));
+                    "CHE-QC", false, false, false, 0, "", ""));
 
             assertTrue(effects.isEmpty(),
                     "No reschedule when expected WI is fetched with unchanged flags");
@@ -1405,8 +1415,9 @@ class WorkQueueProcessorTest {
 
             // FETCH_COMPLETE for WI 2 (expected WI 1) with changed twin flags
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
                     2L, 1L, "CHE-002", CARRY_UNDERWAY, EMT.plusSeconds(120), 120, 60,
-                    "CHE-QC", false, false, true, 1L, "A01-01-01"));
+                    "CHE-QC", false, false, true, 1L, "A01-01-01", ""));
 
             assertEquals(1, effects.size());
             assertInstanceOf(com.wonderingwizard.sideeffects.ScheduleCreated.class,
@@ -1430,13 +1441,15 @@ class WorkQueueProcessorTest {
 
             // WI 1 FETCH_COMPLETE with changed twin flags (no longer twin put)
             engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
                     1L, 1L, "CHE-001", CARRY_UNDERWAY, EMT, 120, 60,
-                    "CHE-QC", false, false, true, 2L, "A01-01-01"));
+                    "CHE-QC", false, false, true, 2L, "A01-01-01", ""));
 
             // WI 2 (twin companion) FETCH_COMPLETE with changed twin flags
             List<SideEffect> rescheduleEffects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
                     2L, 1L, "CHE-002", CARRY_UNDERWAY, EMT.plusSeconds(120), 120, 60,
-                    "CHE-QC", false, false, true, 1L, "A01-01-01"));
+                    "CHE-QC", false, false, true, 1L, "A01-01-01", ""));
 
             // Should produce a ScheduleCreated for the companion too
             assertEquals(1, rescheduleEffects.size(),
@@ -1469,8 +1482,9 @@ class WorkQueueProcessorTest {
             // WI21 arrives with workQueueId=1 and FETCH_COMPLETE
             // (it moved from WQ2 to WQ1, displacing WI1)
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
                     21L, 1L, "CHE-002", CARRY_UNDERWAY, EMT.plusSeconds(60), 120, 60,
-                    "CHE-QC", false, false, false));
+                    "CHE-QC", false, false, false, 0, "", ""));
 
             // Should produce: WorkInstructionReassigned + ScheduleCreated(WQ1) + ScheduleCreated(WQ2)
             assertEquals(3, effects.size(),
@@ -1517,8 +1531,9 @@ class WorkQueueProcessorTest {
 
             // WI21 arrives with workQueueId=1 and FETCH_COMPLETE
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
                     21L, 1L, "CHE-002", CARRY_UNDERWAY, EMT.plusSeconds(60), 120, 60,
-                    "CHE-QC", false, false, false));
+                    "CHE-QC", false, false, false, 0, "", ""));
 
             // Should produce: WorkInstructionReassigned + ScheduleCreated(WQ1) only (WQ2 inactive)
             assertEquals(2, effects.size(),
@@ -1548,8 +1563,9 @@ class WorkQueueProcessorTest {
 
             // WI3 fetched out of order (expected WI1) — same queue
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
                     3L, 1L, "CHE-003", CARRY_UNDERWAY, EMT.plusSeconds(240), 120, 60,
-                    "CHE-QC", false, false, false));
+                    "CHE-QC", false, false, false, 0, "", ""));
 
             // Should produce exactly 1 ScheduleCreated (same-queue swap, no cross-queue)
             assertEquals(1, effects.size());

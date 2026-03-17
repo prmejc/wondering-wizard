@@ -98,7 +98,9 @@ class EventLogProcessorTest {
         @Test
         @DisplayName("Should support step-back via engine")
         void stepBackRestoresLog() {
+            engine.snapshot();
             engine.processEvent(new TimeEvent(now));
+            engine.snapshot();
             engine.processEvent(new TimeEvent(now.plusSeconds(5)));
 
             assertEquals(2, processor.getEventLog().size());

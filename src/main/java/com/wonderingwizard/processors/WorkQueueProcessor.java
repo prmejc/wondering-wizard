@@ -11,6 +11,7 @@ import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.WorkInstructionEvent;
+import com.wonderingwizard.events.EventType;
 import com.wonderingwizard.events.MoveStage;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
@@ -125,7 +126,7 @@ public class WorkQueueProcessor implements EventProcessor {
         // Determine expected next WI BEFORE updating the map (so current event's
         // post-fetch status doesn't affect the lookup)
         WorkInstructionEvent expectedWi = null;
-        if (MoveStage.isFetchComplete(event.workInstructionMoveStage())
+        if (EventType.QC_DISCHARGED_CONTAINER.equals(event.eventType())
                 && activeSchedules.containsKey(workQueueId)) {
             expectedWi = findExpectedNextWi(workQueueId);
         }
@@ -238,14 +239,14 @@ public class WorkQueueProcessor implements EventProcessor {
     }
 
     /**
-     * Finds the next expected WI to be fetched: the first non-FETCH_COMPLETE WI in schedule order.
+     * Finds the next expected WI to be fetched: the first WI still in Planned/Ready stage in schedule order.
      */
     private WorkInstructionEvent findExpectedNextWi(long workQueueId) {
         List<WorkInstructionEvent> allInstructions = workInstructions.getOrDefault(workQueueId, List.of());
 
         return allInstructions.stream()
                 .sorted(Comparator.comparing(WorkInstructionEvent::estimatedMoveTime))
-                .filter(wi -> !MoveStage.isFetchComplete(wi.workInstructionMoveStage()))
+                .filter(wi -> MoveStage.isPreFetch(wi.workInstructionMoveStage()))
                 .findFirst()
                 .orElse(null);
     }

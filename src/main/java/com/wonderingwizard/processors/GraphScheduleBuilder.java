@@ -398,11 +398,10 @@ public class GraphScheduleBuilder {
     }
 
     private static List<ActionTemplate> getDischargeSingleTemplate(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return List.of(
+        return withComputedRtgWaitDuration(List.of(
                 // ── QC chain (forward from anchor) ──
-                ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration)
-                        .withFirstInTakt().withAnchor(),
-                ActionTemplate.of(QC_PLACE, QC, qcLiftDuration),
+                ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
+                ActionTemplate.of(QC_PLACE, QC, qcLiftDuration).withFirstInTakt().withAnchor(),
 
                 // ── TT chain (backward from sync point) ──
                 ActionTemplate.of(TT_DRIVE_TO_QC_PULL, TT, driveToQcPull).withIndependentAcrossContainers(),
@@ -413,18 +412,16 @@ public class GraphScheduleBuilder {
 
                 ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, driveToRtgPull),
                 ActionTemplate.of(TT_DRIVE_TO_RTG_STANDBY, TT, 240),
-                ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg)
-                        .withFirstInTakt().withOnlyOnePerTakt(),
-                ActionTemplate.of(TT_HANDOVER_TO_RTG, TT, rtgPlaceDuration)
-                        .withOnlyOnePerTakt(),
+                ActionTemplate.of(TT_DRIVE_TO_RTG_UNDER, TT, driveToUnderRtg),
+                ActionTemplate.of(TT_HANDOVER_TO_RTG, TT, rtgPlaceDuration),
                 ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS),
 
                 // ── RTG chain (backward from sync point) ──
-                ActionTemplate.of(RTG_DRIVE, RTG, 1),
-                ActionTemplate.of(RTG_LIFT_FROM_TT, RTG,
-                        (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)).withFirstInTakt().withSyncWith(TT, TT_HANDOVER_TO_RTG),
+                ActionTemplate.of(RTG_DRIVE,  RTG, RTG_DRIVE_SECONDS).withFirstInTakt().withSyncWith(TT, TT_DRIVE_TO_RTG_PULL),
+                ActionTemplate.of(RTG_WAIT_FOR_TRUCK,  RTG, 0),
+                ActionTemplate.of(RTG_LIFT_FROM_TT,  RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, RTG, driveToUnderRtg + rtgPlaceDuration)
-        );
+        ));
     }
 
     private static List<ActionTemplate> getLoadSingleTemplate(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
@@ -915,6 +912,26 @@ public class GraphScheduleBuilder {
      * Finds the highest takt index that contains an action of the given device type.
      * Returns -1 if no such takt exists.
      */
+    /**
+     * Finds the highest takt index that contains the anchor action type.
+     * This ensures proper spacing when placing consecutive containers.
+     */
+    private int findMaxTaktForAction(Map<Integer, Takt> takts, Segment anchorSegment) {
+        int max = -1;
+        var anchorActionTypes = anchorSegment.templates().stream()
+                .map(ActionTemplate::actionType)
+                .collect(java.util.stream.Collectors.toSet());
+        for (var entry : takts.entrySet()) {
+            for (var action : entry.getValue().actions()) {
+                if (anchorActionTypes.contains(action.actionType())) {
+                    max = Math.max(max, entry.getKey());
+                    break;
+                }
+            }
+        }
+        return max;
+    }
+
     private int findMaxTaktForDevice(Map<Integer, Takt> takts, DeviceType deviceType) {
         int max = -1;
         for (var entry : takts.entrySet()) {

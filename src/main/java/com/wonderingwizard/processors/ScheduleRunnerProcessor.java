@@ -23,6 +23,7 @@ import com.wonderingwizard.sideeffects.TaktCompleted;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.logging.Logger;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -161,6 +162,39 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
     private record ActionInfo(String taktName, Action action) {}
 
+    private static final Logger logger = Logger.getLogger(ScheduleRunnerProcessor.class.getName());
+
+    public enum ActionStatus { PENDING, ACTIVE, COMPLETED }
+
+    /**
+     * Returns the current status of an action in a schedule.
+     */
+    public ActionStatus getActionStatus(long workQueueId, UUID actionId) {
+        ScheduleState state = scheduleStates.get(workQueueId);
+        if (state == null) return ActionStatus.PENDING;
+        if (state.completedActionIds.contains(actionId)) return ActionStatus.COMPLETED;
+        if (state.activeActionIds.contains(actionId)) return ActionStatus.ACTIVE;
+        return ActionStatus.PENDING;
+    }
+
+    /**
+     * Returns the current takt state for a schedule.
+     */
+    public TaktState getTaktState(long workQueueId, String taktName) {
+        ScheduleState state = scheduleStates.get(workQueueId);
+        if (state == null) return TaktState.WAITING;
+        return state.taktStates.getOrDefault(taktName, TaktState.WAITING);
+    }
+
+    /**
+     * Returns the actual start time recorded for a takt.
+     */
+    public Instant getActualStartTime(long workQueueId, String taktName) {
+        ScheduleState state = scheduleStates.get(workQueueId);
+        if (state == null) return null;
+        return state.actualStartTimes.get(taktName);
+    }
+
     private final Map<Long, ScheduleState> scheduleStates = new HashMap<>();
     private final Map<Long, Instant> workInstructionEstimatedMoveTime = new HashMap<>();
     private Instant currentTime = Instant.EPOCH;
@@ -225,10 +259,16 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     private List<SideEffect> transferState(long workQueueId, ScheduleState oldState, ScheduleState newState) {
         List<SideEffect> sideEffects = new ArrayList<>();
 
-        // Build old takt actions map for position-based matching
-        Map<String, List<Action>> oldTaktActions = new HashMap<>();
+        // Build set of completed action keys from old state for matching by (actionType, containerIndex)
+        Map<String, Set<String>> oldTaktCompletedKeys = new HashMap<>();
         for (Takt takt : oldState.takts) {
-            oldTaktActions.put(takt.name(), takt.actions());
+            Set<String> completedKeys = new HashSet<>();
+            for (Action action : takt.actions()) {
+                if (oldState.completedActionIds.contains(action.id())) {
+                    completedKeys.add(action.actionType() + ":" + action.containerIndex());
+                }
+            }
+            oldTaktCompletedKeys.put(takt.name(), completedKeys);
         }
 
         for (Takt newTakt : newState.takts) {
@@ -242,16 +282,17 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                     newState.completedActionIds.add(action.id());
                 }
             } else if (oldTaktState == TaktState.ACTIVE) {
-                // Active takts: transfer completed action states by position,
+                // Active takts: transfer completed action states by (actionType, containerIndex),
                 // then activate eligible actions
                 newState.taktStates.put(taktName, TaktState.ACTIVE);
                 newState.actualStartTimes.put(taktName, this.currentTime);
                 sideEffects.add(new TaktActivated(workQueueId, taktName, this.currentTime));
 
-                List<Action> oldActions = oldTaktActions.getOrDefault(taktName, List.of());
-                for (int i = 0; i < newTakt.actions().size() && i < oldActions.size(); i++) {
-                    if (oldState.completedActionIds.contains(oldActions.get(i).id())) {
-                        newState.completedActionIds.add(newTakt.actions().get(i).id());
+                Set<String> completedKeys = oldTaktCompletedKeys.getOrDefault(taktName, Set.of());
+                for (Action action : newTakt.actions()) {
+                    String key = action.actionType() + ":" + action.containerIndex();
+                    if (completedKeys.contains(key)) {
+                        newState.completedActionIds.add(action.id());
                     }
                 }
 

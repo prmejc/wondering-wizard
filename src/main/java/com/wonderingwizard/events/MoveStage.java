@@ -22,10 +22,9 @@ public final class MoveStage {
     private static final Set<String> PRE_FETCH = Set.of(PLANNED, READY);
 
     /**
-     * Returns true if the move stage indicates that the fetch has completed,
-     * i.e. the container has been picked up and is in transit or beyond.
+     * Returns true if the WI is still awaiting fetch (Planned or Ready).
      */
-    public static boolean isFetchComplete(String moveStage) {
-        return moveStage != null && !PRE_FETCH.contains(moveStage);
+    public static boolean isPreFetch(String moveStage) {
+        return moveStage != null && PRE_FETCH.contains(moveStage);
     }
 }

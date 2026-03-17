@@ -81,6 +81,7 @@ public class DemoServer {
 
     private final Engine engine;
     private final Settings settings;
+    private final ScheduleRunnerProcessor scheduleRunnerProcessor;
     private final List<Step> steps = new ArrayList<>();
     private final Instant initialTime = Instant.EPOCH;
     private Instant currentTime = initialTime;
@@ -97,10 +98,9 @@ public class DemoServer {
      * @param description a short description of the event
      * @param event the event that was processed
      * @param sideEffects the side effects produced
-     * @param engineHistoryDelta the number of engine history entries consumed by this step
      */
     public record Step(int stepNumber, String description, Event event,
-                       List<SideEffect> sideEffects, int engineHistoryDelta) {}
+                       List<SideEffect> sideEffects) {}
 
     /** Action status for schedule visualization. */
     public enum ActionState {
@@ -148,13 +148,18 @@ public class DemoServer {
         workQueueProcessor.registerStep(digitalMapProcessor);
         engine.register(digitalMapProcessor);
         engine.register(workQueueProcessor);
-        engine.register(new ScheduleRunnerProcessor());
+        this.scheduleRunnerProcessor = new ScheduleRunnerProcessor();
+        engine.register(scheduleRunnerProcessor);
         engine.register(new DelayProcessor());
+        // Take initial snapshot so we can always reset to clean state
+        engine.snapshot();
+        snapshotStepIndex = 0;
     }
 
     DemoServer(Engine engine) {
         this.settings = Settings.load();
         this.engine = engine;
+        this.scheduleRunnerProcessor = null;
     }
 
     /**
@@ -174,6 +179,7 @@ public class DemoServer {
         httpServer.createContext("/api/override-condition", this::handleOverrideCondition);
         httpServer.createContext("/api/override-action-condition", this::handleOverrideActionCondition);
         httpServer.createContext("/api/step-back-to", this::handleStepBackTo);
+        httpServer.createContext("/api/snapshot", this::handleSnapshot);
         httpServer.createContext("/api/event-log/export", this::handleExportEventLog);
         httpServer.createContext("/api/event-log/import", this::handleImportEventLog);
         httpServer.createContext("/api/events", this::handleSseConnection);
@@ -231,6 +237,11 @@ public class DemoServer {
             @Override
             public List<SideEffect> processEvent(Event event) {
                 return processStep("Kafka: " + event.getClass().getSimpleName(), event);
+            }
+
+            @Override
+            public void snapshot() {
+                engine.snapshot();
             }
 
             @Override
@@ -341,12 +352,10 @@ public class DemoServer {
             currentTime = sts.timestamp();
         }
 
-        int historyBefore = engine.getHistorySize();
         List<SideEffect> sideEffects = engine.processEvent(event);
-        int historyDelta = engine.getHistorySize() - historyBefore;
 
         int stepNumber = steps.size() + 1;
-        steps.add(new Step(stepNumber, description, event, sideEffects, historyDelta));
+        steps.add(new Step(stepNumber, description, event, sideEffects));
 
         if (sideEffectPublisher != null) {
             sideEffectPublisher.publish(sideEffects);
@@ -357,12 +366,41 @@ public class DemoServer {
         return sideEffects;
     }
 
+    /**
+     * Creates an explicit snapshot of the current engine state.
+     * The snapshot is associated with the current step count so that
+     * step-back can restore it and replay events from that point.
+     */
+    public synchronized void createSnapshot() {
+        engine.snapshot();
+        snapshotStepIndex = steps.size();
+        logger.info("Snapshot created at step " + snapshotStepIndex);
+    }
+
+    /**
+     * Resets the engine to its initial state (before any events).
+     * Uses the initial snapshot taken at startup.
+     */
+    private void resetToInitial() {
+        // Restore initial snapshot
+        engine.stepBack();
+        steps.clear();
+        currentTime = initialTime;
+        snapshotStepIndex = 0;
+        // Re-take snapshot at step 0 for future resets
+        engine.snapshot();
+    }
+
+    /** Step index at which the most recent snapshot was taken (-1 = none). */
+    private int snapshotStepIndex = -1;
+
     private void broadcastState() {
         sseManager.broadcast("state", JsonSerializer.serialize(getState()));
     }
 
     /**
-     * Steps back to the target step number, undoing all steps after it.
+     * Steps back to the target step number by restoring the nearest snapshot
+     * and replaying events from that point.
      *
      * @param targetStep the step number to revert to (1-based, 0 means undo all)
      * @return true if step-back was successful
@@ -371,14 +409,38 @@ public class DemoServer {
         if (targetStep < 0 || targetStep >= steps.size()) {
             return false;
         }
-
-        // Calculate total engine step-backs needed
-        while (steps.size() > targetStep) {
-            Step last = steps.remove(steps.size() - 1);
-            for (int i = 0; i < last.engineHistoryDelta(); i++) {
-                engine.stepBack();
-            }
+        if (snapshotStepIndex < 0 || targetStep < snapshotStepIndex) {
+            logger.warning("Cannot step back to step " + targetStep
+                    + ": no snapshot or target is before snapshot at step " + snapshotStepIndex);
+            return false;
         }
+
+        // Save the events we need to replay (from snapshot to target)
+        List<Step> stepsToReplay = new ArrayList<>();
+        for (int i = snapshotStepIndex; i < targetStep; i++) {
+            stepsToReplay.add(steps.get(i));
+        }
+
+        // Restore the snapshot
+        engine.stepBack();
+
+        // Clear all steps after snapshot
+        while (steps.size() > snapshotStepIndex) {
+            steps.remove(steps.size() - 1);
+        }
+
+        // Replay events from snapshot up to target (without creating new snapshots)
+        for (Step step : stepsToReplay) {
+            if (step.event() instanceof SystemTimeSet sts) {
+                currentTime = sts.timestamp();
+            }
+            List<SideEffect> sideEffects = engine.processEvent(step.event());
+            steps.add(new Step(steps.size() + 1, step.description(), step.event(), sideEffects));
+        }
+
+        // Re-take the snapshot at current position so further step-backs work
+        engine.snapshot();
+        snapshotStepIndex = steps.size();
 
         return true;
     }
@@ -391,6 +453,7 @@ public class DemoServer {
     public synchronized Map<String, Object> getState() {
         Map<String, Object> state = new LinkedHashMap<>();
         state.put("currentTime", currentTime);
+        state.put("snapshotStep", snapshotStepIndex);
         state.put("steps", steps);
         state.put("schedules", buildScheduleViews());
         return state;
@@ -407,15 +470,16 @@ public class DemoServer {
     }
 
     private List<ScheduleView> buildScheduleViews() {
-        // Derive schedule state from accumulated side effects
+        // Build schedule structure from ScheduleCreated side effects,
+        // then query ScheduleRunnerProcessor for authoritative action/takt states
         Map<Long, ScheduleViewBuilder> builders = new LinkedHashMap<>();
 
         for (Step step : steps) {
             for (SideEffect se : step.sideEffects()) {
                 switch (se) {
                     case ScheduleCreated created -> {
-                        ScheduleViewBuilder builder = new ScheduleViewBuilder(
-                                created.workQueueId(), true, created.estimatedMoveTime());
+                        long wqId = created.workQueueId();
+                        ScheduleViewBuilder builder = new ScheduleViewBuilder(wqId, true, created.estimatedMoveTime());
                         for (Takt takt : created.takts()) {
                             List<ActionView> actionViews = new ArrayList<>();
                             for (Action action : takt.actions()) {
@@ -423,53 +487,38 @@ public class DemoServer {
                                     .map(wi -> wi.containerId() != null ? wi.containerId() : "")
                                     .filter(id -> !id.isEmpty())
                                     .toList();
-                            actionViews.add(new ActionView(
+                                // Get action status from processor's authoritative state
+                                ActionState actionState = scheduleRunnerProcessor != null
+                                        ? mapActionStatus(scheduleRunnerProcessor.getActionStatus(wqId, action.id()))
+                                        : ActionState.PENDING;
+                                actionViews.add(new ActionView(
                                         action.id(), action.deviceType(), action.description(),
-                                        ActionState.PENDING, action.dependsOn(), action.containerIndex(),
+                                        actionState, action.dependsOn(), action.containerIndex(),
                                         action.durationSeconds(), action.deviceIndex(), List.of(), cIds));
                             }
-                            builder.takts.add(new TaktView(takt.name(), TaktState.WAITING,
-                                    takt.plannedStartTime(), takt.estimatedStartTime(), null,
+                            // Get takt status from processor's authoritative state
+                            TaktState taktState = scheduleRunnerProcessor != null
+                                    ? mapTaktState(scheduleRunnerProcessor.getTaktState(wqId, takt.name()))
+                                    : TaktState.WAITING;
+                            Instant actualStart = scheduleRunnerProcessor != null
+                                    ? scheduleRunnerProcessor.getActualStartTime(wqId, takt.name())
+                                    : null;
+                            builder.takts.add(new TaktView(takt.name(), taktState,
+                                    takt.plannedStartTime(), takt.estimatedStartTime(), actualStart,
                                     null, takt.durationSeconds(), 0, 0, actionViews, List.of()));
                         }
                         builder.storeTakts(created.takts());
-                        builders.put(created.workQueueId(), builder);
+                        builders.put(wqId, builder);
                     }
                     case ScheduleAborted aborted ->
                             builders.remove(aborted.workQueueId());
-                    case TaktActivated taktActivated -> {
-                        ScheduleViewBuilder builder = builders.get(taktActivated.workQueueId());
-                        if (builder != null) {
-                            builder.setTaktStatus(taktActivated.taktName(), TaktState.ACTIVE);
-                            builder.setActualStartTime(taktActivated.taktName(), taktActivated.activatedAt());
-                        }
-                    }
-                    case TaktCompleted taktCompleted -> {
-                        ScheduleViewBuilder builder = builders.get(taktCompleted.workQueueId());
-                        if (builder != null) {
-                            builder.setTaktStatus(taktCompleted.taktName(), TaktState.COMPLETED);
-                            builder.setCompletedAt(taktCompleted.taktName(), taktCompleted.completedAt());
-                        }
-                    }
                     case DelayUpdated delayUpdated -> {
                         ScheduleViewBuilder builder = builders.get(delayUpdated.workQueueId());
                         if (builder != null) {
                             builder.totalDelaySeconds = delayUpdated.totalDelaySeconds();
                         }
                     }
-                    case ActionActivated activated -> {
-                        ScheduleViewBuilder builder = builders.get(activated.workQueueId());
-                        if (builder != null) {
-                            builder.setActionStatus(activated.actionId(), ActionState.ACTIVE);
-                        }
-                    }
-                    case ActionCompleted completed -> {
-                        ScheduleViewBuilder builder = builders.get(completed.workQueueId());
-                        if (builder != null) {
-                            builder.setActionStatus(completed.actionId(), ActionState.COMPLETED);
-                        }
-                    }
-                    default -> { /* Other side effects don't affect schedule view */ }
+                    default -> { /* Action/takt state is queried from processor directly */ }
                 }
             }
             // Track override events (they are events, not side effects)
@@ -490,6 +539,22 @@ public class DemoServer {
         return builders.values().stream()
                 .map(b -> b.build(currentTime))
                 .toList();
+    }
+
+    private static ActionState mapActionStatus(ScheduleRunnerProcessor.ActionStatus status) {
+        return switch (status) {
+            case COMPLETED -> ActionState.COMPLETED;
+            case ACTIVE -> ActionState.ACTIVE;
+            case PENDING -> ActionState.PENDING;
+        };
+    }
+
+    private static TaktState mapTaktState(ScheduleRunnerProcessor.TaktState state) {
+        return switch (state) {
+            case COMPLETED -> TaktState.COMPLETED;
+            case ACTIVE -> TaktState.ACTIVE;
+            case WAITING -> TaktState.WAITING;
+        };
     }
 
     private static class ScheduleViewBuilder {
@@ -552,11 +617,13 @@ public class DemoServer {
                 }
             }
 
-            // Build completed action IDs from action states
+            // Build completed action IDs from takt action views
             Set<UUID> completedActionIds = new HashSet<>();
-            for (Map.Entry<UUID, ActionState> entry : actionStates.entrySet()) {
-                if (entry.getValue() == ActionState.COMPLETED) {
-                    completedActionIds.add(entry.getKey());
+            for (TaktView takt : takts) {
+                for (ActionView action : takt.actions()) {
+                    if (action.status() == ActionState.COMPLETED) {
+                        completedActionIds.add(action.id());
+                    }
                 }
             }
 
@@ -1154,6 +1221,16 @@ public class DemoServer {
         }
     }
 
+    private void handleSnapshot(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+        createSnapshot();
+        broadcastState();
+        sendJsonResponse(exchange, 200, JsonSerializer.serialize(getState()));
+    }
+
     private void handleStepBackTo(HttpExchange exchange) throws IOException {
         if (!"POST".equals(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
@@ -1229,9 +1306,7 @@ public class DemoServer {
             List<Map<String, String>> entries = parseImportArray(body);
 
             // Reset engine to initial state
-            stepBackTo(0);
-            currentTime = initialTime;
-            engine.clearHistory();
+            resetToInitial();
 
             // Replay events
             for (Map<String, String> entry : entries) {

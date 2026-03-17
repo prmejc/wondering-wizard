@@ -61,13 +61,13 @@ class EventPropagatingEngineTest {
 
             assertFalse(propagatingEngine.stepBack());
 
-            // WorkQueueMessage(ACTIVE) produces ScheduleCreated which is also an Event,
-            // so EventPropagatingEngine recursively processes it → 2 history entries
+            // snapshot() before processEvent to enable step-back
+            propagatingEngine.snapshot();
             propagatingEngine.processEvent(new WorkQueueMessage(1, WorkQueueStatus.ACTIVE, 0, null));
-            assertEquals(2, propagatingEngine.getHistorySize());
+            assertEquals(1, propagatingEngine.getHistorySize());
 
             assertTrue(propagatingEngine.stepBack());
-            assertEquals(1, propagatingEngine.getHistorySize());
+            assertEquals(0, propagatingEngine.getHistorySize());
         }
 
         @Test
@@ -77,13 +77,14 @@ class EventPropagatingEngineTest {
 
             assertEquals(0, propagatingEngine.getHistorySize());
 
-            // Each WorkQueueMessage(ACTIVE) produces ScheduleCreated (implements Event),
-            // which is recursively processed → 2 history entries per message
+            // Each snapshot() adds exactly 1 history entry
+            propagatingEngine.snapshot();
             propagatingEngine.processEvent(new WorkQueueMessage(1, WorkQueueStatus.ACTIVE, 0, null));
-            assertEquals(2, propagatingEngine.getHistorySize());
+            assertEquals(1, propagatingEngine.getHistorySize());
 
+            propagatingEngine.snapshot();
             propagatingEngine.processEvent(new WorkQueueMessage(2, WorkQueueStatus.ACTIVE, 0, null));
-            assertEquals(4, propagatingEngine.getHistorySize());
+            assertEquals(2, propagatingEngine.getHistorySize());
         }
 
         @Test
@@ -91,10 +92,12 @@ class EventPropagatingEngineTest {
         void clearHistoryDelegatesToInnerEngine() {
             propagatingEngine.register(new WorkQueueProcessor(() -> 30));
 
+            propagatingEngine.snapshot();
             propagatingEngine.processEvent(new WorkQueueMessage(1, WorkQueueStatus.ACTIVE, 0, null));
+            propagatingEngine.snapshot();
             propagatingEngine.processEvent(new WorkQueueMessage(2, WorkQueueStatus.ACTIVE, 0, null));
 
-            assertEquals(4, propagatingEngine.getHistorySize());
+            assertEquals(2, propagatingEngine.getHistorySize());
 
             propagatingEngine.clearHistory();
 

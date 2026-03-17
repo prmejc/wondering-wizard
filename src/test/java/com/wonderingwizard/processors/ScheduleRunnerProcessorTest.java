@@ -543,5 +543,49 @@ class ScheduleRunnerProcessorTest {
                     .anyMatch(e -> e instanceof TaktActivated);
             assertTrue(taktActivated, "New schedule's takts should activate during replacement");
         }
+
+        @Test
+        @DisplayName("Should preserve completed actions when schedule is replaced with new action UUIDs")
+        void scheduleReplacement_preservesCompletedActionsByType() {
+            // Create initial schedule: TAKT100 with QC_LIFT → QC_PLACE
+            List<Takt> takts = createLinkedTakts(2, EMT);
+            UUID takt1Action1 = takts.get(0).actions().get(0).id(); // QC_LIFT
+            UUID takt1Action2 = takts.get(0).actions().get(1).id(); // QC_PLACE
+
+            processor.process(new ScheduleCreated(1L, takts, EMT));
+
+            // Activate first takt
+            processor.process(new TimeEvent(EMT.plusSeconds(1)));
+
+            // Complete QC_LIFT in TAKT100
+            processor.process(new ActionCompletedEvent(takt1Action1, 1L));
+            // Complete QC_PLACE in TAKT100 — takt completes
+            processor.process(new ActionCompletedEvent(takt1Action2, 1L));
+
+            // Advance time past TAKT101 start
+            processor.process(new TimeEvent(EMT.plusSeconds(121)));
+
+            // Now replan: new schedule with DIFFERENT UUIDs but same action types
+            List<Takt> newTakts = createLinkedTakts(2, EMT);
+            UUID newTakt1Action1 = newTakts.get(0).actions().get(0).id(); // QC_LIFT (new UUID)
+            UUID newTakt1Action2 = newTakts.get(0).actions().get(1).id(); // QC_PLACE (new UUID)
+
+            processor.process(new ScheduleCreated(1L, newTakts, EMT));
+
+            // TAKT100 was completed — processor should report completed state for new UUIDs
+            assertEquals(ScheduleRunnerProcessor.ActionStatus.COMPLETED,
+                    processor.getActionStatus(1L, newTakt1Action1),
+                    "QC_LIFT should be COMPLETED after replan (transferred by actionType:containerIndex)");
+            assertEquals(ScheduleRunnerProcessor.ActionStatus.COMPLETED,
+                    processor.getActionStatus(1L, newTakt1Action2),
+                    "QC_PLACE should be COMPLETED after replan");
+            assertEquals(ScheduleRunnerProcessor.TaktState.COMPLETED,
+                    processor.getTaktState(1L, "TAKT100"),
+                    "TAKT100 should remain COMPLETED after replan");
+
+            // Completing new TAKT100 QC_LIFT should be ignored (already completed)
+            List<SideEffect> noOp = processor.process(new ActionCompletedEvent(newTakt1Action1, 1L));
+            assertTrue(noOp.isEmpty(), "Completing action in already-completed takt should be no-op");
+        }
     }
 }
