@@ -149,7 +149,10 @@ public class WorkQueueProcessor implements EventProcessor {
         WorkInstructionEvent movedWi = null;
 
         // Check 1: Was the right WI fetched? If not, handle the swap
-        if (expectedWi.workInstructionId() != workInstructionId) {
+        // Twin companions are interchangeable — either WI from the same twin pair is expected
+        boolean isTwinCompanion = expectedWi.isTwinCarry()
+                && expectedWi.twinCompanionWorkInstruction() == workInstructionId;
+        if (expectedWi.workInstructionId() != workInstructionId && !isTwinCompanion) {
             boolean crossQueueSwap = sourceQueueId != -1 && sourceQueueId != workQueueId;
 
             if (crossQueueSwap) {

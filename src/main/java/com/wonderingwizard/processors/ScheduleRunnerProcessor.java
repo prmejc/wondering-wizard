@@ -3,6 +3,7 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.ConditionContext;
 import com.wonderingwizard.domain.takt.DependencyCondition;
+import com.wonderingwizard.domain.takt.EventGateCondition;
 import com.wonderingwizard.domain.takt.TaktCondition;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.domain.takt.TimeCondition;
@@ -69,6 +70,14 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         Map<String, Set<String>> overriddenConditions;
         /** Overridden action condition IDs per action, keyed by action UUID. */
         Map<UUID, Set<String>> overriddenActionConditions;
+        /** Satisfied event gate IDs per gated action UUID. */
+        Map<UUID, Set<String>> satisfiedEventGates;
+        /** Armed event gate IDs per gated action UUID. */
+        Map<UUID, Set<String>> armedEventGates;
+        /** Index from event type to gated action UUIDs for fast lookup on WI event arrival. */
+        Map<String, List<UUID>> eventTypeToGatedActions;
+        /** Maps gated action UUID to the source action UUID that arms the gate. */
+        Map<UUID, UUID> gateArmSourceActions;
 
         ScheduleState(Instant estimatedMoveTime, List<Takt> takts) {
             this.estimatedMoveTime = estimatedMoveTime;
@@ -81,13 +90,38 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             this.taktConditions = new LinkedHashMap<>();
             this.overriddenConditions = new HashMap<>();
             this.overriddenActionConditions = new HashMap<>();
+            this.satisfiedEventGates = new HashMap<>();
+            this.armedEventGates = new HashMap<>();
+            this.eventTypeToGatedActions = new HashMap<>();
+            this.gateArmSourceActions = new HashMap<>();
 
-            // Build action lookup and initialize takt states
+            // Build action lookup, initialize takt states, and index event gates
             for (Takt takt : takts) {
                 taktStates.put(takt.name(), TaktState.WAITING);
                 overriddenConditions.put(takt.name(), new HashSet<>());
                 for (Action action : takt.actions()) {
                     actionLookup.put(action.id(), new ActionInfo(takt.name(), action));
+                    // Index event gates for fast lookup
+                    for (EventGateCondition gate : action.eventGates()) {
+                        eventTypeToGatedActions
+                                .computeIfAbsent(gate.requiredEventType(), k -> new ArrayList<>())
+                                .add(action.id());
+                    }
+                }
+            }
+
+            // Resolve gate arm source action UUIDs
+            for (ActionInfo info : actionLookup.values()) {
+                for (EventGateCondition gate : info.action().eventGates()) {
+                    // Find the source action in the same container
+                    for (ActionInfo candidate : actionLookup.values()) {
+                        if (candidate.action().containerIndex() == info.action().containerIndex()
+                                && candidate.action().deviceType() == gate.sourceDeviceType()
+                                && candidate.action().actionType() == gate.sourceActionType()) {
+                            gateArmSourceActions.put(info.action().id(), candidate.action().id());
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -110,11 +144,30 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 Set<String> actionOverrides = overriddenActionConditions.getOrDefault(actionId, Set.of());
                 boolean depsOverridden = actionOverrides.contains("action-dependencies");
                 Set<UUID> dependencies = info.action().dependsOn();
-                if (depsOverridden || dependencies == null || dependencies.isEmpty() || completedActionIds.containsAll(dependencies)) {
-                    result.add(actionId);
+                boolean depsSatisfied = depsOverridden || dependencies == null || dependencies.isEmpty() || completedActionIds.containsAll(dependencies);
+                if (!depsSatisfied) {
+                    continue;
                 }
+                // Check event gates
+                if (!areEventGatesSatisfied(actionId, info.action(), actionOverrides)) {
+                    continue;
+                }
+                result.add(actionId);
             }
             return result;
+        }
+
+        boolean areEventGatesSatisfied(UUID actionId, Action action, Set<String> actionOverrides) {
+            if (action.eventGates().isEmpty()) {
+                return true;
+            }
+            Set<String> satisfied = satisfiedEventGates.getOrDefault(actionId, Set.of());
+            for (EventGateCondition gate : action.eventGates()) {
+                if (!satisfied.contains(gate.id()) && !actionOverrides.contains(gate.id())) {
+                    return false;
+                }
+            }
+            return true;
         }
 
         /**
@@ -156,6 +209,14 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             for (Map.Entry<UUID, Set<String>> entry : this.overriddenActionConditions.entrySet()) {
                 copy.overriddenActionConditions.put(entry.getKey(), new HashSet<>(entry.getValue()));
             }
+            copy.satisfiedEventGates = new HashMap<>();
+            for (Map.Entry<UUID, Set<String>> entry : this.satisfiedEventGates.entrySet()) {
+                copy.satisfiedEventGates.put(entry.getKey(), new HashSet<>(entry.getValue()));
+            }
+            copy.armedEventGates = new HashMap<>();
+            for (Map.Entry<UUID, Set<String>> entry : this.armedEventGates.entrySet()) {
+                copy.armedEventGates.put(entry.getKey(), new HashSet<>(entry.getValue()));
+            }
             return copy;
         }
     }
@@ -193,6 +254,15 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         ScheduleState state = scheduleStates.get(workQueueId);
         if (state == null) return null;
         return state.actualStartTimes.get(taktName);
+    }
+
+    /**
+     * Returns the set of satisfied event gate condition IDs for the given action.
+     */
+    public Set<String> getSatisfiedEventGates(long workQueueId, UUID actionId) {
+        ScheduleState state = scheduleStates.get(workQueueId);
+        if (state == null) return Set.of();
+        return state.satisfiedEventGates.getOrDefault(actionId, Set.of());
     }
 
     private final Map<Long, ScheduleState> scheduleStates = new HashMap<>();
@@ -271,6 +341,9 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             oldTaktCompletedKeys.put(takt.name(), completedKeys);
         }
 
+        // Transfer event gate states from old actions to new actions by (actionType, containerIndex)
+        transferEventGateState(oldState, newState);
+
         for (Takt newTakt : newState.takts) {
             String taktName = newTakt.name();
             TaktState oldTaktState = oldState.taktStates.getOrDefault(taktName, TaktState.WAITING);
@@ -303,6 +376,75 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
 
         return sideEffects;
+    }
+
+    /**
+     * Transfers armed and satisfied event gate states from old schedule to new schedule.
+     * Matches actions by (actionType, containerIndex) since UUIDs change across schedules.
+     * Also re-arms gates whose source action was already activated or completed in the old state.
+     */
+    private static String actionKey(Action a) {
+        return a.actionType() + ":" + a.containerIndex() + ":" + a.deviceIndex();
+    }
+
+    private void transferEventGateState(ScheduleState oldState, ScheduleState newState) {
+        // Build old action key → UUID mapping
+        Map<String, UUID> oldActionKeyToId = new HashMap<>();
+        for (ActionInfo info : oldState.actionLookup.values()) {
+            oldActionKeyToId.put(actionKey(info.action()), info.action().id());
+        }
+
+        // Build new action key → UUID mapping
+        Map<String, UUID> newActionKeyToId = new HashMap<>();
+        for (ActionInfo info : newState.actionLookup.values()) {
+            newActionKeyToId.put(actionKey(info.action()), info.action().id());
+        }
+
+        // Transfer armed gates
+        for (Map.Entry<UUID, Set<String>> entry : oldState.armedEventGates.entrySet()) {
+            UUID oldActionId = entry.getKey();
+            ActionInfo oldInfo = oldState.actionLookup.get(oldActionId);
+            if (oldInfo == null) continue;
+            UUID newActionId = newActionKeyToId.get(actionKey(oldInfo.action()));
+            if (newActionId != null) {
+                newState.armedEventGates.put(newActionId, new HashSet<>(entry.getValue()));
+            }
+        }
+
+        // Transfer satisfied gates
+        for (Map.Entry<UUID, Set<String>> entry : oldState.satisfiedEventGates.entrySet()) {
+            UUID oldActionId = entry.getKey();
+            ActionInfo oldInfo = oldState.actionLookup.get(oldActionId);
+            if (oldInfo == null) continue;
+            UUID newActionId = newActionKeyToId.get(actionKey(oldInfo.action()));
+            if (newActionId != null) {
+                newState.satisfiedEventGates.put(newActionId, new HashSet<>(entry.getValue()));
+            }
+        }
+
+        // Re-arm gates whose source action was already activated or completed in the old state
+        // (covers cases where the gate wasn't armed yet but the source action already ran)
+        for (ActionInfo newInfo : newState.actionLookup.values()) {
+            Action newAction = newInfo.action();
+            if (newAction.eventGates().isEmpty()) continue;
+            UUID newActionId = newAction.id();
+            if (newState.armedEventGates.containsKey(newActionId)) continue; // already transferred
+
+            // Check if the source action was activated/completed in old state
+            UUID sourceId = newState.gateArmSourceActions.get(newActionId);
+            if (sourceId == null) continue;
+            ActionInfo sourceInfo = newState.actionLookup.get(sourceId);
+            if (sourceInfo == null) continue;
+            UUID oldSourceId = oldActionKeyToId.get(actionKey(sourceInfo.action()));
+            if (oldSourceId != null &&
+                    (oldState.activeActionIds.contains(oldSourceId) || oldState.completedActionIds.contains(oldSourceId))) {
+                for (EventGateCondition gate : newAction.eventGates()) {
+                    newState.armedEventGates
+                            .computeIfAbsent(newActionId, k -> new HashSet<>())
+                            .add(gate.id());
+                }
+            }
+        }
     }
 
     /**
@@ -380,7 +522,57 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         if (event.estimatedMoveTime() != null) {
             workInstructionEstimatedMoveTime.put(event.workInstructionId(), event.estimatedMoveTime());
         }
+
+        // Check if this WI event satisfies any armed event gates
+        if (event.eventType() != null && !event.eventType().isEmpty()) {
+            List<SideEffect> sideEffects = new ArrayList<>();
+            for (ScheduleState state : scheduleStates.values()) {
+                List<UUID> gatedActions = state.eventTypeToGatedActions.getOrDefault(event.eventType(), List.of());
+                boolean gatesSatisfied = false;
+                for (UUID gatedActionId : gatedActions) {
+                    Set<String> armed = state.armedEventGates.getOrDefault(gatedActionId, Set.of());
+                    ActionInfo gatedInfo = state.actionLookup.get(gatedActionId);
+                    if (gatedInfo == null) continue;
+
+                    // Match against the gated action's own WIs — each action carries the WIs it's responsible for.
+                    // In twin templates (single RTG), RTG_DRIVE carries both WIs so either discharge matches.
+                    // In different-bay templates (two RTGs), each RTG_DRIVE carries only its own WI.
+                    boolean wiMatches = gatedInfo.action().workInstructions().stream()
+                            .anyMatch(wi -> wi.workInstructionId() == event.workInstructionId());
+                    if (!wiMatches) continue;
+
+                    for (EventGateCondition gate : gatedInfo.action().eventGates()) {
+                        if (gate.requiredEventType().equals(event.eventType()) && armed.contains(gate.id())) {
+                            state.satisfiedEventGates
+                                    .computeIfAbsent(gatedActionId, k -> new HashSet<>())
+                                    .add(gate.id());
+                            gatesSatisfied = true;
+                        }
+                    }
+                }
+                // If any gates were satisfied, try activating eligible actions
+                if (gatesSatisfied) {
+                    long workQueueId = findWorkQueueId(state);
+                    for (Takt t : state.takts) {
+                        if (state.taktStates.get(t.name()) == TaktState.ACTIVE) {
+                            sideEffects.addAll(activateEligibleActions(workQueueId, state, t.name()));
+                        }
+                    }
+                }
+            }
+            return sideEffects;
+        }
+
         return List.of();
+    }
+
+    private long findWorkQueueId(ScheduleState state) {
+        for (Map.Entry<Long, ScheduleState> entry : scheduleStates.entrySet()) {
+            if (entry.getValue() == state) {
+                return entry.getKey();
+            }
+        }
+        return -1;
     }
 
     private List<SideEffect> handleWorkQueueMessage(WorkQueueMessage message) {
@@ -506,8 +698,14 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             }
         }
 
+        // Check event gates
+        if (!state.areEventGatesSatisfied(actionId, action, overrides)) {
+            return List.of();
+        }
+
         // All conditions met — activate the action
         state.activeActionIds.add(actionId);
+        armEventGatesForAction(state, actionId);
         return List.of(new ActionActivated(
                 actionId, workQueueId, taktName,
                 action.actionType(), action.description(), this.currentTime,
@@ -621,6 +819,25 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     }
 
     /**
+     * Arms any event gates that have the given action as their source.
+     */
+    private void armEventGatesForAction(ScheduleState state, UUID activatedActionId) {
+        for (Map.Entry<UUID, UUID> entry : state.gateArmSourceActions.entrySet()) {
+            if (entry.getValue().equals(activatedActionId)) {
+                UUID gatedActionId = entry.getKey();
+                ActionInfo gatedInfo = state.actionLookup.get(gatedActionId);
+                if (gatedInfo != null) {
+                    for (EventGateCondition gate : gatedInfo.action().eventGates()) {
+                        state.armedEventGates
+                                .computeIfAbsent(gatedActionId, k -> new HashSet<>())
+                                .add(gate.id());
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * Activates all actions in the given takt that have their dependencies satisfied.
      */
     private List<SideEffect> activateEligibleActions(long workQueueId, ScheduleState state, String taktName) {
@@ -629,6 +846,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         List<UUID> actionsToActivate = state.getActivatableActionsInTakt(taktName);
         for (UUID actionId : actionsToActivate) {
             state.activeActionIds.add(actionId);
+            armEventGatesForAction(state, actionId);
             ActionInfo actionInfo = state.actionLookup.get(actionId);
 
             sideEffects.add(new ActionActivated(

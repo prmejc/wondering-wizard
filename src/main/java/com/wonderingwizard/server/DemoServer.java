@@ -5,6 +5,7 @@ import com.wonderingwizard.domain.takt.ActionCondition;
 import com.wonderingwizard.domain.takt.ActionConditionContext;
 import com.wonderingwizard.domain.takt.ActionDependencyCondition;
 import com.wonderingwizard.domain.takt.ActionType;
+import com.wonderingwizard.domain.takt.EventGateCondition;
 import com.wonderingwizard.domain.takt.ConditionContext;
 import com.wonderingwizard.domain.takt.DependencyCondition;
 import com.wonderingwizard.domain.takt.DeviceType;
@@ -669,6 +670,17 @@ public class DemoServer {
                                     null, takt.durationSeconds(), 0, 0, actionViews, List.of()));
                         }
                         builder.storeTakts(created.takts());
+                        // Populate satisfied event gates from processor
+                        if (scheduleRunnerProcessor != null) {
+                            for (Takt takt : created.takts()) {
+                                for (Action action : takt.actions()) {
+                                    Set<String> gates = scheduleRunnerProcessor.getSatisfiedEventGates(wqId, action.id());
+                                    if (!gates.isEmpty()) {
+                                        builder.satisfiedEventGates.put(action.id(), new HashSet<>(gates));
+                                    }
+                                }
+                            }
+                        }
                         builders.put(wqId, builder);
                     }
                     case ScheduleAborted aborted ->
@@ -734,6 +746,8 @@ public class DemoServer {
         final Map<String, Set<String>> overriddenConditions = new HashMap<>();
         /** Overridden action conditions per action UUID. */
         final Map<UUID, Set<String>> overriddenActionConditions = new HashMap<>();
+        /** Satisfied event gate condition IDs per action UUID. */
+        final Map<UUID, Set<String>> satisfiedEventGates = new HashMap<>();
 
         ScheduleViewBuilder(long workQueueId, boolean active, Instant estimatedMoveTime) {
             this.workQueueId = workQueueId;
@@ -826,7 +840,8 @@ public class DemoServer {
                     if (actionState == ActionState.PENDING && originalTakt != null) {
                         actionConditions = buildActionConditionViews(
                                 action, originalTakt, taktState, completedActionIds, actionDescriptions,
-                                overriddenActionConditions.getOrDefault(action.id(), Set.of()));
+                                overriddenActionConditions.getOrDefault(action.id(), Set.of()),
+                                satisfiedEventGates.getOrDefault(action.id(), Set.of()));
                     }
                     updatedActions.add(new ActionView(
                             action.id(), action.deviceType(), action.description(),
@@ -856,7 +871,7 @@ public class DemoServer {
         private List<ConditionView> buildActionConditionViews(
                 ActionView action, Takt takt, TaktState taktState,
                 Set<UUID> completedActionIds, Map<UUID, String> actionDescriptions,
-                Set<String> overrides) {
+                Set<String> overrides, Set<String> satisfiedGateIds) {
             List<ConditionView> views = new ArrayList<>();
 
             // Determine if this is a first action (no intra-takt dependencies)
@@ -874,7 +889,7 @@ public class DemoServer {
 
             boolean isFirstAction = intraTaktDeps.isEmpty();
             ActionConditionContext context = new ActionConditionContext(
-                    taktState == TaktState.ACTIVE, completedActionIds);
+                    taktState == TaktState.ACTIVE, completedActionIds, satisfiedGateIds);
 
             if (isFirstAction) {
                 // First action: condition is takt activation
@@ -897,6 +912,20 @@ public class DemoServer {
                 views.add(new ConditionView(cond.id(), cond.type(),
                         satisfied, overridden,
                         satisfied ? null : cond.explanation(context)));
+            }
+
+            // Event gate conditions
+            Action originalAction = takt.actions().stream()
+                    .filter(a -> a.id().equals(action.id()))
+                    .findFirst().orElse(null);
+            if (originalAction != null) {
+                for (EventGateCondition gate : originalAction.eventGates()) {
+                    boolean overridden = overrides.contains(gate.id());
+                    boolean satisfied = overridden || gate.evaluate(context);
+                    views.add(new ConditionView(gate.id(), gate.type(),
+                            satisfied, overridden,
+                            satisfied ? null : gate.explanation(context)));
+                }
             }
 
             return views;
