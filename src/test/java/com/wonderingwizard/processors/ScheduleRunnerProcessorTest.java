@@ -837,6 +837,9 @@ class ScheduleRunnerProcessorTest {
             // Complete QC_LIFT to finish TAKT100
             processor.process(new ActionCompletedEvent(oldQcLift.id(), 100L));
 
+            // Advance time so TAKT101 activates (buffer activates normally, gates unsatisfied)
+            processor.process(new TimeEvent(EMT.plusSeconds(121)));
+
             // ── Reschedule: WI3+WI4 now in TAKT100 position (already discharged) ──
 
             Action newQcLift = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.QC_LIFT,
@@ -862,14 +865,6 @@ class ScheduleRunnerProcessorTest {
             // 3. Auto-satisfy gates because WI3+WI4 already have QC_DISCHARGED_CONTAINER eventType
             // 4. When TAKT101 activates, buffer should auto-complete
             List<SideEffect> rescheduleEffects = processor.process(new ScheduleCreated(100L, newTakts, EMT));
-
-            // Debug: print all effects
-            for (SideEffect e : rescheduleEffects) {
-                System.out.println("EFFECT: " + e.getClass().getSimpleName() + " -> " + e);
-            }
-            // Check gate satisfaction state
-            Set<String> gateState = processor.getSatisfiedEventGates(100L, newTtBuffer.id());
-            System.out.println("GATES satisfied for buffer: " + gateState);
 
             // TAKT101 should have been activated (TAKT100 transferred as completed)
             // and buffer should be auto-completed since gates are pre-satisfied
