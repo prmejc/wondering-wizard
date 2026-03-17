@@ -177,7 +177,7 @@ public class GraphScheduleBuilder {
     }
 
     private List<ActionTemplate> getDischargeLiftSinglesDropTwin(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
+        return List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, 1, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
                 ActionTemplate.of(QC_PLACE, 1, QC, qcLiftDuration).withFirstInTakt().withAnchor(),
@@ -204,11 +204,11 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(RTG_WAIT_FOR_TRUCK,  RTG, 0),
                 ActionTemplate.of(RTG_LIFT_FROM_TT,  RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD,  RTG, driveToUnderRtg + rtgPlaceDuration)
-        ));
+        );
     }
 
     private List<ActionTemplate> getDischargeLiftSinglesDropSinglesDifferentBay(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
+        return List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, 1, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
                 ActionTemplate.of(QC_PLACE, 1, QC, qcLiftDuration).withFirstInTakt().withAnchor(),
@@ -244,11 +244,11 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(RTG_WAIT_FOR_TRUCK, 2, RTG, 0).withDeviceIndex(2),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, rtgPlaceDuration).withDeviceIndex(2),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 2, RTG, driveToUnderRtg + rtgPlaceDuration).withDeviceIndex(2)
-        ));
+        );
     }
 
     private List<ActionTemplate> getDischargeLiftSinglesDropSinglesSameBay(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
+        return List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, 1, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
                 ActionTemplate.of(QC_PLACE, 1, QC, qcLiftDuration).withFirstInTakt().withAnchor(),
@@ -280,11 +280,11 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(RTG_DRIVE, 2, RTG, RTG_DRIVE_SECONDS),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 2, RTG, driveToUnderRtg + rtgPlaceDuration)
-        ));
+        );
     }
 
     private List<ActionTemplate> getDischargeLiftTwinsDropSinglesDifferentBay(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
+        return List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
                 ActionTemplate.of(QC_PLACE, QC, qcLiftDuration)
@@ -317,11 +317,11 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(RTG_WAIT_FOR_TRUCK, 2, RTG, 0).withDeviceIndex(2),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, rtgPlaceDuration).withDeviceIndex(2),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 2, RTG, driveToUnderRtg + rtgPlaceDuration).withDeviceIndex(2)
-        ));
+        );
     }
 
     private List<ActionTemplate> getDischargeLiftTwinsDropSinglesSameBay(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
+        return List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
                 ActionTemplate.of(QC_PLACE, QC, qcLiftDuration ).withFirstInTakt().withAnchor(),
@@ -348,7 +348,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(RTG_DRIVE, 2, RTG, RTG_DRIVE_SECONDS),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 2, RTG, driveToUnderRtg + rtgPlaceDuration)
-        ));
+        );
     }
 
     private static boolean hasCompanionInQueue(WorkInstructionEvent wi, HashMap<Long, WorkInstructionEvent> workInstructionHashMap) {
@@ -371,7 +371,7 @@ public class GraphScheduleBuilder {
     }
 
     private static List<ActionTemplate> getDischargeTwinTemplate(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
+        return List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
                 ActionTemplate.of(QC_PLACE, QC,qcLiftDuration ).withFirstInTakt().withAnchor(),
@@ -394,11 +394,11 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(RTG_WAIT_FOR_TRUCK,  RTG, 0),
                 ActionTemplate.of(RTG_LIFT_FROM_TT,  RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, RTG, driveToUnderRtg + rtgPlaceDuration)
-        ));
+        );
     }
 
     private static List<ActionTemplate> getDischargeSingleTemplate(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
-        return withComputedRtgWaitDuration(List.of(
+        return List.of(
                 // ── QC chain (forward from anchor) ──
                 ActionTemplate.of(QC_LIFT, QC, wi.estimatedCycleTimeSeconds() - qcLiftDuration),
                 ActionTemplate.of(QC_PLACE, QC, qcLiftDuration).withFirstInTakt().withAnchor(),
@@ -421,7 +421,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(RTG_WAIT_FOR_TRUCK,  RTG, 0),
                 ActionTemplate.of(RTG_LIFT_FROM_TT,  RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, RTG, driveToUnderRtg + rtgPlaceDuration)
-        ));
+        );
     }
 
     private static List<ActionTemplate> getLoadSingleTemplate(WorkInstructionEvent wi, int qcLiftDuration, int driveToRtgPull, int driveToUnderRtg, int rtgPlaceDuration, int driveToQcPull) {
@@ -455,56 +455,6 @@ public class GraphScheduleBuilder {
     }
 
 
-    /**
-     * Computes the RTG_WAIT_FOR_TRUCK duration as the sum of all TT action durations
-     * between the last TT_HANDOVER_FROM_QC and the first TT_HANDOVER_TO_RTG.
-     */
-    private static List<ActionTemplate> withComputedRtgWaitDuration(List<ActionTemplate> templates) {
-        List<ActionTemplate> ttActions = templates.stream()
-                .filter(t -> t.deviceType() == TT)
-                .toList();
-
-        // Find last HANDOVER_FROM_QC index
-        int fromQcIndex = -1;
-        for (int i = 0; i < ttActions.size(); i++) {
-            if (ttActions.get(i).actionType() == TT_HANDOVER_FROM_QC) {
-                fromQcIndex = i;
-            }
-        }
-        if (fromQcIndex == -1) return templates;
-
-        // Find all HANDOVER_TO_RTG indices (in order)
-        List<Integer> toRtgIndices = new ArrayList<>();
-        for (int i = fromQcIndex + 1; i < ttActions.size(); i++) {
-            if (ttActions.get(i).actionType() == TT_HANDOVER_TO_RTG) {
-                toRtgIndices.add(i);
-            }
-        }
-        if (toRtgIndices.isEmpty()) return templates;
-
-        // Compute cumulative sum from HANDOVER_FROM_QC to each HANDOVER_TO_RTG
-        List<Integer> waitDurations = new ArrayList<>();
-        for (int toRtgIndex : toRtgIndices) {
-            int sum = 0;
-            for (int i = fromQcIndex; i < toRtgIndex; i++) {
-                sum += ttActions.get(i).durationSeconds();
-            }
-            waitDurations.add(sum);
-        }
-
-        // Replace RTG_WAIT_FOR_TRUCK durations: 1st wait gets 1st duration, 2nd gets 2nd, etc.
-        int[] waitIndex = {0};
-        return templates.stream()
-                .map(t -> {
-                    if (t.actionType() == RTG_WAIT_FOR_TRUCK && waitIndex[0] < waitDurations.size()) {
-                        int duration = waitDurations.get(waitIndex[0]++);
-                        return new ActionTemplate(t.actionType(), t.name(), t.deviceType(), duration,
-                                t.firstInTakt(), t.isAnchor(), t.syncWith(), t.onlyOnePerTakt(), t.deviceIndex(), t.independentAcrossContainers(), t.containerSuffix());
-                    }
-                    return t;
-                })
-                .toList();
-    }
 
     // ── Public entry point ─────────────────────────────────────────────
 

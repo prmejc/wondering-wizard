@@ -36,6 +36,7 @@ import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.processors.DelayProcessor;
 import com.wonderingwizard.processors.DigitalMapProcessor;
 import com.wonderingwizard.processors.EventLogProcessor;
+import com.wonderingwizard.processors.RtgWaitDurationStep;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
 import com.wonderingwizard.processors.WorkQueueProcessor;
@@ -146,6 +147,7 @@ public class DemoServer {
         this.digitalMapProcessor = new DigitalMapProcessor();
         var workQueueProcessor = new WorkQueueProcessor();
         workQueueProcessor.registerStep(digitalMapProcessor);
+        workQueueProcessor.registerStep(new RtgWaitDurationStep());
         engine.register(digitalMapProcessor);
         engine.register(workQueueProcessor);
         this.scheduleRunnerProcessor = new ScheduleRunnerProcessor();
