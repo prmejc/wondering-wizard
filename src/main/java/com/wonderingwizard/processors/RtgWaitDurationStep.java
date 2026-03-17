@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static com.wonderingwizard.domain.takt.ActionType.*;
+import static com.wonderingwizard.domain.takt.DeviceType.RTG;
 import static com.wonderingwizard.domain.takt.DeviceType.TT;
 
 /**
@@ -53,6 +54,17 @@ public class RtgWaitDurationStep implements SchedulePipelineStep {
             }
             waitDurations.add(sum);
         }
+
+        // Subtract RTG_FETCH durations – the fetch happens in parallel with TT travel,
+        // so the actual wait is reduced by the fetch time.
+        List<Integer> fetchDurations = templates.stream()
+                .filter(t -> t.deviceType() == RTG && t.actionType() == RTG_DRIVE)
+                .map(GraphScheduleBuilder.ActionTemplate::durationSeconds)
+                .toList();
+        for (int i = 0; i < Math.min(waitDurations.size(), fetchDurations.size()); i++) {
+            waitDurations.set(i, Math.max(0, waitDurations.get(i) - fetchDurations.get(i)));
+        }
+
 
         // Replace RTG_WAIT_FOR_TRUCK durations
         int[] waitIndex = {0};
