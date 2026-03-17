@@ -10,10 +10,11 @@ import java.time.Instant;
  * Work instructions are registered with the system and are included in the
  * ScheduleCreated side effect when their associated work queue is activated.
  *
+ * @param eventType the Kafka event type that triggered this event (e.g. "WI MoveStage Changed")
  * @param workInstructionId unique identifier for the work instruction
  * @param workQueueId identifier of the work queue this instruction belongs to
  * @param fetchChe the CHE (Container Handling Equipment) identifier for fetching
- * @param status the status of the work instruction
+ * @param workInstructionMoveStage the move stage from Kafka (e.g. "Planned", "Carry Underway", "Complete")
  * @param estimatedMoveTime the estimated time when this work instruction should start
  * @param estimatedCycleTimeSeconds the estimated cycle time for this work instruction in seconds
  * @param estimatedRtgCycleTimeSeconds the estimated RTG cycle time in seconds (default 60)
@@ -26,10 +27,11 @@ import java.time.Instant;
  * @param containerId the container identifier (e.g. MAEU1234567)
  */
 public record WorkInstructionEvent(
+        String eventType,
         long workInstructionId,
         long workQueueId,
         String fetchChe,
-        WorkInstructionStatus status,
+        String workInstructionMoveStage,
         Instant estimatedMoveTime,
         int estimatedCycleTimeSeconds,
         int estimatedRtgCycleTimeSeconds,
@@ -48,7 +50,7 @@ public record WorkInstructionEvent(
             long workInstructionId,
             long workQueueId,
             String fetchChe,
-            WorkInstructionStatus status,
+            String workInstructionMoveStage,
             Instant estimatedMoveTime,
             int estimatedCycleTimeSeconds,
             int estimatedRtgCycleTimeSeconds,
@@ -56,7 +58,7 @@ public record WorkInstructionEvent(
             boolean isTwinFetch,
             boolean isTwinPut,
             boolean isTwinCarry) {
-        this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
+        this("", workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                 estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                 putChe, isTwinFetch, isTwinPut, isTwinCarry, 0, "", "");
     }
@@ -65,7 +67,7 @@ public record WorkInstructionEvent(
             long workInstructionId,
             long workQueueId,
             String fetchChe,
-            WorkInstructionStatus status,
+            String workInstructionMoveStage,
             Instant estimatedMoveTime,
             int estimatedCycleTimeSeconds,
             int estimatedRtgCycleTimeSeconds,
@@ -75,7 +77,7 @@ public record WorkInstructionEvent(
             boolean isTwinCarry,
             long twinCompanionWorkInstruction,
             String toPosition) {
-        this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
+        this("", workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                 estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                 putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
                 toPosition, "");
@@ -85,11 +87,32 @@ public record WorkInstructionEvent(
             long workInstructionId,
             long workQueueId,
             String fetchChe,
-            WorkInstructionStatus status,
+            String workInstructionMoveStage,
+            Instant estimatedMoveTime,
+            int estimatedCycleTimeSeconds,
+            int estimatedRtgCycleTimeSeconds,
+            String putChe,
+            boolean isTwinFetch,
+            boolean isTwinPut,
+            boolean isTwinCarry,
+            long twinCompanionWorkInstruction,
+            String toPosition,
+            String containerId) {
+        this("", workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
+                estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
+                putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
+                toPosition, containerId);
+    }
+
+    public WorkInstructionEvent(
+            long workInstructionId,
+            long workQueueId,
+            String fetchChe,
+            String workInstructionMoveStage,
             Instant estimatedMoveTime,
             int estimatedCycleTimeSeconds,
             int estimatedRtgCycleTimeSeconds) {
-        this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
+        this("", workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                 estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                 "", false, false, false, 0, "", "");
     }
@@ -98,21 +121,22 @@ public record WorkInstructionEvent(
             long workInstructionId,
             long workQueueId,
             String fetchChe,
-            WorkInstructionStatus status,
+            String workInstructionMoveStage,
             Instant estimatedMoveTime,
             int estimatedCycleTimeSeconds) {
-        this(workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
+        this("", workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                 estimatedCycleTimeSeconds, DEFAULT_RTG_CYCLE_TIME_SECONDS,
                 "", false, false, false, 0, "", "");
     }
 
     @Override
     public String toString() {
-        return "WorkInstructionEvent[workInstructionId=" + workInstructionId +
+        return "WorkInstructionEvent[eventType=" + eventType +
+                ", workInstructionId=" + workInstructionId +
                 ", workQueueId=" + workQueueId +
                 ", fetchChe=" + fetchChe +
                 ", putChe=" + putChe +
-                ", status=" + status +
+                ", workInstructionMoveStage=" + workInstructionMoveStage +
                 ", estimatedMoveTime=" + estimatedMoveTime +
                 ", estimatedCycleTimeSeconds=" + estimatedCycleTimeSeconds +
                 ", estimatedRtgCycleTimeSeconds=" + estimatedRtgCycleTimeSeconds +

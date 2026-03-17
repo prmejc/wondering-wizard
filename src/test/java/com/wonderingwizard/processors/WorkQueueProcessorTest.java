@@ -19,7 +19,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static com.wonderingwizard.events.WorkInstructionStatus.*;
+import static com.wonderingwizard.events.MoveStage.*;
 import static com.wonderingwizard.domain.takt.DeviceActionTemplate.DEFAULT_DURATION_SECONDS;
 import static com.wonderingwizard.events.WorkQueueStatus.ACTIVE;
 import static com.wonderingwizard.events.WorkQueueStatus.INACTIVE;
@@ -311,7 +311,7 @@ class WorkQueueProcessorTest {
             @DisplayName("Should return empty side effects when work instruction is registered")
             void workInstructionEvent_returnsEmptySideEffects() {
                 List<SideEffect> sideEffects = engine.processEvent(
-                        new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                        new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 assertTrue(sideEffects.isEmpty(),
                         "WorkInstructionEvent should not produce side effects");
@@ -320,9 +320,9 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Should store multiple work instructions for same work queue")
             void multipleWorkInstructions_sameQueue_allStored() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(3L, 1L, "CHE-003", IN_PROGRESS, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(3L, 1L, "CHE-003", CARRY_UNDERWAY, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -343,8 +343,8 @@ class WorkQueueProcessorTest {
             @DisplayName("Should generate takts from work instructions in ScheduleCreated")
             void activeMessage_generatesTakts() {
                 // Register work instructions
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", IN_PROGRESS, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", CARRY_UNDERWAY, EMT, 120));
 
                 // Activate work queue
                 List<SideEffect> sideEffects = engine.processEvent(
@@ -375,9 +375,9 @@ class WorkQueueProcessorTest {
             @DisplayName("Should only generate takts for the activated work queue")
             void activeMessage_onlyGeneratesTaktsForMatchingWorkInstructions() {
                 // Register work instructions for different queues
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(3L, 2L, "CHE-003", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(3L, 2L, "CHE-003", PLANNED, EMT, 120));
 
                 // Activate queue-1
                 List<SideEffect> sideEffects = engine.processEvent(
@@ -399,8 +399,8 @@ class WorkQueueProcessorTest {
             @DisplayName("Should retain work instructions after schedule abort")
             void abort_retainsWorkInstructions() {
                 // Register work instructions
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
 
                 // Activate and then abort
                 engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -421,14 +421,14 @@ class WorkQueueProcessorTest {
             @DisplayName("Should include new work instructions added after abort on reactivation")
             void abort_newInstructionsIncludedOnReactivation() {
                 // Register initial work instructions
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 // Activate and abort
                 engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, null));
                 engine.processEvent(new WorkQueueMessage(1L, INACTIVE, 0, null));
 
                 // Add new work instruction
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
 
                 // Reactivate
                 List<SideEffect> sideEffects = engine.processEvent(
@@ -449,9 +449,9 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Should handle all work instruction status values")
             void allStatusValues_handled() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", IN_PROGRESS, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(3L, 1L, "CHE-003", COMPLETED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", CARRY_UNDERWAY, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(3L, 1L, "CHE-003", COMPLETE, EMT, 120));
                 engine.processEvent(new WorkInstructionEvent(4L, 1L, "CHE-004", CANCELLED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
@@ -473,17 +473,17 @@ class WorkQueueProcessorTest {
             void completeF4Workflow() {
                 // Step 1: Register work instructions (no side effects)
                 List<SideEffect> effects1 = engine.processEvent(
-                        new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                        new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
                 assertTrue(effects1.isEmpty(),
                         "F-4 Requirement: WorkInstructionEvent should not produce side effects");
 
                 List<SideEffect> effects2 = engine.processEvent(
-                        new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
+                        new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
                 assertTrue(effects2.isEmpty(),
                         "F-4 Requirement: WorkInstructionEvent should not produce side effects");
 
                 List<SideEffect> effects3 = engine.processEvent(
-                        new WorkInstructionEvent(3L, 2L, "CHE-003", PENDING, EMT, 120));
+                        new WorkInstructionEvent(3L, 2L, "CHE-003", PLANNED, EMT, 120));
                 assertTrue(effects3.isEmpty(),
                         "F-4 Requirement: WorkInstructionEvent should not produce side effects");
 
@@ -506,8 +506,8 @@ class WorkQueueProcessorTest {
             @DisplayName("Should generate takts on reactivation after abort")
             void reactivationGeneratesTakts() {
                 // Register initial instructions
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
 
                 // Activate
                 List<SideEffect> created1 = engine.processEvent(
@@ -519,7 +519,7 @@ class WorkQueueProcessorTest {
                 engine.processEvent(new WorkQueueMessage(1L, INACTIVE, 0, null));
 
                 // Add new instruction
-                engine.processEvent(new WorkInstructionEvent(4L, 1L, "CHE-004", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(4L, 1L, "CHE-004", PLANNED, EMT, 120));
 
                 // Reactivate - should include all 3 instructions as takts
                 List<SideEffect> created2 = engine.processEvent(
@@ -540,13 +540,13 @@ class WorkQueueProcessorTest {
             @DisplayName("Should restore work instructions state on step back")
             void stepBack_restoresWorkInstructionsState() {
                 // Register work instruction
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 // Activate queue
                 engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, null));
 
                 // Add another work instruction
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
 
                 // Step back - should remove wi-2
                 boolean success = engine.stepBack();
@@ -572,10 +572,10 @@ class WorkQueueProcessorTest {
             @DisplayName("Should move work instruction when workQueueId changes")
             void workInstructionMovedToNewQueue() {
                 // Register work instruction to queue-1
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 // Move work instruction to queue-2
-                engine.processEvent(new WorkInstructionEvent(1L, 2L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 2L, "CHE-001", PLANNED, EMT, 120));
 
                 // Activate both queues and verify
                 List<SideEffect> effects1 = engine.processEvent(
@@ -597,10 +597,10 @@ class WorkQueueProcessorTest {
             @DisplayName("Should update work instruction properties when same ID is processed again")
             void workInstructionUpdatedInSameQueue() {
                 // Register work instruction
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 // Update the same work instruction with new properties
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-002", IN_PROGRESS, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-002", CARRY_UNDERWAY, EMT, 120));
 
                 // Activate and verify only one container's worth of takts
                 List<SideEffect> effects = engine.processEvent(
@@ -616,16 +616,16 @@ class WorkQueueProcessorTest {
             @DisplayName("Should correctly track instruction after multiple queue moves")
             void workInstructionMultipleMoves() {
                 // Register to queue-1
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 // Move to queue-2
-                engine.processEvent(new WorkInstructionEvent(1L, 2L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 2L, "CHE-001", PLANNED, EMT, 120));
 
                 // Move to queue-3
-                engine.processEvent(new WorkInstructionEvent(1L, 3L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 3L, "CHE-001", PLANNED, EMT, 120));
 
                 // Move back to queue-1
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 // Activate all queues
                 List<SideEffect> effects1 = engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -649,12 +649,12 @@ class WorkQueueProcessorTest {
             @DisplayName("Should not affect other work instructions when one is moved")
             void moveDoesNotAffectOtherInstructions() {
                 // Register multiple instructions
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(3L, 2L, "CHE-003", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(3L, 2L, "CHE-003", PLANNED, EMT, 120));
 
                 // Move wi-1 to queue-2
-                engine.processEvent(new WorkInstructionEvent(1L, 2L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 2L, "CHE-001", PLANNED, EMT, 120));
 
                 // Activate both queues
                 List<SideEffect> effects1 = engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -683,9 +683,9 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Should name pre-QC takts as PULSE and QC takts as TAKT")
             void taktsNamedWithPulseAndTakt() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(3L, 1L, "CHE-003", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(3L, 1L, "CHE-003", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -706,7 +706,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Single work instruction should create 4 takts (PULSE97-TAKT100)")
             void singleWorkInstruction_createsFourTakts() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -728,7 +728,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Single container should have 14 actions across 4 takts")
             void singleContainer_hasFourteenActions() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -743,7 +743,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("PULSE97 should have RTG prep + TT approach (4 actions)")
             void taktA_rtgPrepAndTtApproach() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -771,7 +771,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("PULSE98 should have RTG-TT handover + TT transit + drive under QC (6 actions)")
             void taktB_rtgTtHandoverAndTransit() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -807,7 +807,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("PULSE99 should be an empty gap takt (0 actions)")
             void taktC_emptyGap() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -822,7 +822,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("TAKT100 should have TT-QC handover + QC ops (4 actions)")
             void taktD_ttQcHandoverAndQcOps() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -855,8 +855,8 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Two containers should have overlapping actions in shared takts")
             void twoContainers_haveOverlappingActions() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -884,8 +884,8 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("onlyOnePerTakt: two containers should not share handover from RTG in same takt")
             void onlyOnePerTakt_handoverFromRtgNotShared() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -909,7 +909,7 @@ class WorkQueueProcessorTest {
                 EventProcessingEngine largeEngine = new EventProcessingEngine();
                 largeEngine.register(new WorkQueueProcessor(() -> 250));
 
-                largeEngine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                largeEngine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = largeEngine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -942,7 +942,7 @@ class WorkQueueProcessorTest {
                 EventProcessingEngine offsetEngine = new EventProcessingEngine();
                 offsetEngine.register(new WorkQueueProcessor(() -> 150, () -> -20));
 
-                offsetEngine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                offsetEngine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
                 List<SideEffect> sideEffects = offsetEngine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
 
@@ -971,7 +971,7 @@ class WorkQueueProcessorTest {
                 EventProcessingEngine clampEngine = new EventProcessingEngine();
                 clampEngine.register(new WorkQueueProcessor(() -> 30, () -> -30));
 
-                clampEngine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                clampEngine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
                 List<SideEffect> sideEffects = clampEngine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
 
@@ -992,7 +992,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("First RTG and first TT action should have no dependencies (parallel start)")
             void firstActionsOfEachDeviceHaveNoDependencies() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -1018,7 +1018,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Actions within same device should be sequential")
             void sameDeviceActionsAreSequential() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -1053,7 +1053,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Handover from RTG should depend on previous TT action (drive to RTG under)")
             void handoverFromRtg_dependsOnPreviousTtAction() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -1079,7 +1079,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Handover to QC depends on drive under QC")
             void handoverToQc_dependsOnDriveUnderQc() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -1104,7 +1104,7 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("RTG handover to tt must depend on fetch (same-device)")
             void rtgHandoverToTt_dependsOnFetch() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -1128,8 +1128,8 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Shared devices (RTG, QC) chain across containers")
             void sharedDevices_chainAcrossContainers() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -1169,8 +1169,8 @@ class WorkQueueProcessorTest {
             @Test
             @DisplayName("Per-container device (TT) does not chain across containers")
             void perContainerDevice_TT_doesNotChainAcrossContainers() {
-                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING, EMT, 120));
-                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, EMT, 120));
+                engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, EMT, 120));
 
                 List<SideEffect> sideEffects = engine.processEvent(
                         new WorkQueueMessage(1L, ACTIVE, 0, null));
@@ -1206,11 +1206,11 @@ class WorkQueueProcessorTest {
         void singleWorkInstruction_createsOneTakt() {
             var processor = new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS);
             var instructions = List.of(
-                    new WorkInstructionEvent(1L, 1L, "CHE-001", PENDING,
+                    new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED,
                             Instant.parse("2024-01-01T10:00:00Z"), 120, 60, "", false, false, false, 0L, ""),
-                    new WorkInstructionEvent(2L, 1L, "CHE-002", PENDING,
+                    new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED,
                             Instant.parse("2024-01-01T10:00:00Z"), 120, 60, "", false, false, false, 0L, ""),
-                    new WorkInstructionEvent(3L, 1L, "CHE-003", PENDING,
+                    new WorkInstructionEvent(3L, 1L, "CHE-003", PLANNED,
                             Instant.parse("2024-01-01T10:00:00Z"), 120, 60, "", false, false, false, 0L, "")
             );
 
@@ -1231,10 +1231,10 @@ class WorkQueueProcessorTest {
         void fetchCompleteWithChangedTwinFlags_producesScheduleCreated() {
             // Setup: register 2 work instructions as twin carry
             engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", true, true, true, 2L, "A01-01-01"));
             engine.processEvent(new WorkInstructionEvent(
-                    2L, 1L, "CHE-002", PENDING, EMT.plusSeconds(120), 120, 60,
+                    2L, 1L, "CHE-002", PLANNED, EMT.plusSeconds(120), 120, 60,
                     "CHE-QC", true, true, true, 1L, "A01-01-02"));
 
             // Activate - creates initial schedule with twin templates
@@ -1248,7 +1248,7 @@ class WorkQueueProcessorTest {
 
             // Now: FETCH_COMPLETE arrives with changed twin flags (no longer twin put)
             List<SideEffect> rescheduleEffects = engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", FETCH_COMPLETE, EMT, 120, 60,
+                    1L, 1L, "CHE-001", CARRY_UNDERWAY, EMT, 120, 60,
                     "CHE-QC", true, false, true, 2L, "A01-01-01"));
 
             // Should produce a ScheduleCreated
@@ -1268,7 +1268,7 @@ class WorkQueueProcessorTest {
         void fetchCompleteWithSameTwinFlags_noScheduleCreated() {
             // Setup: register 1 work instruction as single
             engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", false, false, false));
 
             // Activate
@@ -1276,7 +1276,7 @@ class WorkQueueProcessorTest {
 
             // FETCH_COMPLETE with same flags
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", FETCH_COMPLETE, EMT, 120, 60,
+                    1L, 1L, "CHE-001", CARRY_UNDERWAY, EMT, 120, 60,
                     "CHE-QC", false, false, false));
 
             assertTrue(effects.isEmpty(),
@@ -1288,12 +1288,12 @@ class WorkQueueProcessorTest {
         void fetchCompleteWithNoActiveSchedule_noScheduleCreated() {
             // Register WI but don't activate
             engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", true, true, true));
 
             // FETCH_COMPLETE with changed flags but no active schedule
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", FETCH_COMPLETE, EMT, 120, 60,
+                    1L, 1L, "CHE-001", CARRY_UNDERWAY, EMT, 120, 60,
                     "CHE-QC", false, false, false));
 
             assertTrue(effects.isEmpty(),
@@ -1305,13 +1305,13 @@ class WorkQueueProcessorTest {
         void twinToSingle_rebuildsWithSingleTemplate() {
             // Setup: 3 WIs where WI 2&3 are twin pair
             engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", false, false, false));
             engine.processEvent(new WorkInstructionEvent(
-                    2L, 1L, "CHE-002", PENDING, EMT.plusSeconds(120), 120, 60,
+                    2L, 1L, "CHE-002", PLANNED, EMT.plusSeconds(120), 120, 60,
                     "CHE-QC", true, true, true, 3L, "A01-01-01"));
             engine.processEvent(new WorkInstructionEvent(
-                    3L, 1L, "CHE-003", PENDING, EMT.plusSeconds(240), 120, 60,
+                    3L, 1L, "CHE-003", PLANNED, EMT.plusSeconds(240), 120, 60,
                     "CHE-QC", true, true, true, 2L, "A01-01-02"));
 
             // Activate
@@ -1322,7 +1322,7 @@ class WorkQueueProcessorTest {
 
             // FETCH_COMPLETE: WI 2 twin flags changed (no longer twin fetch/put)
             List<SideEffect> rescheduleEffects = engine.processEvent(new WorkInstructionEvent(
-                    2L, 1L, "CHE-002", FETCH_COMPLETE, EMT.plusSeconds(120), 120, 60,
+                    2L, 1L, "CHE-002", CARRY_UNDERWAY, EMT.plusSeconds(120), 120, 60,
                     "CHE-QC", false, false, false, 3L, "A01-01-01"));
 
             assertEquals(1, rescheduleEffects.size());
@@ -1340,13 +1340,13 @@ class WorkQueueProcessorTest {
         void fetchCompleteForWrongWi_swapsAndProducesScheduleCreated() {
             // Setup: register 3 WIs — expected order is WI1, WI2, WI3
             engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", false, false, false));
             engine.processEvent(new WorkInstructionEvent(
-                    2L, 1L, "CHE-002", PENDING, EMT.plusSeconds(120), 120, 60,
+                    2L, 1L, "CHE-002", PLANNED, EMT.plusSeconds(120), 120, 60,
                     "CHE-QC", false, false, false));
             engine.processEvent(new WorkInstructionEvent(
-                    3L, 1L, "CHE-003", PENDING, EMT.plusSeconds(240), 120, 60,
+                    3L, 1L, "CHE-003", PLANNED, EMT.plusSeconds(240), 120, 60,
                     "CHE-QC", false, false, false));
 
             // Activate
@@ -1355,7 +1355,7 @@ class WorkQueueProcessorTest {
 
             // FETCH_COMPLETE for WI 3 (expected WI 1) — order mismatch!
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
-                    3L, 1L, "CHE-003", FETCH_COMPLETE, EMT.plusSeconds(240), 120, 60,
+                    3L, 1L, "CHE-003", CARRY_UNDERWAY, EMT.plusSeconds(240), 120, 60,
                     "CHE-QC", false, false, false));
 
             assertEquals(1, effects.size(),
@@ -1369,10 +1369,10 @@ class WorkQueueProcessorTest {
         void fetchCompleteForExpectedWi_noReschedule() {
             // Setup: register 2 WIs
             engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", false, false, false));
             engine.processEvent(new WorkInstructionEvent(
-                    2L, 1L, "CHE-002", PENDING, EMT.plusSeconds(120), 120, 60,
+                    2L, 1L, "CHE-002", PLANNED, EMT.plusSeconds(120), 120, 60,
                     "CHE-QC", false, false, false));
 
             // Activate
@@ -1381,7 +1381,7 @@ class WorkQueueProcessorTest {
 
             // FETCH_COMPLETE for WI 1 (the expected one) with same flags
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", FETCH_COMPLETE, EMT, 120, 60,
+                    1L, 1L, "CHE-001", CARRY_UNDERWAY, EMT, 120, 60,
                     "CHE-QC", false, false, false));
 
             assertTrue(effects.isEmpty(),
@@ -1393,10 +1393,10 @@ class WorkQueueProcessorTest {
         void fetchCompleteForWrongWiWithChangedFlags_producesScheduleCreated() {
             // Setup: 2 WIs, both with twin flags
             engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", false, true, true, 2L, "A01-01-01"));
             engine.processEvent(new WorkInstructionEvent(
-                    2L, 1L, "CHE-002", PENDING, EMT.plusSeconds(120), 120, 60,
+                    2L, 1L, "CHE-002", PLANNED, EMT.plusSeconds(120), 120, 60,
                     "CHE-QC", false, true, true, 1L, "A01-01-01"));
 
             // Activate
@@ -1405,7 +1405,7 @@ class WorkQueueProcessorTest {
 
             // FETCH_COMPLETE for WI 2 (expected WI 1) with changed twin flags
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
-                    2L, 1L, "CHE-002", FETCH_COMPLETE, EMT.plusSeconds(120), 120, 60,
+                    2L, 1L, "CHE-002", CARRY_UNDERWAY, EMT.plusSeconds(120), 120, 60,
                     "CHE-QC", false, false, true, 1L, "A01-01-01"));
 
             assertEquals(1, effects.size());
@@ -1418,10 +1418,10 @@ class WorkQueueProcessorTest {
         void fetchCompleteForTwinCompanion_producesScheduleCreated() {
             // Setup: register 2 work instructions as twin pair (lift singles, drop twin)
             engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", false, true, true, 2L, "A01-01-01"));
             engine.processEvent(new WorkInstructionEvent(
-                    2L, 1L, "CHE-002", PENDING, EMT.plusSeconds(120), 120, 60,
+                    2L, 1L, "CHE-002", PLANNED, EMT.plusSeconds(120), 120, 60,
                     "CHE-QC", false, true, true, 1L, "A01-01-01"));
 
             // Activate - creates initial schedule
@@ -1430,12 +1430,12 @@ class WorkQueueProcessorTest {
 
             // WI 1 FETCH_COMPLETE with changed twin flags (no longer twin put)
             engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", FETCH_COMPLETE, EMT, 120, 60,
+                    1L, 1L, "CHE-001", CARRY_UNDERWAY, EMT, 120, 60,
                     "CHE-QC", false, false, true, 2L, "A01-01-01"));
 
             // WI 2 (twin companion) FETCH_COMPLETE with changed twin flags
             List<SideEffect> rescheduleEffects = engine.processEvent(new WorkInstructionEvent(
-                    2L, 1L, "CHE-002", FETCH_COMPLETE, EMT.plusSeconds(120), 120, 60,
+                    2L, 1L, "CHE-002", CARRY_UNDERWAY, EMT.plusSeconds(120), 120, 60,
                     "CHE-QC", false, false, true, 1L, "A01-01-01"));
 
             // Should produce a ScheduleCreated for the companion too
@@ -1454,10 +1454,10 @@ class WorkQueueProcessorTest {
         void crossQueueFetchComplete_swapsWisAndReschedulesBothQueues() {
             // Setup: WQ1 has WI1, WQ2 has WI21
             engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", false, false, false));
             engine.processEvent(new WorkInstructionEvent(
-                    21L, 2L, "CHE-002", PENDING, EMT.plusSeconds(60), 120, 60,
+                    21L, 2L, "CHE-002", PLANNED, EMT.plusSeconds(60), 120, 60,
                     "CHE-QC", false, false, false));
 
             // Activate both queues
@@ -1469,7 +1469,7 @@ class WorkQueueProcessorTest {
             // WI21 arrives with workQueueId=1 and FETCH_COMPLETE
             // (it moved from WQ2 to WQ1, displacing WI1)
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
-                    21L, 1L, "CHE-002", FETCH_COMPLETE, EMT.plusSeconds(60), 120, 60,
+                    21L, 1L, "CHE-002", CARRY_UNDERWAY, EMT.plusSeconds(60), 120, 60,
                     "CHE-QC", false, false, false));
 
             // Should produce: WorkInstructionReassigned + ScheduleCreated(WQ1) + ScheduleCreated(WQ2)
@@ -1505,10 +1505,10 @@ class WorkQueueProcessorTest {
         void crossQueueFetchComplete_inactiveSourceQueue_onlyReschedulesTarget() {
             // Setup: WQ1 has WI1, WQ2 has WI21
             engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", false, false, false));
             engine.processEvent(new WorkInstructionEvent(
-                    21L, 2L, "CHE-002", PENDING, EMT.plusSeconds(60), 120, 60,
+                    21L, 2L, "CHE-002", PLANNED, EMT.plusSeconds(60), 120, 60,
                     "CHE-QC", false, false, false));
 
             // Only activate WQ1 (WQ2 stays inactive)
@@ -1517,7 +1517,7 @@ class WorkQueueProcessorTest {
 
             // WI21 arrives with workQueueId=1 and FETCH_COMPLETE
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
-                    21L, 1L, "CHE-002", FETCH_COMPLETE, EMT.plusSeconds(60), 120, 60,
+                    21L, 1L, "CHE-002", CARRY_UNDERWAY, EMT.plusSeconds(60), 120, 60,
                     "CHE-QC", false, false, false));
 
             // Should produce: WorkInstructionReassigned + ScheduleCreated(WQ1) only (WQ2 inactive)
@@ -1534,13 +1534,13 @@ class WorkQueueProcessorTest {
         void sameQueueWrongWiFetch_noCrossQueueSwap() {
             // Setup: WQ1 has WI1, WI2, WI3 — all in same queue
             engine.processEvent(new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", false, false, false));
             engine.processEvent(new WorkInstructionEvent(
-                    2L, 1L, "CHE-002", PENDING, EMT.plusSeconds(120), 120, 60,
+                    2L, 1L, "CHE-002", PLANNED, EMT.plusSeconds(120), 120, 60,
                     "CHE-QC", false, false, false));
             engine.processEvent(new WorkInstructionEvent(
-                    3L, 1L, "CHE-003", PENDING, EMT.plusSeconds(240), 120, 60,
+                    3L, 1L, "CHE-003", PLANNED, EMT.plusSeconds(240), 120, 60,
                     "CHE-QC", false, false, false));
 
             engine.processEvent(
@@ -1548,7 +1548,7 @@ class WorkQueueProcessorTest {
 
             // WI3 fetched out of order (expected WI1) — same queue
             List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
-                    3L, 1L, "CHE-003", FETCH_COMPLETE, EMT.plusSeconds(240), 120, 60,
+                    3L, 1L, "CHE-003", CARRY_UNDERWAY, EMT.plusSeconds(240), 120, 60,
                     "CHE-QC", false, false, false));
 
             // Should produce exactly 1 ScheduleCreated (same-queue swap, no cross-queue)

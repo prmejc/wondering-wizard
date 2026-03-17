@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
 import static com.wonderingwizard.domain.takt.DeviceActionTemplate.DEFAULT_DURATION_SECONDS;
 import static com.wonderingwizard.domain.takt.ActionType.*;
 import static com.wonderingwizard.domain.takt.DeviceType.*;
-import static com.wonderingwizard.events.WorkInstructionStatus.PENDING;
+import static com.wonderingwizard.events.MoveStage.PLANNED;
 import static org.junit.jupiter.api.Assertions.*;
 
 @DisplayName("GraphScheduleBuilder Tests")
@@ -169,7 +169,7 @@ class GraphScheduleBuilderTest {
     }
 
     private static WorkInstructionEvent wi(long id) {
-        return new WorkInstructionEvent(id, 1L, "CHE-001", PENDING, EMT, 120, 60, "", false, false, false, 0L, "");
+        return new WorkInstructionEvent(id, 1L, "CHE-001", PLANNED, EMT, 120, 60, "", false, false, false, 0L, "");
     }
 
     private static List<Takt> schedule(List<ActionTemplate> template, int containerCount) {
@@ -981,9 +981,9 @@ class GraphScheduleBuilderTest {
             engine.register(new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS, () -> 0, true));
 
             engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60));
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60));
             engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
-                    2L, 1L, "CHE-002", PENDING, EMT, 120, 60));
+                    2L, 1L, "CHE-002", PLANNED, EMT, 120, 60));
 
             var effects = engine.processEvent(
                     new com.wonderingwizard.events.WorkQueueMessage(1L,
@@ -1002,7 +1002,7 @@ class GraphScheduleBuilderTest {
             engine.register(new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS, () -> 0, true));
 
             engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60));
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60));
 
             var effects = engine.processEvent(
                     new com.wonderingwizard.events.WorkQueueMessage(1L,
@@ -1026,7 +1026,7 @@ class GraphScheduleBuilderTest {
             engine.register(new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS, () -> 0, true));
 
             engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60));
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60));
 
             var effects = engine.processEvent(
                     new com.wonderingwizard.events.WorkQueueMessage(1L,
@@ -1051,10 +1051,10 @@ class GraphScheduleBuilderTest {
 
             // Twin carry, twin fetch, not twin put, different bays
             engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
-                    1L, 1L, "RTG-01", PENDING, EMT, 120, 60,
+                    1L, 1L, "RTG-01", PLANNED, EMT, 120, 60,
                     "", true, false, true, 2, "Y-PTM-1L20E4"));
             engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
-                    2L, 1L, "RTG-01", PENDING, EMT.plusSeconds(120), 120, 60,
+                    2L, 1L, "RTG-01", PLANNED, EMT.plusSeconds(120), 120, 60,
                     "", true, false, true, 1, "Y-PTM-1L30E4"));
 
             var effects = engine.processEvent(
@@ -1081,7 +1081,7 @@ class GraphScheduleBuilderTest {
             engine.register(new WorkQueueProcessor(() -> DEFAULT_DURATION_SECONDS, () -> 0, false));
 
             engine.processEvent(new com.wonderingwizard.events.WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60));
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60));
 
             var effects = engine.processEvent(
                     new com.wonderingwizard.events.WorkQueueMessage(1L,
@@ -1103,7 +1103,7 @@ class GraphScheduleBuilderTest {
 
             // WI with twin flags but companion ID 99 not in the WQ
             var wi = new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", true, false, true, 99L, "A01-01-01");
 
             var wiMap = new HashMap<Long, WorkInstructionEvent>();
@@ -1129,10 +1129,10 @@ class GraphScheduleBuilderTest {
 
             // WI1 with isTwinFetch=true, isTwinPut=false (lift twins, drop singles)
             var wi1 = new WorkInstructionEvent(
-                    1L, 1L, "CHE-001", PENDING, EMT, 120, 60,
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
                     "CHE-QC", true, false, true, 2L, "A01-01-01");
             var wi2 = new WorkInstructionEvent(
-                    2L, 1L, "CHE-002", PENDING, EMT.plusSeconds(60), 120, 60,
+                    2L, 1L, "CHE-002", PLANNED, EMT.plusSeconds(60), 120, 60,
                     "CHE-QC", true, false, true, 1L, "A01-01-01");
 
             var wiMap = new HashMap<Long, WorkInstructionEvent>();

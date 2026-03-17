@@ -244,6 +244,50 @@ class EventPanel extends HTMLElement {
 
       <h3>Work Instruction</h3>
       <div class="form-group">
+        <label>Event Type</label>
+        <select id="wi-event-type">
+          <option value="CarryCHE Assigned">CarryCHE Assigned</option>
+          <option value="CarryCHE Changed">CarryCHE Changed</option>
+          <option value="Dispatch Changed">Dispatch Changed</option>
+          <option value="Estimated Cycle Time Assigned">Estimated Cycle Time Assigned</option>
+          <option value="Estimated Cycle Time Changed">Estimated Cycle Time Changed</option>
+          <option value="Estimated Move Time Assigned">Estimated Move Time Assigned</option>
+          <option value="Estimated Move Time Changed" selected>Estimated Move Time Changed</option>
+          <option value="FetchCHE Assigned">FetchCHE Assigned</option>
+          <option value="FetchCHE Changed">FetchCHE Changed</option>
+          <option value="Pinning Changed">Pinning Changed</option>
+          <option value="PutCHE Assigned">PutCHE Assigned</option>
+          <option value="PutCHE Changed">PutCHE Changed</option>
+          <option value="QC Discharged Container">QC Discharged Container</option>
+          <option value="QC Loaded Container">QC Loaded Container</option>
+          <option value="StateFetch Changed">StateFetch Changed</option>
+          <option value="To Position Changed">To Position Changed</option>
+          <option value="WI Abandoned">WI Abandoned</option>
+          <option value="WI Bypassed">WI Bypassed</option>
+          <option value="WI Created">WI Created</option>
+          <option value="WI MoveStage Changed">WI MoveStage Changed</option>
+          <option value="WI Resequenced">WI Resequenced</option>
+          <option value="WI Reset">WI Reset</option>
+          <option value="WI Resumed">WI Resumed</option>
+          <option value="WI Reverted">WI Reverted</option>
+          <option value="WQ Change">WQ Change</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Move Stage</label>
+        <select id="wi-move-stage">
+          <option value="Planned" selected>Planned</option>
+          <option value="Ready">Ready</option>
+          <option value="Fetch Underway">Fetch Underway</option>
+          <option value="Carry Underway">Carry Underway</option>
+          <option value="Carry Complete">Carry Complete</option>
+          <option value="Put Underway">Put Underway</option>
+          <option value="Put Complete">Put Complete</option>
+          <option value="Complete">Complete</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label>Instruction ID</label>
         <input id="wi-id" type="number" value="1">
       </div>
@@ -320,6 +364,7 @@ class EventPanel extends HTMLElement {
   }
   async sendWI() {
     const data = {
+      eventType: this.querySelector('#wi-event-type').value,
       workInstructionId: this.querySelector('#wi-id').value,
       workQueueId: this.querySelector('#wi-queue').value,
       fetchChe: this.querySelector('#wi-che').value,
@@ -332,7 +377,7 @@ class EventPanel extends HTMLElement {
       estimatedMoveTime: this.querySelector('#wi-emt').value,
       estimatedCycleTimeSeconds: this.querySelector('#wi-ect').value,
       estimatedRtgCycleTimeSeconds: this.querySelector('#wi-rtg-ect').value,
-      status: 'PENDING'
+      workInstructionMoveStage: this.querySelector('#wi-move-stage').value
     };
     await apiCall('/api/work-instruction', data);
     // Auto-increment WI ID

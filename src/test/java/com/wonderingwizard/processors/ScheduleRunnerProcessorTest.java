@@ -24,7 +24,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-import static com.wonderingwizard.events.WorkInstructionStatus.PENDING;
 import static com.wonderingwizard.events.WorkQueueStatus.ACTIVE;
 import static com.wonderingwizard.events.WorkQueueStatus.INACTIVE;
 import static org.junit.jupiter.api.Assertions.*;

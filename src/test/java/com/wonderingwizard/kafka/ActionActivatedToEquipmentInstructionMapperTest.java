@@ -2,7 +2,7 @@ package com.wonderingwizard.kafka;
 
 import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.DeviceType;
-import com.wonderingwizard.events.WorkInstructionStatus;
+import com.wonderingwizard.events.MoveStage;
 import com.wonderingwizard.kafka.messages.EquipmentInstructionKafkaMessage;
 import com.wonderingwizard.kafka.messages.EquipmentInstructionKafkaMessage.Container;
 import com.wonderingwizard.events.WorkInstructionEvent;
@@ -83,7 +83,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     void mapsSingleWorkInstruction() {
         UUID actionId = UUID.randomUUID();
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -111,12 +111,12 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("Should populate container records from work instructions")
     void populatesContainerRecords() {
         WorkInstructionEvent wi1 = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
         WorkInstructionEvent wi2 = new WorkInstructionEvent(
-                101L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                101L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 true, true, true, 100, "Y01.01.02"
         );
@@ -147,7 +147,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("Should use putChe as recipientCHE for RTG device type")
     void usePutCheForRtg() {
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -167,7 +167,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     void rtgMapperMapsRtgFetch() {
         UUID actionId = UUID.randomUUID();
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -190,7 +190,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     void rtgMapperMapsPlaceOnYard() {
         UUID actionId = UUID.randomUUID();
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -210,7 +210,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("RTG mapper should return null for QC_LIFT action types")
     void returnsNullForNonRtgDriveActionType() {
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -228,7 +228,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     void producesValidAvroRecord() {
         UUID actionId = UUID.randomUUID();
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -253,7 +253,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     void ttMapperMapsDriveToRtgPull() {
         UUID actionId = UUID.randomUUID();
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -278,7 +278,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     void ttMapperMapsHandoverToQc() {
         UUID actionId = UUID.randomUUID();
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -298,7 +298,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("TT mapper should return null for RTG_DRIVE action types")
     void ttMapperReturnsNullForRtgDrive() {
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -326,7 +326,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("TT mapper should use fetchChe as recipientCHE for TT device type")
     void ttMapperUsesFetchCheAsRecipient() {
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -346,7 +346,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     void ttMapperProducesValidAvroRecord() {
         UUID actionId = UUID.randomUUID();
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -371,7 +371,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     void qcMapperMapsQcLift() {
         UUID actionId = UUID.randomUUID();
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -396,7 +396,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     void qcMapperMapsQcPlace() {
         UUID actionId = UUID.randomUUID();
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -416,7 +416,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     @DisplayName("QC mapper should return null for RTG action types")
     void qcMapperReturnsNullForRtgActions() {
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );
@@ -434,7 +434,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     void qcMapperProducesValidAvroRecord() {
         UUID actionId = UUID.randomUUID();
         WorkInstructionEvent wi = new WorkInstructionEvent(
-                100L, 1L, "QC01", WorkInstructionStatus.PENDING,
+                100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
                 false, false, false, 0, "Y01.01.01"
         );

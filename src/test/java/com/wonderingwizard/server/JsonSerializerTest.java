@@ -7,7 +7,7 @@ import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
+import com.wonderingwizard.events.MoveStage;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.sideeffects.ActionActivated;
@@ -138,7 +138,7 @@ class JsonSerializerTest {
         @DisplayName("Should serialize WorkInstructionEvent")
         void serializesWorkInstructionEvent() {
             WorkInstructionEvent event = new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING,
+                    1L, 1L, "RTG-01", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T10:00:00Z"), 120);
             String json = JsonSerializer.serialize(event);
             assertTrue(json.contains("\"type\":\"WorkInstructionEvent\""));

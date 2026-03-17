@@ -11,7 +11,7 @@ import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
+import com.wonderingwizard.events.MoveStage;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
@@ -123,9 +123,9 @@ public class WorkQueueProcessor implements EventProcessor {
         long sourceQueueId = findQueueForInstruction(workInstructionId);
 
         // Determine expected next WI BEFORE updating the map (so current event's
-        // FETCH_COMPLETE status doesn't affect the lookup)
+        // post-fetch status doesn't affect the lookup)
         WorkInstructionEvent expectedWi = null;
-        if (event.status() == WorkInstructionStatus.FETCH_COMPLETE
+        if (MoveStage.isFetchComplete(event.workInstructionMoveStage())
                 && activeSchedules.containsKey(workQueueId)) {
             expectedWi = findExpectedNextWi(workQueueId);
         }
@@ -212,8 +212,8 @@ public class WorkQueueProcessor implements EventProcessor {
 
         // Create a copy with the new workQueueId and add to target queue
         var moved = new WorkInstructionEvent(
-                wi.workInstructionId(), targetQueueId, wi.fetchChe(),
-                wi.status(), wi.estimatedMoveTime(), wi.estimatedCycleTimeSeconds(),
+                wi.eventType(), wi.workInstructionId(), targetQueueId, wi.fetchChe(),
+                wi.workInstructionMoveStage(), wi.estimatedMoveTime(), wi.estimatedCycleTimeSeconds(),
                 wi.estimatedRtgCycleTimeSeconds(), wi.putChe(),
                 wi.isTwinFetch(), wi.isTwinPut(), wi.isTwinCarry(),
                 wi.twinCompanionWorkInstruction(), wi.toPosition(), wi.containerId());
@@ -245,7 +245,7 @@ public class WorkQueueProcessor implements EventProcessor {
 
         return allInstructions.stream()
                 .sorted(Comparator.comparing(WorkInstructionEvent::estimatedMoveTime))
-                .filter(wi -> wi.status() != WorkInstructionStatus.FETCH_COMPLETE)
+                .filter(wi -> !MoveStage.isFetchComplete(wi.workInstructionMoveStage()))
                 .findFirst()
                 .orElse(null);
     }
@@ -266,16 +266,16 @@ public class WorkQueueProcessor implements EventProcessor {
         instructions.replaceAll(wi -> {
             if (wi.workInstructionId() == fetchedWi.workInstructionId()) {
                 return new WorkInstructionEvent(
-                        wi.workInstructionId(), wi.workQueueId(), wi.fetchChe(),
-                        wi.status(), expectedTime, wi.estimatedCycleTimeSeconds(),
+                        wi.eventType(), wi.workInstructionId(), wi.workQueueId(), wi.fetchChe(),
+                        wi.workInstructionMoveStage(), expectedTime, wi.estimatedCycleTimeSeconds(),
                         wi.estimatedRtgCycleTimeSeconds(), wi.putChe(),
                         wi.isTwinFetch(), wi.isTwinPut(), wi.isTwinCarry(),
                         wi.twinCompanionWorkInstruction(), wi.toPosition(), wi.containerId());
             }
             if (wi.workInstructionId() == expectedWi.workInstructionId()) {
                 return new WorkInstructionEvent(
-                        wi.workInstructionId(), wi.workQueueId(), wi.fetchChe(),
-                        wi.status(), fetchedTime, wi.estimatedCycleTimeSeconds(),
+                        wi.eventType(), wi.workInstructionId(), wi.workQueueId(), wi.fetchChe(),
+                        wi.workInstructionMoveStage(), fetchedTime, wi.estimatedCycleTimeSeconds(),
                         wi.estimatedRtgCycleTimeSeconds(), wi.putChe(),
                         wi.isTwinFetch(), wi.isTwinPut(), wi.isTwinCarry(),
                         wi.twinCompanionWorkInstruction(), wi.toPosition(), wi.containerId());

@@ -31,7 +31,6 @@ import com.wonderingwizard.events.OverrideConditionEvent;
 import com.wonderingwizard.events.SystemTimeSet;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.processors.DelayProcessor;
@@ -994,11 +993,13 @@ public class DemoServer {
 
         try {
             Map<String, String> body = readJsonBody(exchange);
+            String eventType = body.getOrDefault("eventType", "");
             long workInstructionId = Long.parseLong(requireField(body, "workInstructionId"));
             long workQueueId = Long.parseLong(requireField(body, "workQueueId"));
             String fetchChe = body.getOrDefault("fetchChe", "");
-            String statusStr = body.getOrDefault("status", "PENDING");
-            WorkInstructionStatus status = WorkInstructionStatus.valueOf(statusStr);
+            String workInstructionMoveStage = body.containsKey("workInstructionMoveStage")
+                    ? body.get("workInstructionMoveStage")
+                    : body.getOrDefault("status", "Planned");
             String estimatedMoveTimeStr = body.get("estimatedMoveTime");
             Instant estimatedMoveTime = estimatedMoveTimeStr != null
                     ? Instant.parse(estimatedMoveTimeStr) : null;
@@ -1018,7 +1019,7 @@ public class DemoServer {
             String containerId = body.getOrDefault("containerId", "");
 
             WorkInstructionEvent event = new WorkInstructionEvent(
-                    workInstructionId, workQueueId, fetchChe, status, estimatedMoveTime,
+                    eventType, workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                     estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                     putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
                     toPosition, containerId);

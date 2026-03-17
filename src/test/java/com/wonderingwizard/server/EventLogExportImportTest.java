@@ -3,7 +3,7 @@ package com.wonderingwizard.server;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.TimeEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
+import com.wonderingwizard.events.MoveStage;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
@@ -37,7 +37,7 @@ class EventLogExportImportTest {
         void exportsValidJson() {
             Instant emt = Instant.parse("2024-01-01T00:05:00Z");
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING, emt, 120));
+                    1L, 1L, "RTG-01", MoveStage.PLANNED, emt, 120));
             server.processStep("Activate WQ",
                     new WorkQueueMessage(1L, WorkQueueStatus.ACTIVE, 0, null));
 
@@ -68,7 +68,7 @@ class EventLogExportImportTest {
         void restoresState() {
             Instant emt = Instant.parse("2024-01-01T00:05:00Z");
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING, emt, 120));
+                    1L, 1L, "RTG-01", MoveStage.PLANNED, emt, 120));
             server.processStep("Activate WQ",
                     new WorkQueueMessage(1L, WorkQueueStatus.ACTIVE, 5, com.wonderingwizard.events.LoadMode.DSCH));
 
@@ -101,7 +101,7 @@ class EventLogExportImportTest {
         void restoresTimeEvents() {
             Instant emt = Instant.parse("2024-01-01T00:05:00Z");
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING, emt, 120));
+                    1L, 1L, "RTG-01", MoveStage.PLANNED, emt, 120));
             server.processStep("Activate WQ",
                     new WorkQueueMessage(1L, WorkQueueStatus.ACTIVE, 0, null));
             server.processStep("Tick +60s", new TimeEvent(emt.plusSeconds(60)));
@@ -119,13 +119,13 @@ class EventLogExportImportTest {
         void clearsExistingState() {
             // Add events to original server
             server.processStep("WI 1", new WorkInstructionEvent(
-                    1L, 1L, "RTG-01", WorkInstructionStatus.PENDING,
+                    1L, 1L, "RTG-01", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T00:05:00Z"), 120));
 
             // Export a different scenario
             DemoServer other = new DemoServer();
             other.processStep("WI 99", new WorkInstructionEvent(
-                    99L, 99L, "RTG-99", WorkInstructionStatus.PENDING,
+                    99L, 99L, "RTG-99", MoveStage.PLANNED,
                     Instant.parse("2024-01-01T01:00:00Z"), 60));
             String exportJson = buildExportJson(other);
 

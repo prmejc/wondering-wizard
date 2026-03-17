@@ -172,10 +172,11 @@ public final class JsonSerializer {
             case WorkInstructionEvent e -> {
                 sb.append('{');
                 writeField(sb, "type", "WorkInstructionEvent", true);
+                writeField(sb, "eventType", e.eventType(), false);
                 writeField(sb, "workInstructionId", e.workInstructionId(), false);
                 writeField(sb, "workQueueId", e.workQueueId(), false);
                 writeField(sb, "fetchChe", e.fetchChe(), false);
-                writeField(sb, "status", e.status(), false);
+                writeField(sb, "workInstructionMoveStage", e.workInstructionMoveStage(), false);
                 writeField(sb, "estimatedMoveTime", e.estimatedMoveTime(), false);
                 writeField(sb, "estimatedCycleTimeSeconds", e.estimatedCycleTimeSeconds(), false);
                 writeField(sb, "estimatedRtgCycleTimeSeconds", e.estimatedRtgCycleTimeSeconds(), false);
@@ -222,10 +223,11 @@ public final class JsonSerializer {
                 var wi = e.workInstruction();
                 sb.append('{');
                 writeField(sb, "type", "WorkInstructionEvent", true);
+                writeField(sb, "eventType", wi.eventType(), false);
                 writeField(sb, "workInstructionId", wi.workInstructionId(), false);
                 writeField(sb, "workQueueId", wi.workQueueId(), false);
                 writeField(sb, "fetchChe", wi.fetchChe(), false);
-                writeField(sb, "status", wi.status(), false);
+                writeField(sb, "workInstructionMoveStage", wi.workInstructionMoveStage(), false);
                 writeField(sb, "estimatedMoveTime", wi.estimatedMoveTime(), false);
                 writeField(sb, "estimatedCycleTimeSeconds", wi.estimatedCycleTimeSeconds(), false);
                 writeField(sb, "estimatedRtgCycleTimeSeconds", wi.estimatedRtgCycleTimeSeconds(), false);
@@ -388,10 +390,11 @@ public final class JsonSerializer {
     private static void writeWebViewWorkInstruction(StringBuilder sb, WebViewWorkInstruction wvwi) {
         var wi = wvwi.workInstruction();
         sb.append('{');
-        writeField(sb, "workInstructionId", wi.workInstructionId(), true);
+        writeField(sb, "eventType", wi.eventType(), true);
+        writeField(sb, "workInstructionId", wi.workInstructionId(), false);
         writeField(sb, "workQueueId", wi.workQueueId(), false);
         writeField(sb, "fetchChe", wi.fetchChe(), false);
-        writeField(sb, "status", wi.status(), false);
+        writeField(sb, "workInstructionMoveStage", wi.workInstructionMoveStage(), false);
         writeField(sb, "estimatedMoveTime", wi.estimatedMoveTime(), false);
         writeField(sb, "estimatedCycleTimeSeconds", wi.estimatedCycleTimeSeconds(), false);
         writeField(sb, "estimatedRtgCycleTimeSeconds", wi.estimatedRtgCycleTimeSeconds(), false);

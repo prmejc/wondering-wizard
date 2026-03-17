@@ -7,7 +7,7 @@ import com.wonderingwizard.engine.EventPropagatingEngine;
 import com.wonderingwizard.events.DigitalMapEvent;
 import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.WorkInstructionEvent;
-import com.wonderingwizard.events.WorkInstructionStatus;
+import com.wonderingwizard.events.MoveStage;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
@@ -269,7 +269,7 @@ class DigitalMapProcessorTest {
         Instant moveTime = Instant.parse("2024-01-01T00:00:00Z");
 
         engine.processEvent(new WorkInstructionEvent(
-                1L, 1L, "QC-01", WorkInstructionStatus.PENDING,
+                1L, 1L, "QC-01", MoveStage.PLANNED,
                 moveTime, 120, 60, "",
                 false, false, false, 0, "Y-PTM-1A25E4", "MAEU1234567"));
 
@@ -544,7 +544,7 @@ class DigitalMapProcessorTest {
 
     private WorkInstructionEvent createWorkInstruction(String toPosition, String fetchChe) {
         return new WorkInstructionEvent(
-                1L, 1L, fetchChe, WorkInstructionStatus.PENDING,
+                1L, 1L, fetchChe, MoveStage.PLANNED,
                 Instant.parse("2024-01-01T00:00:00Z"), 120, 60, "",
                 false, false, false, 0, toPosition, "MAEU1234567");
     }
