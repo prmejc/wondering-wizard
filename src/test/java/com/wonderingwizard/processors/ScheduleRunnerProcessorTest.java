@@ -774,5 +774,120 @@ class ScheduleRunnerProcessorTest {
             assertEquals(1, activated.size(), "RTG pull should activate after buffer auto-completes");
             assertEquals(ttRtgPull.id(), activated.getFirst().actionId());
         }
+
+        @Test
+        @DisplayName("Should auto-satisfy gates after reschedule when WIs already have the required event type")
+        void autoSatisfiesGatesAfterRescheduleWithDischargeTwinReorder() {
+            // Scenario: 4 WIs, 2 twin pairs. Initial schedule has WI1+WI2 in TAKT100.
+            // QC_DISCHARGED_CONTAINER arrives for WI3 and WI4 instead. After rescheduling,
+            // WI3+WI4 move to TAKT100 position — gates should be auto-satisfied.
+
+            // WI1 and WI2 — initial pair (no discharge event yet)
+            var wi1 = new WorkInstructionEvent(
+                    "", 1L, 100L, "QC1", "Planned", EMT, 120, 60,
+                    "QC1", false, false, true, 2L, "A01-01-01", "CONT1");
+            var wi2 = new WorkInstructionEvent(
+                    "", 2L, 100L, "QC1", "Planned", EMT, 120, 60,
+                    "QC1", false, false, true, 1L, "A01-01-02", "CONT2");
+
+            // WI3 and WI4 — these arrive with QC_DISCHARGED_CONTAINER already set
+            var wi3Discharged = new WorkInstructionEvent(
+                    EventType.QC_DISCHARGED_CONTAINER, 3L, 100L, "QC1", "Carry Underway", EMT.plusSeconds(120), 120, 60,
+                    "QC1", false, false, true, 4L, "A02-01-01", "CONT3");
+            var wi4Discharged = new WorkInstructionEvent(
+                    EventType.QC_DISCHARGED_CONTAINER, 4L, 100L, "QC1", "Carry Underway", EMT.plusSeconds(120), 120, 60,
+                    "QC1", false, false, true, 3L, "A02-01-02", "CONT4");
+
+            var gate1 = new EventGateCondition(
+                    DeviceType.QC, ActionType.QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 1);
+            var gate2 = new EventGateCondition(
+                    DeviceType.QC, ActionType.QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 2);
+
+            // ── Initial schedule: WI1+WI2 in TAKT100 ──
+
+            // QC_LIFT (source for gates) — containerIndex 0
+            Action oldQcLift = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.QC_LIFT,
+                    "QC Lift", Set.of(), 0, 20, 0, List.of(wi1, wi2), List.of(), false);
+
+            // TT_DRIVE_TO_BUFFER — gated, skipWhenGatesSatisfied, containerIndex 0
+            Action oldTtBuffer = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_TO_BUFFER,
+                    "drive to buffer", new HashSet<>(Set.of(oldQcLift.id())), 0, 30, 0,
+                    List.of(wi1, wi2), List.of(gate1, gate2), true);
+
+            // TT_DRIVE_TO_RTG_PULL — depends on buffer, containerIndex 0
+            Action oldTtRtgPull = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_TO_RTG_PULL,
+                    "drive to RTG pull", new HashSet<>(Set.of(oldTtBuffer.id())), 0, 30, 0,
+                    List.of(wi1, wi2), List.of(), false);
+
+            List<Takt> oldTakts = List.of(
+                    new Takt(0, new ArrayList<>(List.of(oldQcLift)), EMT, EMT, 120),
+                    new Takt(1, new ArrayList<>(List.of(oldTtBuffer, oldTtRtgPull)),
+                            EMT.plusSeconds(120), EMT.plusSeconds(120), 120)
+            );
+
+            processor.process(new ScheduleCreated(100L, oldTakts, EMT));
+
+            // Activate TAKT100 + QC_LIFT (this arms the gates)
+            processor.process(new TimeEvent(EMT.plusSeconds(1)));
+
+            // WI3 and WI4 discharge events arrive — they don't match WI1/WI2 gates
+            processor.process(wi3Discharged);
+            processor.process(wi4Discharged);
+
+            // Complete QC_LIFT to finish TAKT100
+            processor.process(new ActionCompletedEvent(oldQcLift.id(), 100L));
+
+            // ── Reschedule: WI3+WI4 now in TAKT100 position (already discharged) ──
+
+            Action newQcLift = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.QC_LIFT,
+                    "QC Lift", Set.of(), 0, 20, 0, List.of(wi3Discharged, wi4Discharged), List.of(), false);
+
+            Action newTtBuffer = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_TO_BUFFER,
+                    "drive to buffer", new HashSet<>(Set.of(newQcLift.id())), 0, 30, 0,
+                    List.of(wi3Discharged, wi4Discharged), List.of(gate1, gate2), true);
+
+            Action newTtRtgPull = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_TO_RTG_PULL,
+                    "drive to RTG pull", new HashSet<>(Set.of(newTtBuffer.id())), 0, 30, 0,
+                    List.of(wi3Discharged, wi4Discharged), List.of(), false);
+
+            List<Takt> newTakts = List.of(
+                    new Takt(0, new ArrayList<>(List.of(newQcLift)), EMT, EMT, 120),
+                    new Takt(1, new ArrayList<>(List.of(newTtBuffer, newTtRtgPull)),
+                            EMT.plusSeconds(120), EMT.plusSeconds(120), 120)
+            );
+
+            // Process the reschedule — state transfer should:
+            // 1. Mark TAKT100 as completed (QC_LIFT completed)
+            // 2. Transfer + re-arm gates in new state
+            // 3. Auto-satisfy gates because WI3+WI4 already have QC_DISCHARGED_CONTAINER eventType
+            // 4. When TAKT101 activates, buffer should auto-complete
+            List<SideEffect> rescheduleEffects = processor.process(new ScheduleCreated(100L, newTakts, EMT));
+
+            // Debug: print all effects
+            for (SideEffect e : rescheduleEffects) {
+                System.out.println("EFFECT: " + e.getClass().getSimpleName() + " -> " + e);
+            }
+            // Check gate satisfaction state
+            Set<String> gateState = processor.getSatisfiedEventGates(100L, newTtBuffer.id());
+            System.out.println("GATES satisfied for buffer: " + gateState);
+
+            // TAKT101 should have been activated (TAKT100 transferred as completed)
+            // and buffer should be auto-completed since gates are pre-satisfied
+            var completed = rescheduleEffects.stream()
+                    .filter(e -> e instanceof ActionCompleted)
+                    .map(e -> (ActionCompleted) e)
+                    .toList();
+            var activated = rescheduleEffects.stream()
+                    .filter(e -> e instanceof ActionActivated)
+                    .map(e -> (ActionActivated) e)
+                    .toList();
+
+            assertEquals(1, completed.size(),
+                    "Buffer action should be auto-completed after reschedule (gates satisfied by WI eventType)");
+            assertEquals(newTtBuffer.id(), completed.getFirst().actionId());
+
+            assertTrue(activated.stream().anyMatch(a -> a.actionId().equals(newTtRtgPull.id())),
+                    "RTG pull should activate after buffer auto-skip");
+        }
     }
 }

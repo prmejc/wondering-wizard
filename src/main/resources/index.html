@@ -443,8 +443,10 @@ class ScheduleView extends HTMLElement {
     // Delegated click handler for complete buttons — survives DOM rebuilds during playback
     this.addEventListener('click', async (e) => {
       const btn = e.target.closest('.complete-btn');
-      if (!btn) return;
+      if (!btn || btn.disabled) return;
       e.stopPropagation();
+      btn.disabled = true;
+      setTimeout(() => { btn.disabled = false; }, 5000);
       await apiCall('/api/action-completed', {
         actionId: btn.dataset.actionId,
         workQueueId: btn.dataset.wq

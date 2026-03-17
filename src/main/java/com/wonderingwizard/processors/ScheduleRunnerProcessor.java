@@ -452,6 +452,41 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 }
             }
         }
+
+        // Auto-satisfy armed gates whose WIs already carry the required event type.
+        // This covers the case where a WI event was processed before the reschedule:
+        // the event updated the WI's eventType, but the old schedule's gates didn't match
+        // (different WI assignment). After rescheduling, the new actions carry the updated WIs.
+        for (ActionInfo newInfo : newState.actionLookup.values()) {
+            Action newAction = newInfo.action();
+            if (newAction.eventGates().isEmpty()) continue;
+            UUID newActionId = newAction.id();
+            Set<String> armed = newState.armedEventGates.getOrDefault(newActionId, Set.of());
+            if (armed.isEmpty()) continue;
+
+            for (EventGateCondition gate : newAction.eventGates()) {
+                if (!armed.contains(gate.id())) continue;
+                Set<String> satisfied = newState.satisfiedEventGates.getOrDefault(newActionId, Set.of());
+                if (satisfied.contains(gate.id())) continue;
+
+                boolean eventAlreadyReceived;
+                if (gate.containerSuffix() > 0) {
+                    var wis = newAction.workInstructions();
+                    int idx = gate.containerSuffix() - 1;
+                    eventAlreadyReceived = idx < wis.size()
+                            && gate.requiredEventType().equals(wis.get(idx).eventType());
+                } else {
+                    eventAlreadyReceived = newAction.workInstructions().stream()
+                            .anyMatch(wi -> gate.requiredEventType().equals(wi.eventType()));
+                }
+
+                if (eventAlreadyReceived) {
+                    newState.satisfiedEventGates
+                            .computeIfAbsent(newActionId, k -> new HashSet<>())
+                            .add(gate.id());
+                }
+            }
+        }
     }
 
     /**

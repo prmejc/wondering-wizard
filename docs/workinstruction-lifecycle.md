@@ -28,10 +28,11 @@ Precondition:
 - If WQ is unfrozen => Remove WI from (preliminary) plan
 
 ### WQ Change
-  When WI is moved out of a frozen FES-WQ
-  workinstruction.WQId changed for a WI
-  Behavior: remove WI from FES
-  Bypass - not applicable in DSCH (!)
+When WI is moved out of a frozen FES-WQ workinstruction.WQId changed for a WI 
+
+Behavior: remove WI from FES
+  
+### Bypass - not applicable in DSCH (!)
   Bypass job is used when a WI is not to be dispatched to a TT
   workinstruction.eventType = "WI Bypassed" OR workinstruction.suspendState "BYPASS"
   Precondition: WI not yet dispatched to a TT
