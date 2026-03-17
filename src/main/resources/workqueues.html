@@ -70,6 +70,8 @@
   }
   tbody tr:hover td { background: var(--surface2); }
   tr.send-success td { background: var(--success-bg); transition: background 0.3s; }
+  tr.stale td { background: rgba(239, 68, 68, 0.15); }
+  tr.stale td input, tr.stale td select { border-color: var(--danger); }
   .status-ACTIVE { color: var(--active); }
   .status-INACTIVE { color: var(--text-muted); }
 </style>
@@ -105,6 +107,8 @@ const WQ_FIELDS = [
 ];
 
 let workQueues = new Map();
+let serverWorkQueues = new Map();
+let editingRows = new Set();
 
 async function apiCall(path, body) {
   const opts = body
@@ -135,8 +139,29 @@ function extractWorkQueues(state) {
   return wqMap;
 }
 
+function rowsDiffer(a, b) {
+  if (!a || !b) return true;
+  for (const f of WQ_FIELDS) {
+    if (String(a[f.key] ?? '') !== String(b[f.key] ?? '')) return true;
+  }
+  return false;
+}
+
 function refresh(state) {
-  workQueues = extractWorkQueues(state);
+  const incoming = extractWorkQueues(state);
+  serverWorkQueues = incoming;
+
+  for (const [id, row] of incoming) {
+    if (!editingRows.has(id)) {
+      workQueues.set(id, row);
+    }
+  }
+  for (const [id, row] of incoming) {
+    if (!workQueues.has(id)) {
+      workQueues.set(id, row);
+    }
+  }
+
   render();
 }
 
@@ -147,6 +172,12 @@ function render() {
     return;
   }
 
+  const existingTable = content.querySelector('table');
+  if (existingTable) {
+    updateExistingTable(existingTable);
+    return;
+  }
+
   let html = '<div class="table-wrap"><table><thead><tr>';
   for (const f of WQ_FIELDS) {
     html += '<th>' + f.label + '</th>';
@@ -154,22 +185,88 @@ function render() {
   html += '<th>Actions</th></tr></thead><tbody>';
 
   for (const [id, row] of workQueues) {
-    html += '<tr data-wq-id="' + id + '">';
-    for (const f of WQ_FIELDS) {
-      html += '<td>' + inputFor(f, row, id) + '</td>';
-    }
-    html += '<td class="row-actions">';
-    html += '<button data-send="' + id + '">Send</button>';
-    html += '</td></tr>';
+    html += buildRowHtml(id, row);
   }
 
   html += '</tbody></table></div>';
   content.innerHTML = html;
 
-  content.querySelectorAll('[data-field]').forEach(el => {
-    const wqId = Number(el.dataset.wqId);
+  bindAllRows(content);
+}
+
+function buildRowHtml(id, row) {
+  const stale = rowsDiffer(row, serverWorkQueues.get(id));
+  let html = '<tr data-wq-id="' + id + '"' + (stale ? ' class="stale"' : '') + '>';
+  for (const f of WQ_FIELDS) {
+    html += '<td>' + inputFor(f, row, id) + '</td>';
+  }
+  html += '<td class="row-actions">';
+  html += '<button data-send="' + id + '">Send</button>';
+  html += '</td></tr>';
+  return html;
+}
+
+function updateExistingTable(table) {
+  const tbody = table.querySelector('tbody');
+  const existingIds = new Set();
+
+  tbody.querySelectorAll('tr[data-wq-id]').forEach(tr => {
+    const id = Number(tr.dataset.wqId);
+    existingIds.add(id);
+
+    if (!workQueues.has(id)) {
+      tr.remove();
+      return;
+    }
+
+    const row = workQueues.get(id);
+    const serverRow = serverWorkQueues.get(id);
+    const stale = rowsDiffer(row, serverRow);
+
+    if (editingRows.has(id)) {
+      tr.classList.toggle('stale', stale);
+      return;
+    }
+
+    tr.classList.toggle('stale', stale);
+    tr.querySelectorAll('[data-field]').forEach(el => {
+      const key = el.dataset.field;
+      const field = WQ_FIELDS.find(f => f.key === key);
+      if (el.tagName === 'SELECT') {
+        el.value = row[key] ?? '';
+      } else {
+        el.value = row[key] ?? '';
+      }
+    });
+  });
+
+  for (const [id, row] of workQueues) {
+    if (!existingIds.has(id)) {
+      const temp = document.createElement('template');
+      temp.innerHTML = buildRowHtml(id, row);
+      const newRow = temp.content.firstElementChild;
+      tbody.appendChild(newRow);
+      bindRow(newRow, id);
+    }
+  }
+}
+
+function bindRow(container, wqId) {
+  container.querySelectorAll('[data-field]').forEach(el => {
     const key = el.dataset.field;
     const field = WQ_FIELDS.find(f => f.key === key);
+
+    el.addEventListener('focus', () => editingRows.add(wqId));
+    el.addEventListener('blur', () => {
+      editingRows.delete(wqId);
+      const tr = el.closest('tr');
+      const row = workQueues.get(wqId);
+      const serverRow = serverWorkQueues.get(wqId);
+      if (tr && rowsDiffer(row, serverRow)) {
+        tr.classList.add('stale');
+      }
+    });
+
     el.addEventListener('change', () => {
       const row = workQueues.get(wqId);
       if (!row) return;
@@ -178,12 +275,16 @@ function render() {
       } else {
         row[key] = el.value;
       }
+      const tr = el.closest('tr');
+      const serverRow = serverWorkQueues.get(wqId);
+      if (tr) {
+        tr.classList.toggle('stale', rowsDiffer(row, serverRow));
+      }
     });
   });
 
-  content.querySelectorAll('[data-send]').forEach(btn => {
+  container.querySelectorAll('[data-send]').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const wqId = Number(btn.dataset.send);
       const row = workQueues.get(wqId);
       if (!row) return;
 
@@ -198,6 +299,7 @@ function render() {
         await apiCall(API + '/api/work-queue', data);
         const tr = btn.closest('tr');
         tr.classList.add('send-success');
+        tr.classList.remove('stale');
         setTimeout(() => tr.classList.remove('send-success'), 1500);
       } catch (err) {
         alert('Failed to send: ' + err.message);
@@ -207,6 +309,13 @@ function render() {
       }
     });
   });
+}
+
+function bindAllRows(content) {
+  for (const [id] of workQueues) {
+    const tr = content.querySelector('tr[data-wq-id="' + id + '"]');
+    if (tr) bindRow(tr, id);
+  }
 }
 
 function inputFor(field, row, wqId) {
