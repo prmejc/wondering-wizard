@@ -794,8 +794,8 @@ public class DemoServer {
             for (int i = 0; i < takts.size(); i++) {
                 TaktView takt = takts.get(i);
                 TaktState taktState = taktStates.getOrDefault(takt.name(), takt.status());
-                Instant actualStartTime = actualStartTimes.get(takt.name());
-                Instant completedAt = completedAtTimes.get(takt.name());
+                Instant actualStartTime = actualStartTimes.getOrDefault(takt.name(), takt.actualStartTime());
+                Instant completedAt = completedAtTimes.getOrDefault(takt.name(), takt.completedAt());
 
                 // Calculate per-takt delay info
                 long startDelay = 0;
