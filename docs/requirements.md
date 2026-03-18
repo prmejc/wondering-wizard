@@ -1508,3 +1508,38 @@ mvn test -Dtest=WIAbandonedHandlerTest
 - `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — WIAbandonedHandler registration)
 - `src/main/resources/index.html` (modified — ⚠ click popup for completion reason)
 - `src/test/java/com/wonderingwizard/processors/WIAbandonedHandlerTest.java` (new — 7 tests)
+
+### F-26: WI Reset Event Handling
+
+**Status:** Implemented
+
+**Description:**
+Handle the case when a work instruction is reset (WI Reset event). Unlike WI Abandoned, there is no pivot point — a reset always cancels all remaining actions for the affected container and its twin with reason "WI Reset", regardless of workflow progress.
+
+**Requested Behavior:**
+- `WorkInstructionEvent` with `eventType == "WI Reset"` triggers the handling
+- The affected container is found by matching the event's `workInstructionId` against actions' `workInstructions()` list
+- The twin is found via shared `cheShortName` on TT actions
+- All remaining (non-completed) actions for container + twin are completed with `CompletionReason.WI_RESET`
+- Takt completion is cascaded after cancellation
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Send WI Reset before TT handover from QC | All actions for container + twin completed with WI_RESET |
+| 2 | Send WI Reset after TT handover from QC | All actions for container + twin completed with WI_RESET |
+| 3 | Send non-WI-Reset event | No effect from WIResetHandler |
+| 4 | Send WI Reset with unknown workInstructionId | No effect |
+| 5 | Send WI Reset without schedule | No effect |
+
+**Test Execution:**
+```bash
+mvn test -Dtest=WIResetHandlerTest
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/domain/takt/CompletionReason.java` (modified — added WI_RESET)
+- `src/main/java/com/wonderingwizard/processors/WIResetHandler.java` (new — WI Reset logic)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — WIResetHandler registration)
+- `src/test/java/com/wonderingwizard/processors/WIResetHandlerTest.java` (new — 7 tests)

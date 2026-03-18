@@ -234,7 +234,8 @@ com.wonderingwizard
 │   ├── ScheduleSubProcessor.java   # Interface for sub-processors registered with ScheduleRunnerProcessor
 │   ├── ScheduleContext.java        # Controlled access to schedule state for sub-processors
 │   ├── TTUnavailableHandler.java   # Handles TT unavailable events (implements ScheduleSubProcessor)
-│   └── WIAbandonedHandler.java    # Handles WI Abandoned events (implements ScheduleSubProcessor)
+│   ├── WIAbandonedHandler.java    # Handles WI Abandoned events (implements ScheduleSubProcessor)
+│   └── WIResetHandler.java        # Handles WI Reset events (implements ScheduleSubProcessor)
 ├── kafka/
 │   ├── KafkaConfiguration.java      # Top-level Kafka connection config (broker, SASL, schema registry)
 │   ├── ConsumerConfiguration.java   # Per-topic consumer config (topic, group, message type)
