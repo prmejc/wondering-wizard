@@ -1467,3 +1467,44 @@ mvn test -Dtest=TTUnavailableHandlerTest
 - `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — TruckUnassigned serialization, completionReason in ActionView)
 - `src/main/resources/index.html` (modified — gray + ⚠ for completed-with-reason actions)
 - `src/test/java/com/wonderingwizard/processors/TTUnavailableHandlerTest.java` (new — 8 tests)
+
+### F-25: WI Abandoned Event Handling
+
+**Status:** Implemented
+
+**Description:**
+Handle the case when a work instruction is abandoned (WI Abandoned event). The behavior mirrors TT Unavailable handling, using the TT_HANDOVER_FROM_QC boundary:
+
+1. **Before TT handover from QC activated:** All TT actions for the affected container are reset to pending (truck unassigned), and the system attempts to allocate a new truck.
+2. **After TT handover from QC activated or completed:** All remaining actions for the affected container and its twin container are completed with reason "WI Abandoned".
+
+Additionally, clicking the ⚠ icon on force-completed actions now shows a popup displaying the completion reason.
+
+**Requested Behavior:**
+- `WorkInstructionEvent` with `eventType == "WI Abandoned"` triggers the handling
+- The affected container is found by matching the event's `workInstructionId` against actions' `workInstructions()` list
+- A `ScheduleSubProcessor` pattern is used to encapsulate the logic in `WIAbandonedHandler`
+- `CompletionReason.WI_ABANDONED` is added to the enum
+- The ⚠ icon on the schedule viewer is now clickable and shows a popup with the completion reason
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Send WI Abandoned before TT handover from QC | TT actions reset, truck unassigned, new truck allocated |
+| 2 | Send WI Abandoned after TT handover from QC | All remaining actions for container + twin completed with WI_ABANDONED |
+| 3 | Send non-WI-Abandoned event | No effect from WIAbandonedHandler |
+| 4 | Send WI Abandoned with unknown workInstructionId | No effect |
+| 5 | Click ⚠ icon on force-completed action | Popup shows completion reason |
+
+**Test Execution:**
+```bash
+mvn test -Dtest=WIAbandonedHandlerTest
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/domain/takt/CompletionReason.java` (modified — added WI_ABANDONED)
+- `src/main/java/com/wonderingwizard/processors/WIAbandonedHandler.java` (new — WI Abandoned logic)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — WIAbandonedHandler registration)
+- `src/main/resources/index.html` (modified — ⚠ click popup for completion reason)
+- `src/test/java/com/wonderingwizard/processors/WIAbandonedHandlerTest.java` (new — 7 tests)

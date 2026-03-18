@@ -46,6 +46,7 @@ import com.wonderingwizard.processors.RtgWaitDurationStep;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TTStateProcessor;
 import com.wonderingwizard.processors.TTUnavailableHandler;
+import com.wonderingwizard.processors.WIAbandonedHandler;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
 import com.wonderingwizard.processors.WorkQueueProcessor;
 import com.wonderingwizard.sideeffects.ActionActivated;
@@ -239,6 +240,7 @@ public class DemoServer {
         this.scheduleRunnerProcessor = new ScheduleRunnerProcessor();
         scheduleRunnerProcessor.registerTTAllocationStrategy(ttStateProcessor);
         scheduleRunnerProcessor.registerSubProcessor(new TTUnavailableHandler());
+        scheduleRunnerProcessor.registerSubProcessor(new WIAbandonedHandler());
         engine.register(scheduleRunnerProcessor);
         engine.register(new DelayProcessor());
         // Take initial snapshot so we can always reset to clean state

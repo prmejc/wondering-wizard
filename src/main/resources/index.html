@@ -904,6 +904,29 @@ class ScheduleView extends HTMLElement {
       });
     });
 
+    // Bind completion reason buttons (⚠ icon on force-completed actions)
+    container.querySelectorAll('.completion-reason-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        self.querySelectorAll('.conditions-popup').forEach(p => p.remove());
+
+        const reason = btn.dataset.completionReason;
+        const popup = document.createElement('div');
+        popup.className = 'conditions-popup';
+        const rect = btn.getBoundingClientRect();
+        const parentRect = self.getBoundingClientRect();
+        popup.style.cssText = 'position:absolute;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,0.4);min-width:160px;max-width:300px;left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 4) + 'px';
+
+        let popupHtml = '<div style="display:flex;justify-content:space-between;align-items:center">';
+        popupHtml += '<span style="color:#f59e0b;font-weight:600">&#9888; ' + reason + '</span>';
+        popupHtml += '<span style="cursor:pointer;font-size:15px;line-height:1;color:var(--text-muted);padding:0 2px;margin-left:12px" onclick="this.closest(\'.conditions-popup\').remove()">&#10005;</span>';
+        popupHtml += '</div>';
+
+        popup.innerHTML = popupHtml;
+        self.appendChild(popup);
+      });
+    });
+
     // Bind conditions buttons
     container.querySelectorAll('.conditions-btn').forEach(btn => {
       btn.addEventListener('click', e => {
@@ -978,7 +1001,7 @@ class ScheduleView extends HTMLElement {
       borderColor = '#94a3b8';
       textOpacity = '0.6';
       extraStyle = 'background-image:repeating-linear-gradient(135deg,transparent,transparent 4px,rgba(148,163,184,0.18) 4px,rgba(148,163,184,0.18) 6px);';
-      statusLabel = '<span style="color:#f59e0b" title="' + action.completionReason + '">&#9888;</span>';
+      statusLabel = '<span class="completion-reason-btn" data-completion-reason="' + action.completionReason.replace(/"/g, '&quot;') + '" style="cursor:pointer;color:#f59e0b" title="' + action.completionReason + '">&#9888;</span>';
     } else if (action.status === 'COMPLETED') {
       bgColor = 'rgba(34,197,94,0.15)'; borderColor = 'var(--completed)'; textOpacity = '0.7';
       statusLabel = '<span style="color:var(--completed)">&#10003;</span>';
