@@ -128,8 +128,7 @@ public class KafkaEventConsumer<E extends Event> {
                     + " [partition=" + partition + ", offset=" + offset + "] to event: " + event);
             engine.processEvent(event);
             if (metrics != null) {
-                double durationSec = (System.nanoTime() - startNs) / 1_000_000_000.0;
-                metrics.recordKafkaMessage(consumerConfig.topic(), durationSec);
+                metrics.recordKafkaMessage(consumerConfig.topic(), System.nanoTime() - startNs);
             }
         } catch (Exception e) {
             logger.log(Level.WARNING,

@@ -66,7 +66,7 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "fillOpacity": 5, "lineWidth": 2 },
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -76,17 +76,17 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(fes_kafka_processing_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(fes_kafka_processing_duration_ms_bucket[5m])) by (le))",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.90, sum(rate(fes_kafka_processing_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.90, sum(rate(fes_kafka_processing_duration_ms_bucket[5m])) by (le))",
           "legendFormat": "p90",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(fes_kafka_processing_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(fes_kafka_processing_duration_ms_bucket[5m])) by (le))",
           "legendFormat": "p99",
           "refId": "C"
         }
@@ -101,7 +101,7 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "fillOpacity": 5, "lineWidth": 2 },
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -111,7 +111,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum by (le, topic) (rate(fes_kafka_processing_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (le, topic) (rate(fes_kafka_processing_duration_ms_bucket[5m])))",
           "legendFormat": "{{topic}}",
           "refId": "A"
         }
@@ -126,7 +126,7 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "fillOpacity": 5, "lineWidth": 2 },
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -136,7 +136,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.90, sum by (le, topic) (rate(fes_kafka_processing_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.90, sum by (le, topic) (rate(fes_kafka_processing_duration_ms_bucket[5m])))",
           "legendFormat": "{{topic}}",
           "refId": "A"
         }
@@ -151,7 +151,7 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "fillOpacity": 5, "lineWidth": 2 },
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -161,7 +161,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum by (le, topic) (rate(fes_kafka_processing_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.99, sum by (le, topic) (rate(fes_kafka_processing_duration_ms_bucket[5m])))",
           "legendFormat": "{{topic}}",
           "refId": "A"
         }
@@ -176,7 +176,7 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "fillOpacity": 5, "lineWidth": 2 },
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -186,17 +186,17 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(fes_engine_processing_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.50, sum(rate(fes_engine_processing_duration_ms_bucket[5m])) by (le))",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.90, sum(rate(fes_engine_processing_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.90, sum(rate(fes_engine_processing_duration_ms_bucket[5m])) by (le))",
           "legendFormat": "p90",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(fes_engine_processing_duration_seconds_bucket[5m])) by (le))",
+          "expr": "histogram_quantile(0.99, sum(rate(fes_engine_processing_duration_ms_bucket[5m])) by (le))",
           "legendFormat": "p99",
           "refId": "C"
         }
@@ -211,7 +211,7 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "fillOpacity": 5, "lineWidth": 2 },
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -221,7 +221,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum by (le, event_type) (rate(fes_engine_processing_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (le, event_type) (rate(fes_engine_processing_duration_ms_bucket[5m])))",
           "legendFormat": "{{event_type}}",
           "refId": "A"
         }
@@ -236,7 +236,7 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "fillOpacity": 5, "lineWidth": 2 },
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -246,7 +246,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.90, sum by (le, event_type) (rate(fes_engine_processing_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.90, sum by (le, event_type) (rate(fes_engine_processing_duration_ms_bucket[5m])))",
           "legendFormat": "{{event_type}}",
           "refId": "A"
         }
@@ -261,7 +261,7 @@
         "defaults": {
           "color": { "mode": "palette-classic" },
           "custom": { "fillOpacity": 5, "lineWidth": 2 },
-          "unit": "s"
+          "unit": "ms"
         },
         "overrides": []
       },
@@ -271,7 +271,7 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.99, sum by (le, event_type) (rate(fes_engine_processing_duration_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.99, sum by (le, event_type) (rate(fes_engine_processing_duration_ms_bucket[5m])))",
           "legendFormat": "{{event_type}}",
           "refId": "A"
         }

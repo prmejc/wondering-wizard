@@ -72,6 +72,18 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.14">
+  <h2>v4.0.14</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li>Metrics now record in milliseconds with custom histogram buckets (0.01ms to 5000ms) &mdash; shows actual per-event processing time instead of coarse second-level buckets</li>
+    <li>Metric names changed to <code>fes_kafka_processing_duration_ms</code> and <code>fes_engine_processing_duration_ms</code></li>
+    <li>Grafana dashboard updated to match new metric names and display ms units</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.13">
   <h2>v4.0.13</h2>
   <div class="date">2026-03-18</div>

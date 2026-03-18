@@ -65,8 +65,7 @@ public class EventProcessingEngine implements Engine {
         }
 
         if (metrics != null) {
-            double durationSec = (System.nanoTime() - startNs) / 1_000_000_000.0;
-            metrics.recordEngineProcessing(event.getClass().getSimpleName(), durationSec);
+            metrics.recordEngineProcessing(event.getClass().getSimpleName(), System.nanoTime() - startNs);
         }
 
         if (allSideEffects.isEmpty()) {
