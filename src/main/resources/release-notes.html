@@ -72,6 +72,23 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.2">
+  <h2>v4.0.2</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>Trucks page now shows an "Assignment" column displaying which WQ / container / action each truck is currently assigned to</li>
+  </ul>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li>Assignment column shows pending actions (not just active ones), matching the engine's truck reservation logic</li>
+    <li>Pending assignments are labeled with <code>(pending)</code> to distinguish from active ones</li>
+    <li>Assignment column updates in real-time via SSE</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.1">
   <h2>v4.0.1</h2>
   <div class="date">2026-03-18</div>

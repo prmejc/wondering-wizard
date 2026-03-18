@@ -127,6 +127,8 @@ let trucks = new Map();
 let serverTrucks = new Map();
 // Set of cheShortName currently being edited
 let editingRows = new Set();
+// Map of cheShortName -> assignment string (e.g. "WQ1 / C0 / DSCH_FROM_TT")
+let truckAssignments = new Map();
 
 async function apiCall(path, body) {
   const opts = body
@@ -153,6 +155,31 @@ function extractTrucks(state) {
   return truckMap;
 }
 
+function extractAssignments(state) {
+  const assignments = new Map();
+  const schedules = state.schedules || [];
+  for (const sched of schedules) {
+    const wqId = sched.workQueueId;
+    const takts = sched.takts || [];
+    for (const takt of takts) {
+      const actions = takt.actions || [];
+      for (const action of actions) {
+        if (action.cheShortName && action.status !== 'COMPLETED') {
+          if (assignments.has(action.cheShortName)) continue;
+          const containers = (action.containerIds || []).join(', ');
+          const desc = action.description || '';
+          let label = 'WQ' + wqId;
+          if (containers) label += ' / ' + containers;
+          if (desc) label += ' / ' + desc;
+          if (action.status === 'PENDING') label += ' (pending)';
+          assignments.set(action.cheShortName, label);
+        }
+      }
+    }
+  }
+  return assignments;
+}
+
 function rowsDiffer(a, b) {
   if (!a || !b) return true;
   for (const f of CHE_FIELDS) {
@@ -162,6 +189,7 @@ function rowsDiffer(a, b) {
 }
 
 function refresh(state) {
+  truckAssignments = extractAssignments(state);
   const incoming = extractTrucks(state);
   serverTrucks = incoming;
 
@@ -196,7 +224,7 @@ function render() {
   for (const f of CHE_FIELDS) {
     html += '<th>' + f.label + '</th>';
   }
-  html += '<th>Actions</th></tr></thead><tbody>';
+  html += '<th>Assignment</th><th>Actions</th></tr></thead><tbody>';
 
   for (const [name, row] of trucks) {
     html += buildRowHtml(name, row);
@@ -214,6 +242,8 @@ function buildRowHtml(name, row) {
   for (const f of CHE_FIELDS) {
     html += '<td>' + inputFor(f, row, name) + '</td>';
   }
+  const assignment = truckAssignments.get(name) || '';
+  html += '<td class="assignment-cell" data-assignment="' + name + '" style="font-size:12px;color:' + (assignment ? 'var(--active)' : 'var(--text-muted)') + '">' + (assignment || '-') + '</td>';
   html += '<td class="row-actions">';
   html += '<button data-send="' + name + '">Send</button>';
   html += '</td></tr>';
@@ -247,6 +277,12 @@ function updateExistingTable(table) {
       const key = el.dataset.field;
       el.value = row[key] ?? '';
     });
+    const assignCell = tr.querySelector('[data-assignment]');
+    if (assignCell) {
+      const assignment = truckAssignments.get(name) || '';
+      assignCell.textContent = assignment || '-';
+      assignCell.style.color = assignment ? 'var(--active)' : 'var(--text-muted)';
+    }
   });
 
   for (const [name, row] of trucks) {
