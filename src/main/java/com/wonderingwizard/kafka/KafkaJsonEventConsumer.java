@@ -2,6 +2,7 @@ package com.wonderingwizard.kafka;
 
 import com.wonderingwizard.engine.Engine;
 import com.wonderingwizard.engine.Event;
+import com.wonderingwizard.metrics.Metrics;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -32,6 +33,7 @@ public class KafkaJsonEventConsumer<E extends Event> {
     private final ConsumerConfiguration consumerConfig;
     private final JsonEventMapper<E> mapper;
     private final Engine engine;
+    private final Metrics metrics;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread consumerThread;
 
@@ -41,10 +43,21 @@ public class KafkaJsonEventConsumer<E extends Event> {
             JsonEventMapper<E> mapper,
             Engine engine
     ) {
+        this(kafkaConfig, consumerConfig, mapper, engine, null);
+    }
+
+    public KafkaJsonEventConsumer(
+            KafkaConfiguration kafkaConfig,
+            ConsumerConfiguration consumerConfig,
+            JsonEventMapper<E> mapper,
+            Engine engine,
+            Metrics metrics
+    ) {
         this.kafkaConfig = kafkaConfig;
         this.consumerConfig = consumerConfig;
         this.mapper = mapper;
         this.engine = engine;
+        this.metrics = metrics;
     }
 
     /**
@@ -106,10 +119,15 @@ public class KafkaJsonEventConsumer<E extends Event> {
 
     private void processRecord(String json, long offset, int partition) {
         try {
+            long startNs = System.nanoTime();
             E event = mapper.map(json);
             logger.fine("Mapped Kafka JSON message from topic " + consumerConfig.topic()
                     + " [partition=" + partition + ", offset=" + offset + "] to event: " + event);
             engine.processEvent(event);
+            if (metrics != null) {
+                double durationSec = (System.nanoTime() - startNs) / 1_000_000_000.0;
+                metrics.recordKafkaMessage(consumerConfig.topic(), durationSec);
+            }
         } catch (Exception e) {
             logger.log(Level.WARNING,
                     "Failed to process JSON record from topic " + consumerConfig.topic()

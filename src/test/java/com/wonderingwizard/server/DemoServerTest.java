@@ -374,7 +374,7 @@ class DemoServerTest {
             assertEquals("application/json; charset=UTF-8", conn.getHeaderField("Content-Type"));
             String body = new String(conn.getInputStream().readAllBytes());
             assertTrue(body.contains("\"version\""));
-            assertTrue(body.contains("4.0.12"));
+            assertTrue(body.contains("4.0.13"));
         }
 
         @Test

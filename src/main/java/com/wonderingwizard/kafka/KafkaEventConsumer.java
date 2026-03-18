@@ -2,6 +2,7 @@ package com.wonderingwizard.kafka;
 
 import com.wonderingwizard.engine.Engine;
 import com.wonderingwizard.engine.Event;
+import com.wonderingwizard.metrics.Metrics;
 import io.confluent.kafka.serializers.KafkaAvroDeserializer;
 import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
 import org.apache.avro.generic.GenericRecord;
@@ -35,6 +36,7 @@ public class KafkaEventConsumer<E extends Event> {
     private final ConsumerConfiguration consumerConfig;
     private final EventMapper<E> mapper;
     private final Engine engine;
+    private final Metrics metrics;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread consumerThread;
 
@@ -44,10 +46,21 @@ public class KafkaEventConsumer<E extends Event> {
             EventMapper<E> mapper,
             Engine engine
     ) {
+        this(kafkaConfig, consumerConfig, mapper, engine, null);
+    }
+
+    public KafkaEventConsumer(
+            KafkaConfiguration kafkaConfig,
+            ConsumerConfiguration consumerConfig,
+            EventMapper<E> mapper,
+            Engine engine,
+            Metrics metrics
+    ) {
         this.kafkaConfig = kafkaConfig;
         this.consumerConfig = consumerConfig;
         this.mapper = mapper;
         this.engine = engine;
+        this.metrics = metrics;
     }
 
     /**
@@ -109,10 +122,15 @@ public class KafkaEventConsumer<E extends Event> {
 
     private void processRecord(GenericRecord record, long offset, int partition) {
         try {
+            long startNs = System.nanoTime();
             E event = mapper.map(record);
             logger.fine("Mapped Kafka message from topic " + consumerConfig.topic()
                     + " [partition=" + partition + ", offset=" + offset + "] to event: " + event);
             engine.processEvent(event);
+            if (metrics != null) {
+                double durationSec = (System.nanoTime() - startNs) / 1_000_000_000.0;
+                metrics.recordKafkaMessage(consumerConfig.topic(), durationSec);
+            }
         } catch (Exception e) {
             logger.log(Level.WARNING,
                     "Failed to process record from topic " + consumerConfig.topic()

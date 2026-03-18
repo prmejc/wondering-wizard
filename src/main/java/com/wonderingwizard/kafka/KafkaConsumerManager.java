@@ -2,6 +2,7 @@ package com.wonderingwizard.kafka;
 
 import com.wonderingwizard.engine.Engine;
 import com.wonderingwizard.engine.Event;
+import com.wonderingwizard.metrics.Metrics;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -21,12 +22,18 @@ public class KafkaConsumerManager {
 
     private final KafkaConfiguration kafkaConfig;
     private final Engine engine;
+    private final Metrics metrics;
     private final List<KafkaEventConsumer<?>> consumers = new ArrayList<>();
     private final List<KafkaJsonEventConsumer<?>> jsonConsumers = new ArrayList<>();
 
     public KafkaConsumerManager(KafkaConfiguration kafkaConfig, Engine engine) {
+        this(kafkaConfig, engine, null);
+    }
+
+    public KafkaConsumerManager(KafkaConfiguration kafkaConfig, Engine engine, Metrics metrics) {
         this.kafkaConfig = kafkaConfig;
         this.engine = engine;
+        this.metrics = metrics;
     }
 
     /**
@@ -41,7 +48,7 @@ public class KafkaConsumerManager {
             ConsumerConfiguration consumerConfig,
             EventMapper<E> mapper
     ) {
-        var consumer = new KafkaEventConsumer<>(kafkaConfig, consumerConfig, mapper, engine);
+        var consumer = new KafkaEventConsumer<>(kafkaConfig, consumerConfig, mapper, engine, metrics);
         consumers.add(consumer);
         logger.info("Registered Kafka consumer for topic: " + consumerConfig.topic());
         return this;
@@ -59,7 +66,7 @@ public class KafkaConsumerManager {
             ConsumerConfiguration consumerConfig,
             JsonEventMapper<E> mapper
     ) {
-        var consumer = new KafkaJsonEventConsumer<>(kafkaConfig, consumerConfig, mapper, engine);
+        var consumer = new KafkaJsonEventConsumer<>(kafkaConfig, consumerConfig, mapper, engine, metrics);
         jsonConsumers.add(consumer);
         logger.info("Registered Kafka JSON consumer for topic: " + consumerConfig.topic());
         return this;

@@ -72,6 +72,19 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.13">
+  <h2>v4.0.13</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>OpenTelemetry metrics with Prometheus exporter on port 9464 &mdash; <code>fes_kafka_messages_total</code> (counter by topic), <code>fes_kafka_processing_duration_seconds</code> (histogram by topic), <code>fes_engine_processing_duration_seconds</code> (histogram by event type)</li>
+    <li>Grafana dashboard (<code>grafana/fes-dashboard.json</code>) with 12 panels: throughput, p50/p90/p99 per topic and per event type</li>
+    <li><code>POST /api/che-logical-position</code> endpoint for sending position events via HTTP</li>
+    <li>E2E performance test that publishes 10k Avro CheLogicalPosition messages to Kafka and verifies processing within 20s</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.12">
   <h2>v4.0.12</h2>
   <div class="date">2026-03-18</div>

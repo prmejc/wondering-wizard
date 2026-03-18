@@ -24,6 +24,7 @@ import com.wonderingwizard.kafka.ActionActivatedToEquipmentInstructionMapper;
 import com.wonderingwizard.kafka.AssetEventMapper;
 import com.wonderingwizard.kafka.KafkaConsumerManager;
 import com.wonderingwizard.kafka.KafkaSideEffectPublisher;
+import com.wonderingwizard.events.CheLogicalPositionEvent;
 import com.wonderingwizard.kafka.CheLogicalPositionEventMapper;
 import com.wonderingwizard.kafka.ContainerHandlingEquipmentEventMapper;
 import com.wonderingwizard.kafka.WorkInstructionEventMapper;
@@ -100,6 +101,7 @@ public class DemoServer {
     private static final Logger logger = Logger.getLogger(DemoServer.class.getName());
 
     private final Engine engine;
+    private final EventProcessingEngine baseEngine;
     private final Settings settings;
     private final ScheduleRunnerProcessor scheduleRunnerProcessor;
     private final TTStateProcessor ttStateProcessor;
@@ -110,6 +112,7 @@ public class DemoServer {
     private HttpServer httpServer;
     private KafkaConsumerManager kafkaConsumerManager;
     private KafkaSideEffectPublisher sideEffectPublisher;
+    private com.wonderingwizard.metrics.Metrics metrics;
     private final SseConnectionManager sseManager = new SseConnectionManager();
     private static final long BROADCAST_DEBOUNCE_MS = 100;
     private volatile boolean broadcastPending;
@@ -230,7 +233,7 @@ public class DemoServer {
 
     public DemoServer(Settings settings) {
         this.settings = settings;
-        EventProcessingEngine baseEngine = new EventProcessingEngine();
+        this.baseEngine = new EventProcessingEngine();
         this.engine = new EventPropagatingEngine(baseEngine);
         engine.register(new EventLogProcessor());
         engine.register(new TimeAlarmProcessor());
@@ -259,6 +262,7 @@ public class DemoServer {
     DemoServer(Engine engine) {
         this.settings = Settings.load();
         this.engine = engine;
+        this.baseEngine = null;
         this.scheduleRunnerProcessor = null;
         this.ttStateProcessor = null;
     }
@@ -291,6 +295,7 @@ public class DemoServer {
         httpServer.createContext("/pathfinder", this::handlePathfinder);
         httpServer.createContext("/trucks", this::handleTrucks);
         httpServer.createContext("/api/container-handling-equipment", this::handleContainerHandlingEquipment);
+        httpServer.createContext("/api/che-logical-position", this::handleCheLogicalPosition);
 
         httpServer.createContext("/api/pathfind", this::handlePathfind);
         httpServer.createContext("/api/digitalmap", this::handleDigitalMap);
@@ -336,6 +341,9 @@ public class DemoServer {
     }
 
     private void startKafkaConsumers() {
+        // Initialize OTEL metrics with Prometheus exporter on port 9464
+        this.metrics = new com.wonderingwizard.metrics.Metrics();
+        baseEngine.setMetrics(this.metrics);
         // Wrap the engine so Kafka events are recorded as steps in the viewer
         Engine stepRecordingEngine = new Engine() {
             @Override
@@ -369,7 +377,7 @@ public class DemoServer {
             }
         };
 
-        kafkaConsumerManager = new KafkaConsumerManager(settings.kafkaConfiguration(), stepRecordingEngine);
+        kafkaConsumerManager = new KafkaConsumerManager(settings.kafkaConfiguration(), stepRecordingEngine, metrics);
         kafkaConsumerManager.register(
                 settings.workQueueConsumerConfiguration(),
                 new WorkQueueEventMapper()
@@ -1180,6 +1188,39 @@ public class DemoServer {
                     eventType, cheId, opType, cdhTerminalCode, messageSequenceNumber,
                     cheShortName, cheStatus, cheKind, chePoolId, cheJobStepState, sourceTsMs);
             StepResult result = processStep("CHE: " + cheShortName, event);
+
+            sendJsonResponse(exchange, 200, JsonSerializer.serialize(
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handleCheLogicalPosition(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            String cheShortName = requireField(body, "cheShortName");
+            long currentMapNodeId = body.get("currentMapNodeId") != null && !body.get("currentMapNodeId").isEmpty()
+                    ? Long.parseLong(body.get("currentMapNodeId")) : 0L;
+            String currentMapNodeName = body.getOrDefault("currentMapNodeName", null);
+            double latitude = body.get("latitude") != null && !body.get("latitude").isEmpty()
+                    ? Double.parseDouble(body.get("latitude")) : 0.0;
+            double longitude = body.get("longitude") != null && !body.get("longitude").isEmpty()
+                    ? Double.parseDouble(body.get("longitude")) : 0.0;
+            double hdop = body.get("hdop") != null && !body.get("hdop").isEmpty()
+                    ? Double.parseDouble(body.get("hdop")) : 0.0;
+            long timestampMs = body.get("timestampMs") != null && !body.get("timestampMs").isEmpty()
+                    ? Long.parseLong(body.get("timestampMs")) : System.currentTimeMillis();
+
+            CheLogicalPositionEvent event = new CheLogicalPositionEvent(
+                    cheShortName, currentMapNodeId, currentMapNodeName,
+                    latitude, longitude, hdop, timestampMs);
+            StepResult result = processStep("Position: " + cheShortName, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
                     Map.of("step", result.step(), "sideEffects", result.sideEffects())));

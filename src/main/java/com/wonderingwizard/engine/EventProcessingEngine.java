@@ -1,5 +1,7 @@
 package com.wonderingwizard.engine;
 
+import com.wonderingwizard.metrics.Metrics;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -20,6 +22,12 @@ public class EventProcessingEngine implements Engine {
 
     private final List<EventProcessor> processors = new ArrayList<>();
     private final List<Map<EventProcessor, Object>> stateHistory = new ArrayList<>();
+    private Metrics metrics;
+
+    /** Set optional metrics collector for per-event-type processing duration. */
+    public void setMetrics(Metrics metrics) {
+        this.metrics = metrics;
+    }
 
     /**
      * Register an event processor with this engine.
@@ -47,11 +55,18 @@ public class EventProcessingEngine implements Engine {
     public List<SideEffect> processEvent(Event event) {
         logger.info("Processing event: " + event);
 
+        long startNs = metrics != null ? System.nanoTime() : 0;
+
         List<SideEffect> allSideEffects = new ArrayList<>();
 
         for (EventProcessor processor : processors) {
             List<SideEffect> sideEffects = processor.process(event);
             allSideEffects.addAll(sideEffects);
+        }
+
+        if (metrics != null) {
+            double durationSec = (System.nanoTime() - startNs) / 1_000_000_000.0;
+            metrics.recordEngineProcessing(event.getClass().getSimpleName(), durationSec);
         }
 
         if (allSideEffects.isEmpty()) {
