@@ -6,7 +6,9 @@ package com.wonderingwizard.domain.takt;
 public enum CompletionReason {
     TT_UNAVAILABLE("TT Unavailable"),
     WI_ABANDONED("WI Abandoned"),
-    WI_RESET("WI Reset");
+    WI_RESET("WI Reset"),
+    WI_REVERTED("WI Reverted"),
+    WQ_CHANGE("WQ Change");
 
     private final String displayName;
 

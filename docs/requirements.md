@@ -1543,3 +1543,75 @@ mvn test -Dtest=WIResetHandlerTest
 - `src/main/java/com/wonderingwizard/processors/WIResetHandler.java` (new — WI Reset logic)
 - `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — WIResetHandler registration)
 - `src/test/java/com/wonderingwizard/processors/WIResetHandlerTest.java` (new — 7 tests)
+
+### F-27: WI Reverted Event Handling
+
+**Status:** Implemented
+
+**Description:**
+Handle the case when a work instruction is reverted (WI Reverted event). The boundary is TT_DRIVE_UNDER_QC completed:
+
+1. **Before TT_DRIVE_UNDER_QC is completed:** All remaining actions for the affected container and its twin are completed with reason "WI Reverted".
+2. **After TT_DRIVE_UNDER_QC is completed:** The event is ignored — the workflow has progressed too far to revert.
+
+**Requested Behavior:**
+- `WorkInstructionEvent` with `eventType == "WI Reverted"` triggers the handling
+- The affected container is found by matching the event's `workInstructionId` against actions' `workInstructions()` list
+- The twin is found via shared `cheShortName` on TT actions
+- If `TT_DRIVE_UNDER_QC` for the affected container is COMPLETED, the event is ignored
+- Otherwise, all remaining actions for container + twin are completed with `CompletionReason.WI_REVERTED`
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Send WI Reverted before TT_DRIVE_UNDER_QC completed | All actions for container + twin completed with WI_REVERTED |
+| 2 | Send WI Reverted while TT_DRIVE_UNDER_QC is active | All actions cancelled (active != completed) |
+| 3 | Send WI Reverted after TT_DRIVE_UNDER_QC completed | Ignored, no effect |
+| 4 | Send non-WI-Reverted event | No effect from WIRevertHandler |
+| 5 | Send WI Reverted with unknown workInstructionId | No effect |
+
+**Test Execution:**
+```bash
+mvn test -Dtest=WIRevertHandlerTest
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/domain/takt/CompletionReason.java` (modified — added WI_REVERTED)
+- `src/main/java/com/wonderingwizard/processors/WIRevertHandler.java` (new — WI Reverted logic)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — WIRevertHandler registration)
+- `src/test/java/com/wonderingwizard/processors/WIRevertHandlerTest.java` (new — 9 tests)
+
+### F-28: WQ Change Event Handling
+
+**Status:** Implemented
+
+**Description:**
+Handle the case when a work queue change event arrives (WQ Change event type on a WorkInstructionEvent). This behaves identically to WI Reset — all remaining actions for the affected container and its twin are immediately cancelled with reason "WQ Change", with no boundary.
+
+**Requested Behavior:**
+- `WorkInstructionEvent` with `eventType == "WQ Change"` triggers the handling
+- The affected container is found by matching the event's `workInstructionId` against actions' `workInstructions()` list
+- The twin is found via shared `cheShortName` on TT actions
+- All remaining (non-completed) actions for container + twin are completed with `CompletionReason.WQ_CHANGE`
+- Takt completion is cascaded after cancellation
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Send WQ Change before handover | All actions for container + twin completed with WQ_CHANGE |
+| 2 | Send WQ Change after handover | All actions for container + twin completed with WQ_CHANGE |
+| 3 | Send non-WQ-Change event | No effect from WQChangeHandler |
+| 4 | Send WQ Change with unknown workInstructionId | No effect |
+
+**Test Execution:**
+```bash
+mvn test -Dtest=WQChangeHandlerTest
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/domain/takt/CompletionReason.java` (modified — added WQ_CHANGE)
+- `src/main/java/com/wonderingwizard/processors/WQChangeHandler.java` (new — WQ Change logic)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — WQChangeHandler registration)
+- `src/test/java/com/wonderingwizard/processors/WQChangeHandlerTest.java` (new — 7 tests)

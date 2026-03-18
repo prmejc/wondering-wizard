@@ -48,6 +48,8 @@ import com.wonderingwizard.processors.TTStateProcessor;
 import com.wonderingwizard.processors.TTUnavailableHandler;
 import com.wonderingwizard.processors.WIAbandonedHandler;
 import com.wonderingwizard.processors.WIResetHandler;
+import com.wonderingwizard.processors.WIRevertHandler;
+import com.wonderingwizard.processors.WQChangeHandler;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
 import com.wonderingwizard.processors.WorkQueueProcessor;
 import com.wonderingwizard.sideeffects.ActionActivated;
@@ -243,6 +245,8 @@ public class DemoServer {
         scheduleRunnerProcessor.registerSubProcessor(new TTUnavailableHandler());
         scheduleRunnerProcessor.registerSubProcessor(new WIAbandonedHandler());
         scheduleRunnerProcessor.registerSubProcessor(new WIResetHandler());
+        scheduleRunnerProcessor.registerSubProcessor(new WIRevertHandler());
+        scheduleRunnerProcessor.registerSubProcessor(new WQChangeHandler());
         engine.register(scheduleRunnerProcessor);
         engine.register(new DelayProcessor());
         // Take initial snapshot so we can always reset to clean state

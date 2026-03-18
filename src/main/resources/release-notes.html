@@ -72,6 +72,17 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.8">
+  <h2>v4.0.8</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>WI Reverted event handling &mdash; cancels all actions for the affected container and its twin when <code>TT_DRIVE_UNDER_QC</code> has not yet completed; ignored after that boundary</li>
+    <li>WQ Change event handling &mdash; cancels all actions for the affected container and its twin with reason <code>WQ_CHANGE</code> (no boundary, always cancels)</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.7">
   <h2>v4.0.7</h2>
   <div class="date">2026-03-18</div>
