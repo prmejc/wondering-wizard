@@ -2,6 +2,7 @@ package com.wonderingwizard.server;
 
 import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.ActionCondition;
+import com.wonderingwizard.domain.takt.ActionStatus;
 import com.wonderingwizard.domain.takt.ActionConditionContext;
 import com.wonderingwizard.domain.takt.ActionDependencyCondition;
 import com.wonderingwizard.domain.takt.ActionType;
@@ -749,7 +750,7 @@ public class DemoServer {
                 .toList();
     }
 
-    private static ActionState mapActionStatus(ScheduleRunnerProcessor.ActionStatus status) {
+    private static ActionState mapActionStatus(ActionStatus status) {
         return switch (status) {
             case COMPLETED -> ActionState.COMPLETED;
             case ACTIVE -> ActionState.ACTIVE;

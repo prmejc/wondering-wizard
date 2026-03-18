@@ -1,6 +1,7 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionStatus;
 import com.wonderingwizard.domain.takt.CompletionReason;
 import com.wonderingwizard.domain.takt.ConditionContext;
 import com.wonderingwizard.domain.takt.DependencyCondition;
@@ -26,6 +27,7 @@ import com.wonderingwizard.sideeffects.TaktActivated;
 import com.wonderingwizard.sideeffects.TaktCompleted;
 import com.wonderingwizard.sideeffects.TruckAssigned;
 import com.wonderingwizard.sideeffects.TruckUnassigned;
+import com.wonderingwizard.sideeffects.WorkInstructionCanceled;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -65,8 +67,6 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     private static class ScheduleState {
         Instant estimatedMoveTime;
         List<Takt> takts;
-        Set<UUID> activeActionIds;
-        Set<UUID> completedActionIds;
         Map<UUID, ActionInfo> actionLookup;
         Map<String, TaktState> taktStates;
         Map<String, Instant> actualStartTimes;
@@ -88,8 +88,6 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         ScheduleState(Instant estimatedMoveTime, List<Takt> takts) {
             this.estimatedMoveTime = estimatedMoveTime;
             this.takts = takts;
-            this.activeActionIds = new HashSet<>();
-            this.completedActionIds = new HashSet<>();
             this.actionLookup = new HashMap<>();
             this.taktStates = new HashMap<>();
             this.actualStartTimes = new HashMap<>();
@@ -144,13 +142,13 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                     continue;
                 }
                 UUID actionId = info.action().id();
-                if (activeActionIds.contains(actionId) || completedActionIds.contains(actionId)) {
+                if (info.action().status() != ActionStatus.PENDING) {
                     continue;
                 }
                 Set<String> actionOverrides = overriddenActionConditions.getOrDefault(actionId, Set.of());
                 boolean depsOverridden = actionOverrides.contains("action-dependencies");
                 Set<UUID> dependencies = info.action().dependsOn();
-                boolean depsSatisfied = depsOverridden || dependencies == null || dependencies.isEmpty() || completedActionIds.containsAll(dependencies);
+                boolean depsSatisfied = depsOverridden || dependencies == null || dependencies.isEmpty() || areDependenciesCompleted(dependencies);
                 if (!depsSatisfied) {
                     continue;
                 }
@@ -163,6 +161,26 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 result.add(actionId);
             }
             return result;
+        }
+
+        boolean areDependenciesCompleted(Set<UUID> dependencies) {
+            for (UUID depId : dependencies) {
+                ActionInfo depInfo = actionLookup.get(depId);
+                if (depInfo == null || depInfo.action().status() != ActionStatus.COMPLETED) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        /**
+         * Updates the action's status in the actionLookup.
+         */
+        void setActionStatus(UUID actionId, ActionStatus status) {
+            ActionInfo info = actionLookup.get(actionId);
+            if (info != null) {
+                actionLookup.put(actionId, new ActionInfo(info.taktName(), info.action().withStatus(status)));
+            }
         }
 
         boolean areEventGatesSatisfied(UUID actionId, Action action, Set<String> actionOverrides) {
@@ -191,7 +209,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         boolean isTaktFullyCompleted(String taktName) {
             for (ActionInfo info : actionLookup.values()) {
                 if (info.taktName().equals(taktName)) {
-                    if (!completedActionIds.contains(info.action().id())) {
+                    if (info.action().status() != ActionStatus.COMPLETED) {
                         return false;
                     }
                 }
@@ -201,8 +219,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
         ScheduleState copy() {
             ScheduleState copy = new ScheduleState(this.estimatedMoveTime, new ArrayList<>(this.takts));
-            copy.activeActionIds = new HashSet<>(this.activeActionIds);
-            copy.completedActionIds = new HashSet<>(this.completedActionIds);
+            copy.actionLookup = new HashMap<>(this.actionLookup);
             copy.taktStates = new HashMap<>(this.taktStates);
             copy.actualStartTimes = new HashMap<>(this.actualStartTimes);
             copy.taktConditions = new LinkedHashMap<>();
@@ -233,17 +250,15 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
     private static final Logger logger = Logger.getLogger(ScheduleRunnerProcessor.class.getName());
 
-    public enum ActionStatus { PENDING, ACTIVE, COMPLETED }
-
     /**
      * Returns the current status of an action in a schedule.
      */
     public ActionStatus getActionStatus(long workQueueId, UUID actionId) {
         ScheduleState state = scheduleStates.get(workQueueId);
         if (state == null) return ActionStatus.PENDING;
-        if (state.completedActionIds.contains(actionId)) return ActionStatus.COMPLETED;
-        if (state.activeActionIds.contains(actionId)) return ActionStatus.ACTIVE;
-        return ActionStatus.PENDING;
+        ActionInfo info = state.actionLookup.get(actionId);
+        if (info == null) return ActionStatus.PENDING;
+        return info.action().status();
     }
 
     /**
@@ -363,19 +378,24 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 if (state == null) return List.of();
                 ActionInfo info = state.actionLookup.get(actionId);
                 if (info == null) return List.of();
-                if (state.completedActionIds.contains(actionId)) return List.of();
+                if (info.action().status() == ActionStatus.COMPLETED) return List.of();
 
-                // Update the action with completion reason
-                Action updatedAction = info.action().withCompletionReason(reason);
+                // Update the action with completion reason and status
+                Action updatedAction = info.action().withCompletionReason(reason).withStatus(ActionStatus.COMPLETED);
                 state.actionLookup.put(actionId, new ActionInfo(info.taktName(), updatedAction));
 
-                // Move from active to completed
-                state.activeActionIds.remove(actionId);
-                state.completedActionIds.add(actionId);
-
-                return List.of(new ActionCompleted(
+                List<SideEffect> effects = new ArrayList<>();
+                effects.add(new ActionCompleted(
                         actionId, workQueueId, info.taktName(),
                         updatedAction.description(), currentTime, reason));
+
+                // Emit WorkInstructionCanceled for each WI so WorkQueueProcessor
+                // can exclude canceled containers from reschedule decisions
+                for (var wi : updatedAction.workInstructions()) {
+                    effects.add(new WorkInstructionCanceled(workQueueId, wi.workInstructionId()));
+                }
+
+                return effects;
             }
 
             @Override
@@ -388,12 +408,9 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 String cheShortName = action.cheShortName();
                 if (cheShortName == null) return List.of();
 
-                // Clear truck assignment
-                Action resetAction = action.withTruckAssignment(null, null);
+                // Clear truck assignment and reset to pending
+                Action resetAction = action.withTruckAssignment(null, null).withStatus(ActionStatus.PENDING);
                 state.actionLookup.put(actionId, new ActionInfo(info.taktName(), resetAction));
-
-                // Remove from active if present
-                state.activeActionIds.remove(actionId);
 
                 return List.of(new TruckUnassigned(actionId, workQueueId, cheShortName));
             }
@@ -426,7 +443,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             for (ActionInfo info : state.actionLookup.values()) {
                 Action action = info.action();
                 if (action.cheShortName() != null
-                        && !state.completedActionIds.contains(action.id())
+                        && action.status() != ActionStatus.COMPLETED
                         // Don't count skipWhenGatesSatisfied actions (e.g., drive to buffer) —
                         // they auto-complete instantly and shouldn't hold a truck reservation
                         && !action.skipWhenGatesSatisfied()) {
@@ -513,7 +530,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         for (Takt takt : oldState.takts) {
             Set<String> completedKeys = new HashSet<>();
             for (Action action : takt.actions()) {
-                if (oldState.completedActionIds.contains(action.id())) {
+                ActionInfo oldInfo = oldState.actionLookup.get(action.id());
+                if (oldInfo != null && oldInfo.action().status() == ActionStatus.COMPLETED) {
                     completedKeys.add(action.actionType() + ":" + action.containerIndex());
                 }
             }
@@ -531,7 +549,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 // Completed takts: mark takt and all actions as completed
                 newState.taktStates.put(taktName, TaktState.COMPLETED);
                 for (Action action : newTakt.actions()) {
-                    newState.completedActionIds.add(action.id());
+                    newState.setActionStatus(action.id(), ActionStatus.COMPLETED);
                 }
             } else if (oldTaktState == TaktState.ACTIVE) {
                 // Active takts: transfer completed action states by (actionType, containerIndex)
@@ -543,7 +561,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 for (Action action : newTakt.actions()) {
                     String key = action.actionType() + ":" + action.containerIndex();
                     if (completedKeys.contains(key)) {
-                        newState.completedActionIds.add(action.id());
+                        newState.setActionStatus(action.id(), ActionStatus.COMPLETED);
                     }
                 }
 
@@ -613,8 +631,9 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             ActionInfo sourceInfo = newState.actionLookup.get(sourceId);
             if (sourceInfo == null) continue;
             UUID oldSourceId = oldActionKeyToId.get(actionKey(sourceInfo.action()));
-            if (oldSourceId != null &&
-                    (oldState.activeActionIds.contains(oldSourceId) || oldState.completedActionIds.contains(oldSourceId))) {
+            ActionInfo oldSourceInfo = oldSourceId != null ? oldState.actionLookup.get(oldSourceId) : null;
+            if (oldSourceInfo != null &&
+                    (oldSourceInfo.action().status() == ActionStatus.ACTIVE || oldSourceInfo.action().status() == ActionStatus.COMPLETED)) {
                 for (EventGateCondition gate : newAction.eventGates()) {
                     newState.armedEventGates
                             .computeIfAbsent(newActionId, k -> new HashSet<>())
@@ -848,7 +867,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
      */
     private List<SideEffect> tryForceActivateAction(long workQueueId, ScheduleState state,
                                                       UUID actionId, ActionInfo actionInfo) {
-        if (state.activeActionIds.contains(actionId) || state.completedActionIds.contains(actionId)) {
+        if (actionInfo.action().status() != ActionStatus.PENDING) {
             return List.of();
         }
 
@@ -874,7 +893,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         } else {
             // Non-first action: has action-dependencies condition
             boolean depsComplete = action.dependsOn() == null || action.dependsOn().isEmpty()
-                    || state.completedActionIds.containsAll(action.dependsOn());
+                    || state.areDependenciesCompleted(action.dependsOn());
             if (!depsComplete && !overrides.contains("action-dependencies")) {
                 return List.of();
             }
@@ -889,7 +908,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         // Auto-complete: if skipWhenGatesSatisfied and all gates are already satisfied, skip
         if (action.skipWhenGatesSatisfied()
                 && state.areEventGatesSatisfied(actionId, action, overrides)) {
-            state.completedActionIds.add(actionId);
+            state.setActionStatus(actionId, ActionStatus.COMPLETED);
             return List.of(new ActionCompleted(
                     actionId, workQueueId, taktName,
                     action.description(), this.currentTime
@@ -897,7 +916,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
 
         // All conditions met — activate the action
-        state.activeActionIds.add(actionId);
+        state.setActionStatus(actionId, ActionStatus.ACTIVE);
         armEventGatesForAction(state, actionId);
         return List.of(new ActionActivated(
                 actionId, workQueueId, taktName,
@@ -957,8 +976,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 for (ActionInfo info : state.actionLookup.values()) {
                     if (state.taktStates.get(info.taktName()) == TaktState.WAITING) {
                         UUID actionId = info.action().id();
-                        if (!state.activeActionIds.contains(actionId)
-                                && !state.completedActionIds.contains(actionId)) {
+                        if (info.action().status() == ActionStatus.PENDING) {
                             List<SideEffect> forceEffects = tryForceActivateAction(wqId, state, actionId, info);
                             if (!forceEffects.isEmpty()) {
                                 allEffects.addAll(forceEffects);
@@ -988,7 +1006,14 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     private List<SideEffect> tryActivateTakts(long workQueueId, ScheduleState state) {
         List<SideEffect> sideEffects = new ArrayList<>();
 
-        ConditionContext context = new ConditionContext(this.currentTime, state.completedActionIds);
+        // Build completedActionIds on-the-fly for ConditionContext
+        Set<UUID> completedActionIds = new HashSet<>();
+        for (ActionInfo info : state.actionLookup.values()) {
+            if (info.action().status() == ActionStatus.COMPLETED) {
+                completedActionIds.add(info.action().id());
+            }
+        }
+        ConditionContext context = new ConditionContext(this.currentTime, completedActionIds);
 
         for (int i = 0; i < state.takts.size(); i++) {
             Takt takt = state.takts.get(i);
@@ -1120,7 +1145,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 // skip this action (mark completed without activating).
                 if (action.skipWhenGatesSatisfied()
                         && state.areEventGatesSatisfied(actionId, action, overrides)) {
-                    state.completedActionIds.add(actionId);
+                    state.setActionStatus(actionId, ActionStatus.COMPLETED);
                     sideEffects.add(new ActionCompleted(
                             actionId, workQueueId, actionInfo.taktName(),
                             action.description(), this.currentTime
@@ -1161,7 +1186,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                     }
                 }
 
-                state.activeActionIds.add(actionId);
+                state.setActionStatus(actionId, ActionStatus.ACTIVE);
                 armEventGatesForAction(state, actionId);
 
                 sideEffects.add(new ActionActivated(
@@ -1188,16 +1213,15 @@ public class ScheduleRunnerProcessor implements EventProcessor {
      */
     private List<SideEffect> autoCompleteGatedActions(long workQueueId, ScheduleState state) {
         List<SideEffect> sideEffects = new ArrayList<>();
-        for (UUID actionId : List.copyOf(state.activeActionIds)) {
-            ActionInfo info = state.actionLookup.get(actionId);
-            if (info == null) continue;
+        for (ActionInfo info : List.copyOf(state.actionLookup.values())) {
             Action action = info.action();
+            if (action.status() != ActionStatus.ACTIVE) continue;
             if (!action.skipWhenGatesSatisfied()) continue;
+            UUID actionId = action.id();
             Set<String> overrides = state.overriddenActionConditions.getOrDefault(actionId, Set.of());
             if (!state.areEventGatesSatisfied(actionId, action, overrides)) continue;
 
-            state.activeActionIds.remove(actionId);
-            state.completedActionIds.add(actionId);
+            state.setActionStatus(actionId, ActionStatus.COMPLETED);
             sideEffects.add(new ActionCompleted(
                     actionId, workQueueId, info.taktName(),
                     action.description(), this.currentTime
@@ -1215,18 +1239,17 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             return List.of();
         }
 
-        if (!state.activeActionIds.contains(completedActionId)) {
-            return List.of();
-        }
-
         ActionInfo completedActionInfo = state.actionLookup.get(completedActionId);
         if (completedActionInfo == null) {
             return List.of();
         }
 
+        if (completedActionInfo.action().status() != ActionStatus.ACTIVE) {
+            return List.of();
+        }
+
         // Move action from active to completed
-        state.activeActionIds.remove(completedActionId);
-        state.completedActionIds.add(completedActionId);
+        state.setActionStatus(completedActionId, ActionStatus.COMPLETED);
 
         // Produce ActionCompleted side effect
         return List.of(new ActionCompleted(

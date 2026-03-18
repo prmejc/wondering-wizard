@@ -1,6 +1,7 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionStatus;
 import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.EventGateCondition;
@@ -577,10 +578,10 @@ class ScheduleRunnerProcessorTest {
             processor.process(new ScheduleCreated(1L, newTakts, EMT));
 
             // TAKT100 was completed — processor should report completed state for new UUIDs
-            assertEquals(ScheduleRunnerProcessor.ActionStatus.COMPLETED,
+            assertEquals(ActionStatus.COMPLETED,
                     processor.getActionStatus(1L, newTakt1Action1),
                     "QC_LIFT should be COMPLETED after replan (transferred by actionType:containerIndex)");
-            assertEquals(ScheduleRunnerProcessor.ActionStatus.COMPLETED,
+            assertEquals(ActionStatus.COMPLETED,
                     processor.getActionStatus(1L, newTakt1Action2),
                     "QC_PLACE should be COMPLETED after replan");
             assertEquals(ScheduleRunnerProcessor.TaktState.COMPLETED,

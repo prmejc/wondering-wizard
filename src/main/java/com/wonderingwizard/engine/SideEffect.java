@@ -17,5 +17,6 @@ public sealed interface SideEffect permits
         com.wonderingwizard.sideeffects.WorkInstructionReassigned,
         com.wonderingwizard.sideeffects.TTStateUpdated,
         com.wonderingwizard.sideeffects.TruckAssigned,
-        com.wonderingwizard.sideeffects.TruckUnassigned {
+        com.wonderingwizard.sideeffects.TruckUnassigned,
+        com.wonderingwizard.sideeffects.WorkInstructionCanceled {
 }

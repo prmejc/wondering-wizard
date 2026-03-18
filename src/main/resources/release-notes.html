@@ -72,6 +72,23 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.4">
+  <h2>v4.0.4</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li><code>ActionStatus</code> moved from <code>ScheduleRunnerProcessor</code> inner enum to a domain-level enum on the <code>Action</code> record &mdash; action status is now a first-class field (<code>action.status()</code>) instead of tracked externally via separate sets</li>
+    <li>Canceled containers no longer trigger spurious reschedules &mdash; when a container's actions are force-completed (e.g., TT unavailable), its QC Discharged event is ignored and the non-canceled twin's discharge is correctly recognized as the expected next WI</li>
+  </ul>
+
+  <h3>Internal</h3>
+  <ul>
+    <li>Removed <code>activeActionIds</code> and <code>completedActionIds</code> sets from <code>ScheduleState</code>; all status tracking now lives on the <code>Action</code> record via <code>withStatus()</code></li>
+    <li>New <code>WorkInstructionCanceled</code> side effect (propagating event) informs <code>WorkQueueProcessor</code> when work instructions are canceled, preventing false order-mismatch reschedules</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.3">
   <h2>v4.0.3</h2>
   <div class="date">2026-03-18</div>

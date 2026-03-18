@@ -1,6 +1,7 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionStatus;
 import com.wonderingwizard.domain.takt.CompletionReason;
 import com.wonderingwizard.engine.SideEffect;
 
@@ -36,7 +37,7 @@ public interface ScheduleContext {
     /**
      * Returns the current status of an action.
      */
-    ScheduleRunnerProcessor.ActionStatus getActionStatus(long workQueueId, UUID actionId);
+    ActionStatus getActionStatus(long workQueueId, UUID actionId);
 
     /**
      * Marks an action as completed with a reason, updating the action record and schedule state.

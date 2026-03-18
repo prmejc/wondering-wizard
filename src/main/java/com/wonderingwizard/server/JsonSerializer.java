@@ -28,6 +28,7 @@ import com.wonderingwizard.sideeffects.TaktActivated;
 import com.wonderingwizard.sideeffects.TaktCompleted;
 import com.wonderingwizard.sideeffects.TruckAssigned;
 import com.wonderingwizard.sideeffects.TruckUnassigned;
+import com.wonderingwizard.sideeffects.WorkInstructionCanceled;
 import com.wonderingwizard.sideeffects.WorkInstructionReassigned;
 
 import java.time.Instant;
@@ -412,6 +413,13 @@ public final class JsonSerializer {
                 writeField(sb, "actionId", e.actionId(), false);
                 writeField(sb, "workQueueId", e.workQueueId(), false);
                 writeField(sb, "cheShortName", e.cheShortName(), false);
+                sb.append('}');
+            }
+            case WorkInstructionCanceled e -> {
+                sb.append('{');
+                writeField(sb, "type", "WorkInstructionCanceled", true);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "workInstructionId", e.workInstructionId(), false);
                 sb.append('}');
             }
         }

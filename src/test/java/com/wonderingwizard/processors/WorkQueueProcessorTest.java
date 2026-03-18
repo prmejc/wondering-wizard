@@ -10,6 +10,7 @@ import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
+import com.wonderingwizard.sideeffects.WorkInstructionCanceled;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -1572,6 +1573,94 @@ class WorkQueueProcessorTest {
             assertEquals(1, effects.size());
             var schedule = (ScheduleCreated) effects.get(0);
             assertEquals(1L, schedule.workQueueId());
+        }
+
+        @Test
+        @DisplayName("Should NOT reschedule when QC Discharged arrives for a canceled WI")
+        void canceledWiDischarge_noReschedule() {
+            // Setup: register 2 WIs as twin carry
+            engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
+                    "CHE-QC", true, true, true, 2L, "A01-01-01"));
+            engine.processEvent(new WorkInstructionEvent(
+                    2L, 1L, "CHE-002", PLANNED, EMT.plusSeconds(120), 120, 60,
+                    "CHE-QC", true, true, true, 1L, "A01-01-02"));
+
+            // Activate
+            engine.processEvent(
+                    new WorkQueueMessage(1L, ACTIVE, 0, com.wonderingwizard.events.LoadMode.DSCH));
+
+            // Cancel WI 1 (e.g., TT became unavailable)
+            engine.processEvent(new WorkInstructionCanceled(1L, 1L));
+
+            // QC Discharged for canceled WI 1 — should be ignored
+            List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
+                    1L, 1L, "CHE-001", CARRY_UNDERWAY, EMT, 120, 60,
+                    "CHE-QC", true, true, true, 2L, "A01-01-01", ""));
+
+            assertTrue(effects.isEmpty(),
+                    "No reschedule should happen for QC Discharged on a canceled WI");
+        }
+
+        @Test
+        @DisplayName("Should NOT reschedule when only the non-canceled twin's QC Discharged arrives")
+        void nonCanceledTwinDischarge_noReschedule() {
+            // Setup: register 2 WIs as twin carry
+            engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
+                    "CHE-QC", true, true, true, 2L, "A01-01-01"));
+            engine.processEvent(new WorkInstructionEvent(
+                    2L, 1L, "CHE-002", PLANNED, EMT.plusSeconds(120), 120, 60,
+                    "CHE-QC", true, true, true, 1L, "A01-01-02"));
+
+            // Activate
+            engine.processEvent(
+                    new WorkQueueMessage(1L, ACTIVE, 0, com.wonderingwizard.events.LoadMode.DSCH));
+
+            // Cancel WI 1 (e.g., TT became unavailable)
+            engine.processEvent(new WorkInstructionCanceled(1L, 1L));
+
+            // QC Discharged for WI 2 (the non-canceled twin) — should NOT reschedule
+            // because WI 1 (canceled) is excluded from expected-next, making WI 2 the expected one
+            List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
+                    2L, 1L, "CHE-002", CARRY_UNDERWAY, EMT.plusSeconds(120), 120, 60,
+                    "CHE-QC", true, true, true, 1L, "A01-01-02", ""));
+
+            assertTrue(effects.isEmpty(),
+                    "No reschedule when the non-canceled twin is the expected next WI");
+        }
+
+        @Test
+        @DisplayName("Nuke should clear canceled WI state")
+        void nukeClearsCanceledWis() {
+            // Setup and cancel
+            engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
+                    "CHE-QC", false, false, false));
+            engine.processEvent(
+                    new WorkQueueMessage(1L, ACTIVE, 0, com.wonderingwizard.events.LoadMode.DSCH));
+            engine.processEvent(new WorkInstructionCanceled(1L, 1L));
+
+            // Nuke
+            engine.processEvent(new NukeWorkQueueEvent(1L));
+
+            // Re-register WI 1 with same ID, activate, and discharge
+            engine.processEvent(new WorkInstructionEvent(
+                    1L, 1L, "CHE-001", PLANNED, EMT, 120, 60,
+                    "CHE-QC", false, false, false));
+            engine.processEvent(
+                    new WorkQueueMessage(1L, ACTIVE, 0, com.wonderingwizard.events.LoadMode.DSCH));
+
+            // QC Discharged for WI 1 — should NOT be treated as canceled anymore
+            List<SideEffect> effects = engine.processEvent(new WorkInstructionEvent(
+                    QC_DISCHARGED_CONTAINER,
+                    1L, 1L, "CHE-001", CARRY_UNDERWAY, EMT, 120, 60,
+                    "CHE-QC", false, false, false, 0, "", ""));
+
+            assertTrue(effects.isEmpty(),
+                    "After nuke+reactivate, WI should not be treated as canceled");
         }
     }
 

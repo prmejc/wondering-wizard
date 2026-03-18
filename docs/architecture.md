@@ -41,6 +41,7 @@ Marker interface for all side effects produced by event processing. Side effects
 - `TTStateUpdated` - Indicates a terminal truck's state has been updated
 - `TruckAssigned` - Indicates a truck has been assigned to a TT action
 - `TruckUnassigned` - Indicates a truck has been unassigned from a TT action (due to TT becoming unavailable)
+- `WorkInstructionCanceled` - Indicates a work instruction's actions were force-completed (also implements Event for propagation to WorkQueueProcessor)
 
 ### EventProcessor (Interface)
 ```
@@ -180,7 +181,8 @@ com.wonderingwizard
 ├── domain/
 │   └── takt/
 │       ├── Takt.java                # Takt containing actions (named TAKT100, TAKT101, etc.)
-│       ├── Action.java              # Action with UUID, deviceType, description, and dependsOn set
+│       ├── Action.java              # Action with UUID, deviceType, description, dependsOn set, and ActionStatus
+│       ├── ActionStatus.java        # Lifecycle status enum (PENDING, ACTIVE, COMPLETED) — domain concept on Action record
 │       ├── DeviceType.java          # Device type enum (RTG, TT, QC)
 │       ├── DeviceActionTemplate.java # Template for device actions in workflow
 │       ├── CompletionReason.java    # Enum for force-completion reasons (TT_UNAVAILABLE)

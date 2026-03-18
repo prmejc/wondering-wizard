@@ -1430,6 +1430,9 @@ On the schedule viewer, actions completed with a reason are displayed with a gra
 **Expected Results:**
 - Before TT under QC: truck unassigned from all TT actions, new truck allocated if available
 - After TT under QC: all remaining actions for container + twin completed with TT_UNAVAILABLE reason
+- Canceled containers' work instructions are excluded from reschedule decisions:
+  - QC Discharged for a canceled WI is ignored (no reschedule)
+  - The non-canceled twin's QC Discharged does not trigger a reschedule (canceled WI excluded from expected-next calculation)
 - Schedule viewer shows gray background + ⚠ for completed-with-reason actions
 - WORKING status events do not trigger any handling
 - Unknown trucks are ignored
@@ -1458,7 +1461,8 @@ mvn test -Dtest=TTUnavailableHandlerTest
 - `src/main/java/com/wonderingwizard/processors/ScheduleRunnerProcessor.java` (modified — sub-processor delegation, ScheduleContext impl)
 - `src/main/java/com/wonderingwizard/sideeffects/ActionCompleted.java` (modified — added CompletionReason field)
 - `src/main/java/com/wonderingwizard/sideeffects/TruckUnassigned.java` (new — side effect)
-- `src/main/java/com/wonderingwizard/engine/SideEffect.java` (modified — added TruckUnassigned to permits)
+- `src/main/java/com/wonderingwizard/sideeffects/WorkInstructionCanceled.java` (new — propagating event to exclude canceled WIs from reschedule)
+- `src/main/java/com/wonderingwizard/engine/SideEffect.java` (modified — added TruckUnassigned, WorkInstructionCanceled to permits)
 - `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — completionReason in ActionView, TTUnavailableHandler registration)
 - `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — TruckUnassigned serialization, completionReason in ActionView)
 - `src/main/resources/index.html` (modified — gray + ⚠ for completed-with-reason actions)

@@ -1,6 +1,7 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionStatus;
 import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.CompletionReason;
 import com.wonderingwizard.domain.takt.DeviceType;
@@ -112,10 +113,10 @@ public class TTUnavailableHandler implements ScheduleSubProcessor {
             Action action = entry.getValue();
             if (action.actionType() == ActionType.TT_DRIVE_UNDER_QC
                     && action.containerIndex() == containerIndex) {
-                ScheduleRunnerProcessor.ActionStatus status =
+                ActionStatus status =
                         context.getActionStatus(workQueueId, entry.getKey());
-                return status == ScheduleRunnerProcessor.ActionStatus.ACTIVE
-                        || status == ScheduleRunnerProcessor.ActionStatus.COMPLETED;
+                return status == ActionStatus.ACTIVE
+                        || status == ActionStatus.COMPLETED;
             }
         }
         return false;
@@ -144,9 +145,9 @@ public class TTUnavailableHandler implements ScheduleSubProcessor {
             if (!containerIndices.contains(action.containerIndex())) {
                 continue;
             }
-            ScheduleRunnerProcessor.ActionStatus status =
+            ActionStatus status =
                     context.getActionStatus(workQueueId, entry.getKey());
-            if (status != ScheduleRunnerProcessor.ActionStatus.COMPLETED) {
+            if (status != ActionStatus.COMPLETED) {
                 sideEffects.addAll(context.completeActionWithReason(
                         workQueueId, entry.getKey(), CompletionReason.TT_UNAVAILABLE));
             }

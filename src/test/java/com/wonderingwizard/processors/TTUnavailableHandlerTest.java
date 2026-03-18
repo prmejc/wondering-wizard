@@ -1,6 +1,7 @@
 package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.ActionStatus;
 import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.CompletionReason;
 import com.wonderingwizard.domain.takt.DeviceType;
@@ -190,7 +191,7 @@ class TTUnavailableHandlerTest {
 
             // Verify TT_DRIVE_UNDER_QC is active
             UUID underQCId = findActionByType(schedule, ActionType.TT_DRIVE_UNDER_QC);
-            assertEquals(ScheduleRunnerProcessor.ActionStatus.ACTIVE,
+            assertEquals(ActionStatus.ACTIVE,
                     scheduleRunner.getActionStatus(1L, underQCId),
                     "TT_DRIVE_UNDER_QC should be ACTIVE");
 
@@ -341,7 +342,7 @@ class TTUnavailableHandlerTest {
         for (var takt : takts) {
             for (var action : takt.actions()) {
                 if (scheduleRunner.getActionStatus(workQueueId, action.id())
-                        == ScheduleRunnerProcessor.ActionStatus.ACTIVE) {
+                        == ActionStatus.ACTIVE) {
                     engine.processEvent(new ActionCompletedEvent(action.id(), workQueueId));
                     return;
                 }

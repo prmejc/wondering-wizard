@@ -18,6 +18,7 @@ import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
+import com.wonderingwizard.sideeffects.WorkInstructionCanceled;
 import com.wonderingwizard.sideeffects.WorkInstructionReassigned;
 import jdk.jfr.Timespan;
 
@@ -62,6 +63,8 @@ public class WorkQueueProcessor implements EventProcessor {
     private final Map<Long, List<WorkInstructionEvent>> workInstructions = new HashMap<>();
     private final Map<Long, Integer> qcMudaByQueue = new HashMap<>();
     private final Map<Long, LoadMode> loadModeByQueue = new HashMap<>();
+    /** Work instruction IDs whose actions were force-completed (e.g., TT_UNAVAILABLE). */
+    private final Map<Long, Set<Long>> canceledWorkInstructionIds = new HashMap<>();
     private final IntSupplier driveTimeSupplier;
     private final IntSupplier qcDriveTimeOffsetSupplier;
     private final boolean useGraphScheduleBuilder;
@@ -111,6 +114,12 @@ public class WorkQueueProcessor implements EventProcessor {
         if (event instanceof WorkInstructionEvent instruction) {
             return handleWorkInstructionEvent(instruction);
         }
+        if (event instanceof WorkInstructionCanceled canceled) {
+            canceledWorkInstructionIds
+                    .computeIfAbsent(canceled.workQueueId(), k -> new HashSet<>())
+                    .add(canceled.workInstructionId());
+            return List.of();
+        }
         if (event instanceof NukeWorkQueueEvent nuke) {
             return handleNukeWorkQueue(nuke.workQueueId());
         }
@@ -148,6 +157,12 @@ public class WorkQueueProcessor implements EventProcessor {
                 .add(event);
 
         if (!isDischargeEvent) {
+            return List.of();
+        }
+
+        // If this WI was canceled (e.g., TT_UNAVAILABLE), ignore the discharge entirely
+        Set<Long> canceled = canceledWorkInstructionIds.getOrDefault(workQueueId, Set.of());
+        if (canceled.contains(workInstructionId)) {
             return List.of();
         }
 
@@ -264,11 +279,13 @@ public class WorkQueueProcessor implements EventProcessor {
      */
     private WorkInstructionEvent findExpectedNextWi(long workQueueId) {
         List<WorkInstructionEvent> allInstructions = workInstructions.getOrDefault(workQueueId, List.of());
+        Set<Long> canceled = canceledWorkInstructionIds.getOrDefault(workQueueId, Set.of());
 
         return allInstructions.stream()
                 .sorted(Comparator.comparing(WorkInstructionEvent::estimatedMoveTime))
                 .filter(wi -> MoveStage.isPreFetch(wi.workInstructionMoveStage()))
                 .filter(wi -> !EventType.QC_DISCHARGED_CONTAINER.equals(wi.eventType()))
+                .filter(wi -> !canceled.contains(wi.workInstructionId()))
                 .findFirst()
                 .orElse(null);
     }
@@ -646,6 +663,7 @@ public class WorkQueueProcessor implements EventProcessor {
         workInstructions.remove(workQueueId);
         qcMudaByQueue.remove(workQueueId);
         loadModeByQueue.remove(workQueueId);
+        canceledWorkInstructionIds.remove(workQueueId);
         return sideEffects;
     }
 
@@ -662,6 +680,13 @@ public class WorkQueueProcessor implements EventProcessor {
         state.put("workInstructions", instructionsCopy);
         state.put("qcMudaByQueue", new HashMap<>(qcMudaByQueue));
         state.put("loadModeByQueue", new HashMap<>(loadModeByQueue));
+
+        // Deep copy of canceled WI IDs
+        Map<Long, Set<Long>> canceledCopy = new HashMap<>();
+        for (Map.Entry<Long, Set<Long>> entry : canceledWorkInstructionIds.entrySet()) {
+            canceledCopy.put(entry.getKey(), new HashSet<>(entry.getValue()));
+        }
+        state.put("canceledWorkInstructionIds", canceledCopy);
 
         return state;
     }
@@ -700,6 +725,15 @@ public class WorkQueueProcessor implements EventProcessor {
         Object loadModeState = stateMap.get("loadModeByQueue");
         if (loadModeState instanceof Map) {
             loadModeByQueue.putAll((Map<Long, LoadMode>) loadModeState);
+        }
+
+        canceledWorkInstructionIds.clear();
+        Object canceledState = stateMap.get("canceledWorkInstructionIds");
+        if (canceledState instanceof Map) {
+            Map<Long, Set<Long>> canceledMap = (Map<Long, Set<Long>>) canceledState;
+            for (Map.Entry<Long, Set<Long>> entry : canceledMap.entrySet()) {
+                canceledWorkInstructionIds.put(entry.getKey(), new HashSet<>(entry.getValue()));
+            }
         }
     }
 }
