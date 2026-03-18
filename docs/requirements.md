@@ -1295,3 +1295,69 @@ No sounds play for the first 5 seconds after the page loads to avoid startling t
 
 **Implementation Files:**
 - `src/main/resources/index.html` (modified — added `_sound` module with Web Audio API tone generation, integrated into ScheduleView refresh cycle and 30s delay check interval)
+
+### F-22: TT State Processor and Trucks UI
+
+**Status:** Implemented
+
+**Description:**
+Maintain the current state of terminal trucks (TTs) via a TTStateProcessor. Trucks are added through a web UI that mirrors the ContainerHandlingEquipment.avro schema fields. Each `ContainerHandlingEquipmentEvent` with `cheKind=TT` updates the truck state keyed by `cheShortName`. Subsequent events with the same `cheShortName` override the previous state.
+
+**Requested Behavior:**
+
+```java
+engine.register(new TTStateProcessor());
+
+var sideEffects1 = engine.processEvent(new ContainerHandlingEquipmentEvent(
+    "CHE_UPDATE", 1L, "OP", "TERM1", 1L, "TT01", "Working", "TT", 100L, "IDLE", 0L));
+var sideEffects2 = engine.processEvent(new ContainerHandlingEquipmentEvent(
+    "CHE_UPDATE", 1L, "OP", "TERM1", 2L, "TT01", "Available", "TT", 100L, "COMPLETE", 0L));
+```
+
+**Expected Results:**
+- `sideEffects1` should contain a `TTStateUpdated` side effect for TT01 with status "Working"
+- `sideEffects2` should contain a `TTStateUpdated` side effect for TT01 with status "Available"
+- After both events, `getTruckState("TT01")` returns the second event (override)
+- Non-TT CHE events (e.g., cheKind="RTG") are ignored
+- Events with null or blank `cheShortName` are ignored
+
+**Additional Requirements:**
+- Trucks UI available at `/trucks` with live SSE updates
+- Users can add trucks via the UI and populate all ContainerHandlingEquipment.avro fields
+- "Send" button posts `ContainerHandlingEquipmentEvent` to `/api/container-handling-equipment`
+- Truck state is included in the `/api/state` response under `trucks` key
+- Event log export/import supports `ContainerHandlingEquipmentEvent`
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Register `TTStateProcessor` with engine | Processor registered successfully |
+| 2 | Process non-TT CHE event (cheKind="RTG") | Empty side effects, no truck state stored |
+| 3 | Process TT CHE event (cheShortName="TT01") | Returns `[TTStateUpdated]`, truck state stored |
+| 4 | Process another TT CHE event (cheShortName="TT01") | Returns `[TTStateUpdated]`, previous state overridden |
+| 5 | Open `/trucks` UI, click "Add Truck" | New row appears with editable fields |
+| 6 | Fill fields and click "Send" | Event processed, state updated via SSE |
+
+**Test Execution:**
+```bash
+mvn test -Dtest=TTStateProcessorTest,TTAllocationTest
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/events/ContainerHandlingEquipmentEvent.java` (new — event record matching ContainerHandlingEquipment.avro)
+- `src/main/java/com/wonderingwizard/events/CheStatus.java` (new — CHE status enum: Working, Unavailable)
+- `src/main/java/com/wonderingwizard/events/CheJobStepState.java` (new — CHE job step state enum: IDLE, LOGGEDOUT, etc.)
+- `src/main/java/com/wonderingwizard/sideeffects/TTStateUpdated.java` (new — side effect for truck state updates)
+- `src/main/java/com/wonderingwizard/sideeffects/TruckAssigned.java` (new — side effect when truck assigned to action)
+- `src/main/java/com/wonderingwizard/processors/TTStateProcessor.java` (new — processor maintaining TT state, implements TTAllocationStrategy)
+- `src/main/java/com/wonderingwizard/processors/TTAllocationStrategy.java` (new — interface for truck allocation)
+- `src/main/java/com/wonderingwizard/domain/takt/Action.java` (modified — added nullable cheId and cheShortName fields)
+- `src/main/java/com/wonderingwizard/engine/SideEffect.java` (modified — added TTStateUpdated, TruckAssigned to permits)
+- `src/main/java/com/wonderingwizard/processors/ScheduleRunnerProcessor.java` (modified — TT allocation on action activation, re-evaluates active takts on TimeEvent)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — registered processor and strategy, added endpoints, TT_ALLOCATION condition view)
+- `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — added TTStateUpdated, TruckAssigned, cheShortName serialization)
+- `src/main/java/com/wonderingwizard/server/EventDeserializer.java` (modified — added ContainerHandlingEquipmentEvent deserialization)
+- `src/main/resources/trucks.html` (new — Trucks web UI with SSE live updates)
+- `src/test/java/com/wonderingwizard/processors/TTStateProcessorTest.java` (new — 13 tests)
+- `src/test/java/com/wonderingwizard/processors/TTAllocationTest.java` (new — 10 tests)

@@ -279,6 +279,7 @@ class ScheduleHeader extends HTMLElement {
         <button class="secondary" onclick="window.open(API+'/workinstructions','_blank')" title="View work instructions">&#9776; Work Instructions</button>
         <button class="secondary" onclick="window.open(API+'/workqueues','_blank')" title="View work queues">&#9776; Work Queues</button>
         <button class="secondary" onclick="window.open(API+'/pathfinder','_blank')" title="Open pathfinder">&#9737; Pathfinder</button>
+        <button class="secondary" onclick="window.open(API+'/trucks','_blank')" title="View trucks">&#128666; Trucks</button>
         <input id="import-file" type="file" accept=".json" style="display:none">
       </div>`;
     this.setAttribute('data-refresh', '');
@@ -990,7 +991,8 @@ class ScheduleView extends HTMLElement {
     }
 
     const containerLabel = (action.containerIds && action.containerIds.length > 0) ? action.containerIds.join(', ') : 'C' + ci;
-    let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600;min-width:0">' + statusLabel + ' <span title="' + containerLabel + '" style="color:' + containerColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + containerLabel + '</span>' + conditionsIcon + '</div><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + action.description + '</div>';
+    const truckLabel = action.cheShortName ? ' <span style="font-size:9px;color:#facc15;font-weight:600" title="Assigned truck">' + action.cheShortName + '</span>' : '';
+    let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600;min-width:0">' + statusLabel + ' <span title="' + containerLabel + '" style="color:' + containerColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + containerLabel + '</span>' + truckLabel + conditionsIcon + '</div><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + action.description + '</div>';
     if (action.status === 'ACTIVE') {
       innerHtml += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Complete</button>';
     }

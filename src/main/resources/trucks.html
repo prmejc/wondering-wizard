@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wondering Wizard - Trucks</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface2: #334155;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --border: #475569;
+    --active: #3b82f6;
+    --danger: #ef4444;
+    --completed: #22c55e;
+    --success-bg: rgba(34, 197, 94, 0.15);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .header {
+    display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+  }
+  h1 { font-size: 20px; }
+  .live-indicator {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted);
+  }
+  .live-dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--danger);
+  }
+  .live-dot.connected { background: var(--completed); }
+  .nav-links { margin-left: auto; display: flex; gap: 12px; }
+  .nav-links a {
+    color: var(--active); text-decoration: none; font-size: 13px;
+  }
+  .nav-links a:hover { text-decoration: underline; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 16px; }
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  th {
+    background: var(--surface2); padding: 8px 6px; text-align: left;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-muted); position: sticky; top: 0; white-space: nowrap;
+  }
+  td { padding: 2px 4px; border-bottom: 1px solid var(--border); }
+  td input, td select {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 4px 6px; border-radius: 3px; font-size: 13px; width: 100%;
+    font-family: inherit;
+  }
+  td input:focus, td select:focus { outline: none; border-color: var(--active); }
+  td input[type="number"] { width: 100px; }
+  .row-actions { white-space: nowrap; display: flex; gap: 4px; align-items: center; }
+  .row-actions button { padding: 3px 8px; font-size: 11px; }
+  button {
+    background: var(--active); color: white; border: none; padding: 8px 16px;
+    border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  button:hover { opacity: 0.9; }
+  button.secondary { background: var(--surface2); color: var(--text); }
+  button.danger { background: var(--danger); }
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+  }
+  tbody tr:hover td { background: var(--surface2); }
+  tr.send-success td { background: var(--success-bg); transition: background 0.3s; }
+  tr.stale td { background: rgba(239, 68, 68, 0.15); }
+  tr.stale td input, tr.stale td select { border-color: var(--danger); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Trucks (TT)</h1>
+  <div class="live-indicator">
+    <div class="live-dot" id="live-dot"></div>
+    <span id="live-label">Disconnected</span>
+  </div>
+  <div class="nav-links" id="nav-links"></div>
+</div>
+
+<div class="toolbar">
+  <button id="add-truck-btn">Add Truck</button>
+</div>
+
+<div id="content">
+  <div class="empty-state">No trucks registered. Click "Add Truck" to add one.</div>
+</div>
+
+<script>
+const API = window.location.pathname.replace(/\/trucks\/?$/, '');
+document.getElementById('nav-links').innerHTML =
+  '<a href="' + (API || '/') + '">Schedule Viewer</a>' +
+  '<a href="' + API + '/workinstructions">Work Instructions</a>' +
+  '<a href="' + API + '/editor">Editor</a>' +
+  '<a href="' + API + '/workqueues">Work Queues</a>' +
+  '<a href="' + API + '/pathfinder">Pathfinder</a>';
+
+const CHE_FIELDS = [
+  { key: 'cheShortName', label: 'CHE Short Name', type: 'text' },
+  { key: 'cheStatus', label: 'CHE Status', type: 'select',
+    options: ['Working', 'Unavailable'] },
+  { key: 'chePoolId', label: 'Pool ID', type: 'number' },
+  { key: 'cheJobStepState', label: 'Job Step State', type: 'select',
+    options: ['IDLE', 'LOGGEDOUT', 'TOROWTOCOLLECTCNTR', 'ATROWTOCOLLECTCNTR', 'TOROWTODROPCNTR', 'ATROWTODROPCNTR', 'TOSHIPTOCOLLECTCNTR', 'ATSHIPTOCOLLECTCNTR', 'TOSHIPTODROPCNTR', 'ATSHIPTODROPCNTR'] },
+  { key: 'cheKind', label: 'CHE Kind', type: 'text', defaultValue: 'TT' },
+  { key: 'cheId', label: 'CHE ID', type: 'number' },
+  { key: 'cdhTerminalCode', label: 'Terminal Code', type: 'text' },
+  { key: 'messageSequenceNumber', label: 'Msg Seq #', type: 'number', defaultValue: '1' },
+  { key: 'sourceTsMs', label: 'Source TS (ms)', type: 'number', auto: true },
+  { key: 'eventType', label: 'Event Type', type: 'text' },
+  { key: 'opType', label: 'Op Type', type: 'text' },
+];
+
+// Map of cheShortName -> latest field values (what the user sees/edits)
+let trucks = new Map();
+// Map of cheShortName -> latest server field values (for stale detection)
+let serverTrucks = new Map();
+// Set of cheShortName currently being edited
+let editingRows = new Set();
+
+async function apiCall(path, body) {
+  const opts = body
+    ? { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }
+    : {};
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+function extractTrucks(state) {
+  const truckMap = new Map();
+  const rawTrucks = state.trucks || {};
+  for (const [name, evt] of Object.entries(rawTrucks)) {
+    const row = {};
+    for (const f of CHE_FIELDS) {
+      if (f.type === 'number') {
+        row[f.key] = evt[f.key] != null ? Number(evt[f.key]) : '';
+      } else {
+        row[f.key] = evt[f.key] != null ? String(evt[f.key]) : '';
+      }
+    }
+    truckMap.set(name, row);
+  }
+  return truckMap;
+}
+
+function rowsDiffer(a, b) {
+  if (!a || !b) return true;
+  for (const f of CHE_FIELDS) {
+    if (String(a[f.key] ?? '') !== String(b[f.key] ?? '')) return true;
+  }
+  return false;
+}
+
+function refresh(state) {
+  const incoming = extractTrucks(state);
+  serverTrucks = incoming;
+
+  for (const [name, row] of incoming) {
+    if (!editingRows.has(name)) {
+      trucks.set(name, row);
+    }
+  }
+  for (const [name, row] of incoming) {
+    if (!trucks.has(name)) {
+      trucks.set(name, row);
+    }
+  }
+
+  render();
+}
+
+function render() {
+  const content = document.getElementById('content');
+  if (trucks.size === 0) {
+    content.innerHTML = '<div class="empty-state">No trucks registered. Click "Add Truck" to add one.</div>';
+    return;
+  }
+
+  const existingTable = content.querySelector('table');
+  if (existingTable) {
+    updateExistingTable(existingTable);
+    return;
+  }
+
+  let html = '<div class="table-wrap"><table><thead><tr>';
+  for (const f of CHE_FIELDS) {
+    html += '<th>' + f.label + '</th>';
+  }
+  html += '<th>Actions</th></tr></thead><tbody>';
+
+  for (const [name, row] of trucks) {
+    html += buildRowHtml(name, row);
+  }
+
+  html += '</tbody></table></div>';
+  content.innerHTML = html;
+
+  bindAllRows(content);
+}
+
+function buildRowHtml(name, row) {
+  const stale = rowsDiffer(row, serverTrucks.get(name));
+  let html = '<tr data-truck="' + name + '"' + (stale ? ' class="stale"' : '') + '>';
+  for (const f of CHE_FIELDS) {
+    html += '<td>' + inputFor(f, row, name) + '</td>';
+  }
+  html += '<td class="row-actions">';
+  html += '<button data-send="' + name + '">Send</button>';
+  html += '</td></tr>';
+  return html;
+}
+
+function updateExistingTable(table) {
+  const tbody = table.querySelector('tbody');
+  const existingNames = new Set();
+
+  tbody.querySelectorAll('tr[data-truck]').forEach(tr => {
+    const name = tr.dataset.truck;
+    existingNames.add(name);
+
+    if (!trucks.has(name)) {
+      tr.remove();
+      return;
+    }
+
+    const row = trucks.get(name);
+    const serverRow = serverTrucks.get(name);
+    const stale = rowsDiffer(row, serverRow);
+
+    if (editingRows.has(name)) {
+      tr.classList.toggle('stale', stale);
+      return;
+    }
+
+    tr.classList.toggle('stale', stale);
+    tr.querySelectorAll('[data-field]').forEach(el => {
+      const key = el.dataset.field;
+      el.value = row[key] ?? '';
+    });
+  });
+
+  for (const [name, row] of trucks) {
+    if (!existingNames.has(name)) {
+      const temp = document.createElement('template');
+      temp.innerHTML = buildRowHtml(name, row);
+      const newRow = temp.content.firstElementChild;
+      tbody.appendChild(newRow);
+      bindRow(newRow, name);
+    }
+  }
+}
+
+function bindRow(container, truckName) {
+  container.querySelectorAll('[data-field]').forEach(el => {
+    const key = el.dataset.field;
+    const field = CHE_FIELDS.find(f => f.key === key);
+
+    el.addEventListener('focus', () => editingRows.add(truckName));
+    el.addEventListener('blur', () => {
+      editingRows.delete(truckName);
+      const tr = el.closest('tr');
+      const row = trucks.get(truckName);
+      const serverRow = serverTrucks.get(truckName);
+      if (tr && rowsDiffer(row, serverRow)) {
+        tr.classList.add('stale');
+      }
+    });
+
+    el.addEventListener('change', () => {
+      const row = trucks.get(truckName);
+      if (!row) return;
+      if (field.type === 'number') {
+        row[key] = el.value === '' ? '' : Number(el.value);
+      } else {
+        row[key] = el.value;
+      }
+      const tr = el.closest('tr');
+      const serverRow = serverTrucks.get(truckName);
+      if (tr) {
+        tr.classList.toggle('stale', rowsDiffer(row, serverRow));
+      }
+    });
+  });
+
+  container.querySelectorAll('[data-send]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const row = trucks.get(truckName);
+      if (!row) return;
+
+      const data = {};
+      for (const f of CHE_FIELDS) {
+        if (f.auto && f.key === 'sourceTsMs') {
+          data[f.key] = String(Date.now());
+        } else {
+          data[f.key] = String(row[f.key] ?? '');
+        }
+      }
+
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        await apiCall(API + '/api/container-handling-equipment', data);
+        const tr = btn.closest('tr');
+        tr.classList.add('send-success');
+        tr.classList.remove('stale');
+        setTimeout(() => tr.classList.remove('send-success'), 1500);
+      } catch (err) {
+        alert('Failed to send: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send';
+      }
+    });
+  });
+}
+
+function bindAllRows(content) {
+  for (const [name] of trucks) {
+    const tr = content.querySelector('tr[data-truck="' + name + '"]');
+    if (tr) bindRow(tr, name);
+  }
+}
+
+function inputFor(field, row, truckName) {
+  const attrs = 'data-field="' + field.key + '" data-truck="' + truckName + '"';
+  if (field.type === 'select') {
+    const opts = field.options.map(o =>
+      '<option value="' + o + '"' + (row[field.key] === o ? ' selected' : '') + '>' + o + '</option>'
+    ).join('');
+    return '<select ' + attrs + '><option value=""></option>' + opts + '</select>';
+  }
+  if (field.type === 'number') {
+    return '<input type="number" ' + attrs + ' value="' + (row[field.key] ?? '') + '">';
+  }
+  return '<input type="text" ' + attrs + ' value="' + (row[field.key] ?? '') + '">';
+}
+
+// Add Truck button
+document.getElementById('add-truck-btn').addEventListener('click', () => {
+  const n = trucks.size + 1;
+  const suggestedName = 'TT' + String(n).padStart(2, '0');
+  const name = prompt('Enter truck short name:', suggestedName);
+  if (!name || name.trim() === '') return;
+  const trimmed = name.trim();
+
+  if (trucks.has(trimmed)) {
+    alert('Truck ' + trimmed + ' already exists.');
+    return;
+  }
+
+  const row = {};
+  for (const f of CHE_FIELDS) {
+    if (f.key === 'cheShortName') {
+      row[f.key] = trimmed;
+    } else if (f.key === 'cheStatus') {
+      row[f.key] = 'Working';
+    } else if (f.key === 'chePoolId') {
+      row[f.key] = 23;
+    } else if (f.key === 'cheJobStepState') {
+      row[f.key] = 'IDLE';
+    } else if (f.key === 'cheId') {
+      row[f.key] = n;
+    } else if (f.defaultValue) {
+      row[f.key] = f.type === 'number' ? Number(f.defaultValue) : f.defaultValue;
+    } else {
+      row[f.key] = '';
+    }
+  }
+
+  trucks.set(trimmed, row);
+  render();
+});
+
+// --- SSE live connection ---
+function connectSSE() {
+  const es = new EventSource(API + '/api/events');
+  es.onopen = () => {
+    document.getElementById('live-dot').classList.add('connected');
+    document.getElementById('live-label').textContent = 'Live';
+  };
+  es.addEventListener('state', (e) => {
+    try {
+      const state = JSON.parse(e.data);
+      refresh(state);
+    } catch (err) { /* ignore parse errors */ }
+  });
+  es.onerror = () => {
+    document.getElementById('live-dot').classList.remove('connected');
+    document.getElementById('live-label').textContent = 'Reconnecting...';
+  };
+}
+
+// Initial load
+async function init() {
+  try {
+    const state = await apiCall(API + '/api/state');
+    refresh(state);
+  } catch (err) { /* will get state via SSE */ }
+  connectSSE();
+}
+
+init();
+</script>
+</body>
+</html>

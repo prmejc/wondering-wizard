@@ -6,6 +6,7 @@ import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.ContainerHandlingEquipmentEvent;
 import com.wonderingwizard.events.DigitalMapEvent;
 import com.wonderingwizard.events.NukeWorkQueueEvent;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
@@ -22,8 +23,10 @@ import com.wonderingwizard.sideeffects.AlarmTriggered;
 import com.wonderingwizard.sideeffects.DelayUpdated;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
+import com.wonderingwizard.sideeffects.TTStateUpdated;
 import com.wonderingwizard.sideeffects.TaktActivated;
 import com.wonderingwizard.sideeffects.TaktCompleted;
+import com.wonderingwizard.sideeffects.TruckAssigned;
 import com.wonderingwizard.sideeffects.WorkInstructionReassigned;
 
 import java.time.Instant;
@@ -272,6 +275,22 @@ public final class JsonSerializer {
                 writeField(sb, "completedAt", e.completedAt(), false);
                 sb.append('}');
             }
+            case ContainerHandlingEquipmentEvent e -> {
+                sb.append('{');
+                writeField(sb, "type", "ContainerHandlingEquipmentEvent", true);
+                writeField(sb, "eventType", e.eventType(), false);
+                writeField(sb, "cheId", e.cheId(), false);
+                writeField(sb, "opType", e.opType(), false);
+                writeField(sb, "cdhTerminalCode", e.cdhTerminalCode(), false);
+                writeField(sb, "messageSequenceNumber", e.messageSequenceNumber(), false);
+                writeField(sb, "cheShortName", e.cheShortName(), false);
+                writeField(sb, "cheStatus", e.cheStatus() != null ? e.cheStatus().displayName() : null, false);
+                writeField(sb, "cheKind", e.cheKind(), false);
+                writeField(sb, "chePoolId", e.chePoolId(), false);
+                writeField(sb, "cheJobStepState", e.cheJobStepState() != null ? e.cheJobStepState().code() : null, false);
+                writeField(sb, "sourceTsMs", e.sourceTsMs(), false);
+                sb.append('}');
+            }
             default -> writeString(sb, event.toString());
         }
     }
@@ -367,6 +386,24 @@ public final class JsonSerializer {
                 writeField(sb, "totalDelaySeconds", e.totalDelaySeconds(), false);
                 sb.append('}');
             }
+            case TTStateUpdated e -> {
+                sb.append('{');
+                writeField(sb, "type", "TTStateUpdated", true);
+                writeField(sb, "cheShortName", e.cheShortName(), false);
+                var evt = e.event();
+                if (evt.cheStatus() != null) writeField(sb, "cheStatus", evt.cheStatus().displayName(), false);
+                if (evt.cheJobStepState() != null) writeField(sb, "cheJobStepState", evt.cheJobStepState().code(), false);
+                sb.append('}');
+            }
+            case TruckAssigned e -> {
+                sb.append('{');
+                writeField(sb, "type", "TruckAssigned", true);
+                writeField(sb, "actionId", e.actionId(), false);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "cheShortName", e.cheShortName(), false);
+                writeField(sb, "cheId", e.cheId(), false);
+                sb.append('}');
+            }
         }
     }
 
@@ -391,6 +428,8 @@ public final class JsonSerializer {
         writeField(sb, "containerIndex", action.containerIndex(), false);
         writeField(sb, "durationSeconds", action.durationSeconds(), false);
         writeField(sb, "deviceIndex", action.deviceIndex(), false);
+        if (action.cheId() != null) writeField(sb, "cheId", action.cheId(), false);
+        if (action.cheShortName() != null) writeField(sb, "cheShortName", action.cheShortName(), false);
         sb.append('}');
     }
 
@@ -478,6 +517,7 @@ public final class JsonSerializer {
         writeValue(sb, view.conditions() != null ? view.conditions() : List.of());
         writeFieldKey(sb, "containerIds", false);
         writeValue(sb, view.containerIds() != null ? view.containerIds() : List.of());
+        if (view.cheShortName() != null) writeField(sb, "cheShortName", view.cheShortName(), false);
         sb.append('}');
     }
 

@@ -2,6 +2,9 @@ package com.wonderingwizard.server;
 
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.CheJobStepState;
+import com.wonderingwizard.events.CheStatus;
+import com.wonderingwizard.events.ContainerHandlingEquipmentEvent;
 import com.wonderingwizard.events.DigitalMapEvent;
 import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.NukeWorkQueueEvent;
@@ -90,6 +93,27 @@ public final class EventDeserializer {
 
             case "NukeWorkQueueEvent" -> new NukeWorkQueueEvent(
                     Long.parseLong(requireField(fields, "workQueueId")));
+
+            case "ContainerHandlingEquipmentEvent" -> new ContainerHandlingEquipmentEvent(
+                    fields.getOrDefault("eventType", ""),
+                    fields.get("cheId") != null && !fields.get("cheId").equals("null")
+                            ? Long.parseLong(fields.get("cheId")) : null,
+                    fields.getOrDefault("opType", ""),
+                    fields.getOrDefault("cdhTerminalCode", ""),
+                    fields.get("messageSequenceNumber") != null && !fields.get("messageSequenceNumber").equals("null")
+                            ? Long.parseLong(fields.get("messageSequenceNumber")) : null,
+                    requireField(fields, "cheShortName"),
+                    fields.get("cheStatus") != null && !fields.get("cheStatus").isEmpty()
+                            && !fields.get("cheStatus").equals("null")
+                            ? CheStatus.fromDisplayName(fields.get("cheStatus")) : null,
+                    fields.getOrDefault("cheKind", "TT"),
+                    fields.get("chePoolId") != null && !fields.get("chePoolId").equals("null")
+                            ? Long.parseLong(fields.get("chePoolId")) : null,
+                    fields.get("cheJobStepState") != null && !fields.get("cheJobStepState").isEmpty()
+                            && !fields.get("cheJobStepState").equals("null")
+                            ? CheJobStepState.fromCode(fields.get("cheJobStepState")) : null,
+                    fields.get("sourceTsMs") != null && !fields.get("sourceTsMs").equals("null")
+                            ? Long.parseLong(fields.get("sourceTsMs")) : null);
 
             default -> throw new IllegalArgumentException("Unknown event type: " + type);
         };

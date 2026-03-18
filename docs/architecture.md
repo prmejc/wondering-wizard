@@ -20,6 +20,7 @@ Marker interface for all events. Enables pattern matching in processors.
 - `ActionCompletedEvent` - Notification that an action has been completed (with UUID validation)
 - `NukeWorkQueueEvent` - Deletes all data for a work queue (WQ, WIs, schedule)
 - `DigitalMapEvent` - Digital map update with edges and travel durations for pathfinding
+- `ContainerHandlingEquipmentEvent` - CHE state update (matching ContainerHandlingEquipment.avro schema)
 
 ### SideEffect (Sealed Interface)
 ```
@@ -37,6 +38,8 @@ Marker interface for all side effects produced by event processing. Side effects
 - `TaktActivated` - Indicates a takt has been activated (also implements Event for BFS propagation)
 - `TaktCompleted` - Indicates a takt has been completed (also implements Event for BFS propagation)
 - `DelayUpdated` - Indicates a schedule's total delay has changed
+- `TTStateUpdated` - Indicates a terminal truck's state has been updated
+- `TruckAssigned` - Indicates a truck has been assigned to a TT action
 
 ### EventProcessor (Interface)
 ```
@@ -196,7 +199,8 @@ com.wonderingwizard
 │   ├── WorkInstructionEvent.java    # Work instruction event (with estimatedMoveTime)
 │   ├── WorkInstructionStatus.java   # Work instruction status enum
 │   ├── ActionCompletedEvent.java    # Action completion event (with UUID)
-│   └── DigitalMapEvent.java         # Digital map event (edges with travel durations)
+│   ├── DigitalMapEvent.java         # Digital map event (edges with travel durations)
+│   └── ContainerHandlingEquipmentEvent.java # CHE state update (matching Avro schema)
 ├── sideeffects/
 │   ├── AlarmSet.java                # Alarm set confirmation
 │   ├── AlarmTriggered.java          # Alarm trigger notification
@@ -207,7 +211,9 @@ com.wonderingwizard
 │   ├── ActionCompleted.java         # Action completion notification
 │   ├── TaktActivated.java           # Takt activation (also implements Event)
 │   ├── TaktCompleted.java           # Takt completion (also implements Event)
-│   └── DelayUpdated.java            # Schedule delay change notification
+│   ├── DelayUpdated.java            # Schedule delay change notification
+│   ├── TTStateUpdated.java          # Terminal truck state update notification
+│   └── TruckAssigned.java          # Truck assigned to TT action notification
 ├── processors/
 │   ├── TimeAlarmProcessor.java      # Time alarm handling
 │   ├── WorkQueueProcessor.java      # Work queue schedule and takt generation (with pipeline)
@@ -217,7 +223,9 @@ com.wonderingwizard
 │   ├── ResourceAction.java          # Legacy action template for imperative takt generation
 │   ├── ScheduleRunnerProcessor.java # Schedule execution and action state management
 │   ├── DelayProcessor.java         # Schedule delay tracking and calculation
-│   └── EventLogProcessor.java      # Records all events for export/import
+│   ├── EventLogProcessor.java      # Records all events for export/import
+│   ├── TTStateProcessor.java       # Terminal truck state management (implements TTAllocationStrategy)
+│   └── TTAllocationStrategy.java   # Interface for truck allocation to TT actions
 ├── kafka/
 │   ├── KafkaConfiguration.java      # Top-level Kafka connection config (broker, SASL, schema registry)
 │   ├── ConsumerConfiguration.java   # Per-topic consumer config (topic, group, message type)
@@ -245,7 +253,8 @@ com.wonderingwizard
 └── resources/
     ├── index.html                   # Schedule Viewer UI (Web Components, vanilla JS)
     ├── editor.html                  # Export Editor UI (bulk edit WorkInstruction exports)
-    └── workinstructions.html        # Work Instructions UI (live view/edit of all WIs)
+    ├── workinstructions.html        # Work Instructions UI (live view/edit of all WIs)
+    └── trucks.html                  # Trucks UI (TT state management)
 ```
 
 ## Schedule Creation Pipeline (F-16)

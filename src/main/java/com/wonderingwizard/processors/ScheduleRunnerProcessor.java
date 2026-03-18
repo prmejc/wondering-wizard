@@ -3,6 +3,7 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.ConditionContext;
 import com.wonderingwizard.domain.takt.DependencyCondition;
+import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.EventGateCondition;
 import com.wonderingwizard.domain.takt.TaktCondition;
 import com.wonderingwizard.domain.takt.Takt;
@@ -22,6 +23,7 @@ import com.wonderingwizard.sideeffects.ActionCompleted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
 import com.wonderingwizard.sideeffects.TaktActivated;
 import com.wonderingwizard.sideeffects.TaktCompleted;
+import com.wonderingwizard.sideeffects.TruckAssigned;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -268,9 +270,56 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         return state.satisfiedEventGates.getOrDefault(actionId, Set.of());
     }
 
+    /**
+     * Returns the action for the given ID, with any truck assignment applied.
+     */
+    public Action getAction(long workQueueId, UUID actionId) {
+        ScheduleState state = scheduleStates.get(workQueueId);
+        if (state == null) return null;
+        ActionInfo info = state.actionLookup.get(actionId);
+        return info != null ? info.action() : null;
+    }
+
+    /**
+     * Returns whether a TT allocation strategy is registered.
+     */
+    public boolean hasTTAllocationStrategy() {
+        return ttAllocationStrategy != null;
+    }
+
     private final Map<Long, ScheduleState> scheduleStates = new HashMap<>();
     private final Map<Long, Instant> workInstructionEstimatedMoveTime = new HashMap<>();
     private Instant currentTime = Instant.EPOCH;
+    private TTAllocationStrategy ttAllocationStrategy;
+
+    /**
+     * Registers a TT allocation strategy for assigning trucks to TT actions.
+     *
+     * @param strategy the allocation strategy
+     */
+    public void registerTTAllocationStrategy(TTAllocationStrategy strategy) {
+        this.ttAllocationStrategy = strategy;
+    }
+
+    /**
+     * Collects all truck cheShortNames currently assigned to actions across all schedules.
+     */
+    private Set<String> collectAssignedTrucks() {
+        Set<String> assigned = new HashSet<>();
+        for (ScheduleState state : scheduleStates.values()) {
+            for (ActionInfo info : state.actionLookup.values()) {
+                Action action = info.action();
+                if (action.cheShortName() != null
+                        && !state.completedActionIds.contains(action.id())
+                        // Don't count skipWhenGatesSatisfied actions (e.g., drive to buffer) —
+                        // they auto-complete instantly and shouldn't hold a truck reservation
+                        && !action.skipWhenGatesSatisfied()) {
+                    assigned.add(action.cheShortName());
+                }
+            }
+        }
+        return assigned;
+    }
 
     @Override
     public List<SideEffect> process(Event event) {
@@ -659,6 +708,16 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             long workQueueId = entry.getKey();
             ScheduleState state = entry.getValue();
 
+            // Re-evaluate already-active takts FIRST so earlier takts get priority for TT allocation
+            // before newly activated takts compete for trucks
+            if (ttAllocationStrategy != null) {
+                for (Takt takt : state.takts) {
+                    if (state.taktStates.get(takt.name()) == TaktState.ACTIVE) {
+                        sideEffects.addAll(activateEligibleActions(workQueueId, state, takt.name()));
+                    }
+                }
+            }
+
             sideEffects.addAll(tryActivateTakts(workQueueId, state));
         }
 
@@ -929,6 +988,44 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                     continue;
                 }
 
+                // TT allocation: if this is a TT action without a truck assigned, try to allocate one
+                if (action.deviceType() == DeviceType.TT && action.cheShortName() == null
+                        && ttAllocationStrategy != null) {
+                    Set<String> assigned = collectAssignedTrucks();
+                    var freeTruck = ttAllocationStrategy.allocateFreeTruck(assigned);
+                    if (freeTruck.isEmpty()) {
+                        // No truck available — action stays pending
+                        continue;
+                    }
+                    // Assign truck: look up cheId from the strategy (if it's a TTStateProcessor)
+                    String truckName = freeTruck.get();
+                    Long truckCheId = null;
+                    if (ttAllocationStrategy instanceof TTStateProcessor ttState) {
+                        var truckEvent = ttState.getTruckState(truckName);
+                        if (truckEvent != null) {
+                            truckCheId = truckEvent.cheId();
+                        }
+                    }
+                    Action assignedAction = action.withTruckAssignment(truckCheId, truckName);
+                    state.actionLookup.put(actionId, new ActionInfo(actionInfo.taktName(), assignedAction));
+                    actionInfo = state.actionLookup.get(actionId);
+                    action = assignedAction;
+                    sideEffects.add(new TruckAssigned(actionId, workQueueId, truckName, truckCheId));
+
+                    // Propagate truck assignment to all other TT actions with the same containerIndex
+                    int containerIdx = action.containerIndex();
+                    for (Map.Entry<UUID, ActionInfo> e : state.actionLookup.entrySet()) {
+                        Action other = e.getValue().action();
+                        if (other.deviceType() == DeviceType.TT
+                                && other.containerIndex() == containerIdx
+                                && other.cheShortName() == null
+                                && !e.getKey().equals(actionId)) {
+                            Action propagated = other.withTruckAssignment(truckCheId, truckName);
+                            state.actionLookup.put(e.getKey(), new ActionInfo(e.getValue().taktName(), propagated));
+                        }
+                    }
+                }
+
                 state.activeActionIds.add(actionId);
                 armEventGatesForAction(state, actionId);
 
@@ -936,11 +1033,11 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                         actionId,
                         workQueueId,
                         actionInfo.taktName(),
-                        actionInfo.action().actionType(),
-                        actionInfo.action().description(),
+                        action.actionType(),
+                        action.description(),
                         this.currentTime,
-                        actionInfo.action().deviceType(),
-                        actionInfo.action().workInstructions()
+                        action.deviceType(),
+                        action.workInstructions()
                 ));
             }
         }
@@ -1007,6 +1104,10 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 currentTime
         ));
 
+        // Auto-complete any skipWhenGatesSatisfied actions FIRST, so their truck
+        // assignments are freed before we try allocating trucks in takt order.
+        sideEffects.addAll(autoCompleteGatedActions(workQueueId, state));
+
         // Activate any actions in all active takts whose dependencies are now satisfied.
         // With cross-container dependencies, an action in a later takt may unblock
         // actions in earlier (already active) takts.
@@ -1039,6 +1140,19 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
         // Try to activate takts whose first action dependencies are now met
         sideEffects.addAll(tryActivateTakts(workQueueId, state));
+
+        // Re-evaluate pending TT actions in other schedules that may benefit from a freed truck
+        if (ttAllocationStrategy != null && completedActionInfo.action().cheShortName() != null) {
+            for (Map.Entry<Long, ScheduleState> otherEntry : scheduleStates.entrySet()) {
+                if (otherEntry.getKey() == workQueueId) continue;
+                ScheduleState otherState = otherEntry.getValue();
+                for (Takt t : otherState.takts) {
+                    if (otherState.taktStates.get(t.name()) == TaktState.ACTIVE) {
+                        sideEffects.addAll(activateEligibleActions(otherEntry.getKey(), otherState, t.name()));
+                    }
+                }
+            }
+        }
 
         return sideEffects;
     }

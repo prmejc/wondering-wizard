@@ -35,11 +35,15 @@ import com.wonderingwizard.events.NukeWorkQueueEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
 import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.events.WorkQueueStatus;
+import com.wonderingwizard.events.CheJobStepState;
+import com.wonderingwizard.events.CheStatus;
+import com.wonderingwizard.events.ContainerHandlingEquipmentEvent;
 import com.wonderingwizard.processors.DelayProcessor;
 import com.wonderingwizard.processors.DigitalMapProcessor;
 import com.wonderingwizard.processors.EventLogProcessor;
 import com.wonderingwizard.processors.RtgWaitDurationStep;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
+import com.wonderingwizard.processors.TTStateProcessor;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
 import com.wonderingwizard.processors.WorkQueueProcessor;
 import com.wonderingwizard.sideeffects.ActionActivated;
@@ -88,6 +92,7 @@ public class DemoServer {
     private final Engine engine;
     private final Settings settings;
     private final ScheduleRunnerProcessor scheduleRunnerProcessor;
+    private final TTStateProcessor ttStateProcessor;
     private final List<Step> steps = new ArrayList<>();
     private final Instant initialTime = Instant.EPOCH;
     private Instant currentTime = initialTime;
@@ -142,7 +147,7 @@ public class DemoServer {
     public record ActionView(UUID id, DeviceType deviceType, String description,
                               ActionState status, Set<UUID> dependsOn, int containerIndex,
                               int durationSeconds, int deviceIndex, List<ConditionView> conditions,
-                              List<String> containerIds) {}
+                              List<String> containerIds, String cheShortName) {}
 
     /**
      * A command submitted to the single-threaded event processing queue.
@@ -227,6 +232,9 @@ public class DemoServer {
         this.scheduleRunnerProcessor = new ScheduleRunnerProcessor();
         engine.register(scheduleRunnerProcessor);
         engine.register(new DelayProcessor());
+        this.ttStateProcessor = new TTStateProcessor();
+        engine.register(ttStateProcessor);
+        scheduleRunnerProcessor.registerTTAllocationStrategy(ttStateProcessor);
         // Take initial snapshot so we can always reset to clean state
         engine.snapshot();
         snapshotStepIndex = 0;
@@ -236,6 +244,7 @@ public class DemoServer {
         this.settings = Settings.load();
         this.engine = engine;
         this.scheduleRunnerProcessor = null;
+        this.ttStateProcessor = null;
     }
 
     /**
@@ -264,6 +273,8 @@ public class DemoServer {
         httpServer.createContext("/workinstructions", this::handleWorkInstructions);
         httpServer.createContext("/workqueues", this::handleWorkQueues);
         httpServer.createContext("/pathfinder", this::handlePathfinder);
+        httpServer.createContext("/trucks", this::handleTrucks);
+        httpServer.createContext("/api/container-handling-equipment", this::handleContainerHandlingEquipment);
         httpServer.createContext("/proposal2", this::handleProposal2);
         httpServer.createContext("/api/pathfind", this::handlePathfind);
         httpServer.createContext("/api/digitalmap", this::handleDigitalMap);
@@ -620,6 +631,11 @@ public class DemoServer {
         int to = Math.min(from + schedulePageSize, allSchedules.size());
         state.put("schedules", allSchedules.subList(from, to));
 
+        // Include TT (truck) state
+        if (ttStateProcessor != null) {
+            state.put("trucks", ttStateProcessor.getTruckState());
+        }
+
         return state;
     }
 
@@ -644,9 +660,16 @@ public class DemoServer {
                     case ScheduleCreated created -> {
                         long wqId = created.workQueueId();
                         ScheduleViewBuilder builder = new ScheduleViewBuilder(wqId, true, created.estimatedMoveTime());
+                        builder.hasTTAllocation = scheduleRunnerProcessor != null
+                                && scheduleRunnerProcessor.hasTTAllocationStrategy();
                         for (Takt takt : created.takts()) {
                             List<ActionView> actionViews = new ArrayList<>();
-                            for (Action action : takt.actions()) {
+                            for (Action originalAction : takt.actions()) {
+                                // Get authoritative action (may have truck assignment)
+                                Action action = scheduleRunnerProcessor != null
+                                        ? scheduleRunnerProcessor.getAction(wqId, originalAction.id())
+                                        : originalAction;
+                                if (action == null) action = originalAction;
                                 List<String> cIds = action.workInstructions().stream()
                                     .map(wi -> wi.containerId() != null ? wi.containerId() : "")
                                     .filter(id -> !id.isEmpty())
@@ -658,7 +681,8 @@ public class DemoServer {
                                 actionViews.add(new ActionView(
                                         action.id(), action.deviceType(), action.description(),
                                         actionState, action.dependsOn(), action.containerIndex(),
-                                        action.durationSeconds(), action.deviceIndex(), List.of(), cIds));
+                                        action.durationSeconds(), action.deviceIndex(), List.of(), cIds,
+                                        action.cheShortName()));
                             }
                             // Get takt status from processor's authoritative state
                             TaktState taktState = scheduleRunnerProcessor != null
@@ -750,6 +774,8 @@ public class DemoServer {
         final Map<UUID, Set<String>> overriddenActionConditions = new HashMap<>();
         /** Satisfied event gate condition IDs per action UUID. */
         final Map<UUID, Set<String>> satisfiedEventGates = new HashMap<>();
+        /** Whether a TT allocation strategy is registered. */
+        boolean hasTTAllocation = false;
 
         ScheduleViewBuilder(long workQueueId, boolean active, Instant estimatedMoveTime) {
             this.workQueueId = workQueueId;
@@ -849,7 +875,7 @@ public class DemoServer {
                             action.id(), action.deviceType(), action.description(),
                             actionState, action.dependsOn(), action.containerIndex(),
                             action.durationSeconds(), action.deviceIndex(), actionConditions,
-                            action.containerIds()));
+                            action.containerIds(), action.cheShortName()));
                 }
 
                 // Build conditions for WAITING takts
@@ -928,6 +954,15 @@ public class DemoServer {
                             satisfied, overridden,
                             satisfied ? null : gate.explanation(context)));
                 }
+            }
+
+            // TT allocation condition: TT actions need a truck assigned
+            if (action.deviceType() == DeviceType.TT && hasTTAllocation) {
+                boolean hasTruck = action.cheShortName() != null;
+                views.add(new ConditionView("tt-allocation", "TT_ALLOCATION",
+                        hasTruck, false,
+                        hasTruck ? "Assigned: " + action.cheShortName()
+                                : "Waiting for free TT (FES pool)"));
             }
 
             return views;
@@ -1061,6 +1096,65 @@ public class DemoServer {
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(html);
             }
+        }
+    }
+
+    private void handleTrucks(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try (InputStream is = getClass().getResourceAsStream("/trucks.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "Trucks page not found");
+                return;
+            }
+            byte[] html = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, html.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html);
+            }
+        }
+    }
+
+    private void handleContainerHandlingEquipment(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            String eventType = body.getOrDefault("eventType", "");
+            Long cheId = body.get("cheId") != null && !body.get("cheId").isEmpty()
+                    ? Long.parseLong(body.get("cheId")) : null;
+            String opType = body.getOrDefault("opType", "");
+            String cdhTerminalCode = body.getOrDefault("cdhTerminalCode", "");
+            Long messageSequenceNumber = body.get("messageSequenceNumber") != null
+                    && !body.get("messageSequenceNumber").isEmpty()
+                    ? Long.parseLong(body.get("messageSequenceNumber")) : null;
+            String cheShortName = requireField(body, "cheShortName");
+            String cheStatusStr = body.getOrDefault("cheStatus", "");
+            CheStatus cheStatus = cheStatusStr.isEmpty() ? null : CheStatus.fromDisplayName(cheStatusStr);
+            String cheKind = body.getOrDefault("cheKind", "TT");
+            Long chePoolId = body.get("chePoolId") != null && !body.get("chePoolId").isEmpty()
+                    ? Long.parseLong(body.get("chePoolId")) : null;
+            String cheJobStepStateStr = body.getOrDefault("cheJobStepState", "");
+            CheJobStepState cheJobStepState = cheJobStepStateStr.isEmpty() ? null : CheJobStepState.fromCode(cheJobStepStateStr);
+            Long sourceTsMs = body.get("sourceTsMs") != null && !body.get("sourceTsMs").isEmpty()
+                    ? Long.parseLong(body.get("sourceTsMs")) : null;
+
+            ContainerHandlingEquipmentEvent event = new ContainerHandlingEquipmentEvent(
+                    eventType, cheId, opType, cdhTerminalCode, messageSequenceNumber,
+                    cheShortName, cheStatus, cheKind, chePoolId, cheJobStepState, sourceTsMs);
+            StepResult result = processStep("CHE: " + cheShortName, event);
+
+            sendJsonResponse(exchange, 200, JsonSerializer.serialize(
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }
     }
 
