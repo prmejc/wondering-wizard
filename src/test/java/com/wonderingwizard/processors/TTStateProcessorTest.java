@@ -3,6 +3,7 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.engine.EventProcessingEngine;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.CheJobStepState;
+import com.wonderingwizard.events.CheLogicalPositionEvent;
 import com.wonderingwizard.events.CheStatus;
 import com.wonderingwizard.events.ContainerHandlingEquipmentEvent;
 import com.wonderingwizard.events.TimeEvent;
@@ -225,6 +226,45 @@ class TTStateProcessorTest {
             assertNotNull(state);
             assertEquals("TT01", state.cheShortName());
             assertEquals(CheStatus.WORKING, state.cheStatus());
+        }
+    }
+
+    @Nested
+    @DisplayName("Position tracking")
+    class PositionTracking {
+
+        @Test
+        @DisplayName("Should store position for known truck")
+        void storePositionForKnownTruck() {
+            engine.processEvent(ttEvent("TT01", CheStatus.WORKING, CheJobStepState.IDLE));
+            engine.processEvent(new CheLogicalPositionEvent("TT01", 42L, "3A13", 35.889, -5.496, 1.2, 1700000000000L));
+
+            var positions = processor.getTruckPositions();
+            assertTrue(positions.containsKey("TT01"));
+            assertEquals(42L, positions.get("TT01").currentMapNodeId());
+            assertEquals("3A13", positions.get("TT01").currentMapNodeName());
+            assertEquals(35.889, positions.get("TT01").latitude(), 0.0001);
+        }
+
+        @Test
+        @DisplayName("Should not store position for unknown truck")
+        void ignorePositionForUnknownTruck() {
+            engine.processEvent(new CheLogicalPositionEvent("TT99", 42L, "3A13", 35.889, -5.496, 1.2, 1700000000000L));
+
+            var positions = processor.getTruckPositions();
+            assertFalse(positions.containsKey("TT99"));
+        }
+
+        @Test
+        @DisplayName("Should update position on new event")
+        void updatePositionOnNewEvent() {
+            engine.processEvent(ttEvent("TT01", CheStatus.WORKING, CheJobStepState.IDLE));
+            engine.processEvent(new CheLogicalPositionEvent("TT01", 42L, "3A13", 35.889, -5.496, 1.2, 1000L));
+            engine.processEvent(new CheLogicalPositionEvent("TT01", 99L, "3B15", 35.890, -5.497, 0.8, 2000L));
+
+            var pos = processor.getTruckPositions().get("TT01");
+            assertEquals(99L, pos.currentMapNodeId());
+            assertEquals("3B15", pos.currentMapNodeName());
         }
     }
 }

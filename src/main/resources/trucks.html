@@ -138,9 +138,18 @@ async function apiCall(path, body) {
   return res.json();
 }
 
+const POSITION_FIELDS = [
+  { key: 'currentMapNodeId', label: 'Node ID' },
+  { key: 'currentMapNodeName', label: 'Node Name' },
+  { key: 'latitude', label: 'Latitude' },
+  { key: 'longitude', label: 'Longitude' },
+  { key: 'hdop', label: 'HDOP' },
+];
+
 function extractTrucks(state) {
   const truckMap = new Map();
   const rawTrucks = state.trucks || {};
+  const rawPositions = state.truckPositions || {};
   for (const [name, evt] of Object.entries(rawTrucks)) {
     const row = {};
     for (const f of CHE_FIELDS) {
@@ -148,6 +157,12 @@ function extractTrucks(state) {
         row[f.key] = evt[f.key] != null ? Number(evt[f.key]) : '';
       } else {
         row[f.key] = evt[f.key] != null ? String(evt[f.key]) : '';
+      }
+    }
+    const pos = rawPositions[name];
+    if (pos) {
+      for (const pf of POSITION_FIELDS) {
+        row[pf.key] = pos[pf.key] != null ? pos[pf.key] : '';
       }
     }
     truckMap.set(name, row);
@@ -224,6 +239,9 @@ function render() {
   for (const f of CHE_FIELDS) {
     html += '<th>' + f.label + '</th>';
   }
+  for (const pf of POSITION_FIELDS) {
+    html += '<th>' + pf.label + '</th>';
+  }
   html += '<th>Assignment</th><th>Actions</th></tr></thead><tbody>';
 
   for (const [name, row] of trucks) {
@@ -241,6 +259,11 @@ function buildRowHtml(name, row) {
   let html = '<tr data-truck="' + name + '"' + (stale ? ' class="stale"' : '') + '>';
   for (const f of CHE_FIELDS) {
     html += '<td>' + inputFor(f, row, name) + '</td>';
+  }
+  for (const pf of POSITION_FIELDS) {
+    const val = row[pf.key];
+    const display = val != null && val !== '' ? (typeof val === 'number' && pf.key !== 'currentMapNodeId' ? val.toFixed(6) : val) : '-';
+    html += '<td style="font-size:11px;color:var(--text-muted)">' + display + '</td>';
   }
   const assignment = truckAssignments.get(name) || '';
   html += '<td class="assignment-cell" data-assignment="' + name + '" style="font-size:12px;color:' + (assignment ? 'var(--active)' : 'var(--text-muted)') + '">' + (assignment || '-') + '</td>';

@@ -3,6 +3,7 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
+import com.wonderingwizard.events.CheLogicalPositionEvent;
 import com.wonderingwizard.events.CheStatus;
 import com.wonderingwizard.events.ContainerHandlingEquipmentEvent;
 import com.wonderingwizard.sideeffects.TTStateUpdated;
@@ -33,6 +34,7 @@ public class TTStateProcessor implements EventProcessor, TTAllocationStrategy {
 
     private final long fesPoolId;
     private final Map<String, ContainerHandlingEquipmentEvent> truckState = new LinkedHashMap<>();
+    private final Map<String, CheLogicalPositionEvent> truckPositions = new LinkedHashMap<>();
 
     public TTStateProcessor() {
         this(FES_POOL_ID);
@@ -48,6 +50,9 @@ public class TTStateProcessor implements EventProcessor, TTAllocationStrategy {
                 && CHE_KIND_TT.equals(cheEvent.cheKind())) {
             return handleTTEvent(cheEvent);
         }
+        if (event instanceof CheLogicalPositionEvent posEvent) {
+            return handlePositionEvent(posEvent);
+        }
         return List.of();
     }
 
@@ -58,6 +63,19 @@ public class TTStateProcessor implements EventProcessor, TTAllocationStrategy {
         }
         truckState.put(name, event);
         return List.of(new TTStateUpdated(name, event));
+    }
+
+    private List<SideEffect> handlePositionEvent(CheLogicalPositionEvent event) {
+        String name = event.cheShortName();
+        if (name == null || name.isBlank()) {
+            return List.of();
+        }
+        // Only store position for trucks we already know about
+        if (!truckState.containsKey(name)) {
+            return List.of();
+        }
+        truckPositions.put(name, event);
+        return List.of();
     }
 
     @Override
@@ -94,18 +112,39 @@ public class TTStateProcessor implements EventProcessor, TTAllocationStrategy {
         return truckState.get(cheShortName);
     }
 
+    /**
+     * Returns the current position data for all known trucks.
+     */
+    public Map<String, CheLogicalPositionEvent> getTruckPositions() {
+        return Map.copyOf(truckPositions);
+    }
+
     @Override
     public Object captureState() {
-        return new HashMap<>(truckState);
+        var state = new HashMap<String, Object>();
+        state.put("truckState", new HashMap<>(truckState));
+        state.put("truckPositions", new HashMap<>(truckPositions));
+        return state;
     }
 
     @Override
     @SuppressWarnings("unchecked")
     public void restoreState(Object state) {
-        if (!(state instanceof Map)) {
+        if (state instanceof Map<?,?> stateMap && stateMap.containsKey("truckState")) {
+            truckState.clear();
+            truckState.putAll((Map<String, ContainerHandlingEquipmentEvent>) stateMap.get("truckState"));
+            truckPositions.clear();
+            Object posState = stateMap.get("truckPositions");
+            if (posState instanceof Map) {
+                truckPositions.putAll((Map<String, CheLogicalPositionEvent>) posState);
+            }
+        } else if (state instanceof Map) {
+            // Backwards compatibility: old state format was just the truckState map
+            truckState.clear();
+            truckState.putAll((Map<String, ContainerHandlingEquipmentEvent>) state);
+            truckPositions.clear();
+        } else {
             throw new IllegalArgumentException("Invalid state for TTStateProcessor");
         }
-        truckState.clear();
-        truckState.putAll((Map<String, ContainerHandlingEquipmentEvent>) state);
     }
 }

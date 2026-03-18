@@ -157,6 +157,17 @@ public class Settings {
                 "apmt.terminaloperations.equipmentinstruction.quaycrane.topic.confidential.dedicated.v1");
     }
 
+    public ConsumerConfiguration cheLogicalPositionConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.che-logical-position.topic",
+                        "apmt.terminaloperations.chelogicalposition.topic.confidential.dedicated.v1"),
+                get("kafka.consumer.che-logical-position.group-id", "wondering-wizard-che-pos"),
+                get("kafka.consumer.che-logical-position.avro-message-type", null),
+                null,
+                false
+        );
+    }
+
     public ConsumerConfiguration containerHandlingEquipmentConsumerConfiguration() {
         return new ConsumerConfiguration(
                 get("kafka.consumer.container-handling-equipment.topic",

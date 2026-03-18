@@ -72,6 +72,23 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.12">
+  <h2>v4.0.12</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>Kafka consumer for CheLogicalPosition topic &mdash; receives truck GPS positions and map node info</li>
+    <li>Trucks table now shows position columns: Node ID, Node Name, Latitude, Longitude, and HDOP</li>
+  </ul>
+
+  <h3>Details</h3>
+  <ul>
+    <li><code>TTStateProcessor</code> handles <code>CheLogicalPositionEvent</code> alongside <code>ContainerHandlingEquipmentEvent</code> &mdash; position data is only stored for trucks that already exist (no phantom entries)</li>
+    <li>Position data is included in the <code>/api/state</code> response as <code>truckPositions</code> and serialized by <code>JsonSerializer</code></li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.11">
   <h2>v4.0.11</h2>
   <div class="date">2026-03-18</div>

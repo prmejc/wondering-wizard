@@ -24,6 +24,7 @@ import com.wonderingwizard.kafka.ActionActivatedToEquipmentInstructionMapper;
 import com.wonderingwizard.kafka.AssetEventMapper;
 import com.wonderingwizard.kafka.KafkaConsumerManager;
 import com.wonderingwizard.kafka.KafkaSideEffectPublisher;
+import com.wonderingwizard.kafka.CheLogicalPositionEventMapper;
 import com.wonderingwizard.kafka.ContainerHandlingEquipmentEventMapper;
 import com.wonderingwizard.kafka.WorkInstructionEventMapper;
 import com.wonderingwizard.kafka.WorkQueueEventMapper;
@@ -381,6 +382,10 @@ public class DemoServer {
                 settings.containerHandlingEquipmentConsumerConfiguration(),
                 new ContainerHandlingEquipmentEventMapper()
         );
+        kafkaConsumerManager.register(
+                settings.cheLogicalPositionConsumerConfiguration(),
+                new CheLogicalPositionEventMapper()
+        );
         AssetEventMapper assetEventMapper = new AssetEventMapper();
         kafkaConsumerManager.registerJson(
                 settings.assetEventRtgConsumerConfiguration(),
@@ -652,9 +657,10 @@ public class DemoServer {
         int to = Math.min(from + schedulePageSize, allSchedules.size());
         state.put("schedules", allSchedules.subList(from, to));
 
-        // Include TT (truck) state
+        // Include TT (truck) state and positions
         if (ttStateProcessor != null) {
             state.put("trucks", ttStateProcessor.getTruckState());
+            state.put("truckPositions", ttStateProcessor.getTruckPositions());
         }
 
         return state;

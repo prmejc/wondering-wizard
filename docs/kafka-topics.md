@@ -16,7 +16,7 @@ Tracking implementation progress for all Kafka topics used by the system.
 | 7 | `apmt.terminaloperations.assetevent.quaycrane.topic.confidential.dedicated.v1` | AssetEvent (QC) |     Yes     |     No      |
 | 8 | `apmt.terminaloperations.assetevent.emptyhandler.topic.confidential.dedicated.v1` | AssetEvent (EH) |     Yes     |     No      |
 | 9 | `apmt.quaysideoperations.quaycraneflowposition.topic.internal.any.v2` | QuayCraneMapping |     No      |     No      |
-| 10 | `apmt.terminaloperations.chelogicalposition.topic.confidential.dedicated.v1` | CheLogicalPosition |     No      |     No      |
+| 10 | `apmt.terminaloperations.chelogicalposition.topic.confidential.dedicated.v1` | CheLogicalPosition |     Yes     |     No      |
 | 11 | `APMT.terminalOperations.craneDelayActivities.topic.confidential.dedicated.v1` | CraneDelayActivities |     No      |     No      |
 | 12 | `apmt.terminaloperations.craneavailabilitystatus.topic.confidential.dedicated.v1` | CraneAvailabilityStatus |     No      |     No      |
 | 13 | `apmt.terminaloperations.containermovestate.topic.confidential.status.v1` | ContainerMoveState |     No      |     No      |
@@ -43,6 +43,6 @@ Tracking implementation progress for all Kafka topics used by the system.
 
 | Direction | Total | Implemented | Well Tested |
 |-----------|:-----:|:-----------:|:-----------:|
-| Consumer  | 16    | 6           |      1      |
+| Consumer  | 16    | 7           |      1      |
 | Producer  | 11    | 3           |      0      |
-| **Total** | **27**| **9**       |    **1**    |
+| **Total** | **27**| **10**      |    **1**    |

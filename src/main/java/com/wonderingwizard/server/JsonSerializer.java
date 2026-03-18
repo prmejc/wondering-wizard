@@ -6,6 +6,7 @@ import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.CheLogicalPositionEvent;
 import com.wonderingwizard.events.ContainerHandlingEquipmentEvent;
 import com.wonderingwizard.events.DigitalMapEvent;
 import com.wonderingwizard.events.NukeWorkQueueEvent;
@@ -291,6 +292,18 @@ public final class JsonSerializer {
                 writeField(sb, "chePoolId", e.chePoolId(), false);
                 writeField(sb, "cheJobStepState", e.cheJobStepState() != null ? e.cheJobStepState().code() : null, false);
                 writeField(sb, "sourceTsMs", e.sourceTsMs(), false);
+                sb.append('}');
+            }
+            case CheLogicalPositionEvent e -> {
+                sb.append('{');
+                writeField(sb, "type", "CheLogicalPositionEvent", true);
+                writeField(sb, "cheShortName", e.cheShortName(), false);
+                writeField(sb, "currentMapNodeId", e.currentMapNodeId(), false);
+                writeField(sb, "currentMapNodeName", e.currentMapNodeName(), false);
+                writeField(sb, "latitude", e.latitude(), false);
+                writeField(sb, "longitude", e.longitude(), false);
+                writeField(sb, "hdop", e.hdop(), false);
+                writeField(sb, "timestampMs", e.timestampMs(), false);
                 sb.append('}');
             }
             default -> writeString(sb, event.toString());
