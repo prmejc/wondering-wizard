@@ -72,6 +72,17 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.15">
+  <h2>v4.0.15</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Fixed Prometheus metric name mismatch &mdash; removed <code>.setUnit("ms")</code> from OTEL histograms to prevent the exporter from appending <code>_milliseconds</code> suffix (e.g. <code>fes_kafka_processing_duration_ms_milliseconds_bucket</code> &rarr; <code>fes_kafka_processing_duration_ms_bucket</code>)</li>
+    <li>Added warmup metric recording at startup so Prometheus always gets samples even before the first Kafka message arrives</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.14">
   <h2>v4.0.14</h2>
   <div class="date">2026-03-18</div>

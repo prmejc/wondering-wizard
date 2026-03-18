@@ -72,14 +72,17 @@ public class Metrics {
                 .build();
 
         kafkaProcessingDuration = meter.histogramBuilder("fes_kafka_processing_duration_ms")
-                .setDescription("Time to process a single Kafka message (map + engine)")
-                .setUnit("ms")
+                .setDescription("Time to process a single Kafka message (map + engine) in milliseconds")
                 .build();
 
         engineProcessingDuration = meter.histogramBuilder("fes_engine_processing_duration_ms")
-                .setDescription("Time to process a single event through the engine")
-                .setUnit("ms")
+                .setDescription("Time to process a single event through the engine in milliseconds")
                 .build();
+
+        // Record initial zero-value so metrics appear in Prometheus immediately
+        // (OTEL histograms are invisible until the first recording)
+        kafkaProcessingDuration.record(0, Attributes.of(TOPIC, "warmup"));
+        engineProcessingDuration.record(0, Attributes.of(EVENT_TYPE, "warmup"));
 
         logger.info("OTEL metrics initialized, Prometheus endpoint on port " + prometheusPort);
     }
