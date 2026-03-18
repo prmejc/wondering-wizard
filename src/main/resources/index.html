@@ -972,8 +972,14 @@ class ScheduleView extends HTMLElement {
     const containerHue = (ci * 137) % 360;
     const containerColor = 'hsl(' + containerHue + ',70%,60%)';
 
-    let bgColor, borderColor, textOpacity, statusLabel;
-    if (action.status === 'COMPLETED') {
+    let bgColor, borderColor, textOpacity, statusLabel, extraStyle = '';
+    if (action.status === 'COMPLETED' && action.completionReason) {
+      bgColor = 'rgba(100,116,139,0.12)';
+      borderColor = '#94a3b8';
+      textOpacity = '0.6';
+      extraStyle = 'background-image:repeating-linear-gradient(135deg,transparent,transparent 4px,rgba(148,163,184,0.18) 4px,rgba(148,163,184,0.18) 6px);';
+      statusLabel = '<span style="color:#f59e0b" title="' + action.completionReason + '">&#9888;</span>';
+    } else if (action.status === 'COMPLETED') {
       bgColor = 'rgba(34,197,94,0.15)'; borderColor = 'var(--completed)'; textOpacity = '0.7';
       statusLabel = '<span style="color:var(--completed)">&#10003;</span>';
     } else if (action.status === 'ACTIVE') {
@@ -1003,7 +1009,7 @@ class ScheduleView extends HTMLElement {
       innerHtml += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Complete</button>';
     }
 
-    let h = '<div style="position:relative;background:' + bgColor + ';border:1px solid ' + borderColor + ';border-top:3px solid ' + containerColor + ';border-radius:4px;padding:' + (narrow ? '1px 2px' : '3px 5px') + ';opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0;overflow:hidden;cursor:' + (narrow ? 'pointer' : 'default') + '"' + (narrow ? ' data-popup-html="' + innerHtml.replace(/"/g, '&quot;') + '" data-popup-bg="' + bgColor + '" data-popup-border="' + borderColor + '" data-popup-container="' + containerColor + '"' : '') + '>';
+    let h = '<div style="position:relative;background:' + bgColor + ';' + extraStyle + 'border:1px solid ' + borderColor + ';border-top:3px solid ' + containerColor + ';border-radius:4px;padding:' + (narrow ? '1px 2px' : '3px 5px') + ';opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0;overflow:hidden;cursor:' + (narrow ? 'pointer' : 'default') + '"' + (narrow ? ' data-popup-html="' + innerHtml.replace(/"/g, '&quot;') + '" data-popup-bg="' + bgColor + '" data-popup-border="' + borderColor + '" data-popup-container="' + containerColor + '"' : '') + '>';
     if (!narrow) {
       h += innerHtml;
     }

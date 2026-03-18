@@ -44,6 +44,7 @@ import com.wonderingwizard.processors.EventLogProcessor;
 import com.wonderingwizard.processors.RtgWaitDurationStep;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TTStateProcessor;
+import com.wonderingwizard.processors.TTUnavailableHandler;
 import com.wonderingwizard.processors.TimeAlarmProcessor;
 import com.wonderingwizard.processors.WorkQueueProcessor;
 import com.wonderingwizard.sideeffects.ActionActivated;
@@ -149,7 +150,8 @@ public class DemoServer {
     public record ActionView(UUID id, DeviceType deviceType, String description,
                               ActionState status, Set<UUID> dependsOn, int containerIndex,
                               int durationSeconds, int deviceIndex, List<ConditionView> conditions,
-                              List<String> containerIds, String cheShortName) {}
+                              List<String> containerIds, String cheShortName,
+                              String completionReason) {}
 
     /**
      * A command submitted to the single-threaded event processing queue.
@@ -231,12 +233,13 @@ public class DemoServer {
         workQueueProcessor.registerStep(new RtgWaitDurationStep());
         engine.register(digitalMapProcessor);
         engine.register(workQueueProcessor);
-        this.scheduleRunnerProcessor = new ScheduleRunnerProcessor();
-        engine.register(scheduleRunnerProcessor);
-        engine.register(new DelayProcessor());
         this.ttStateProcessor = new TTStateProcessor();
         engine.register(ttStateProcessor);
+        this.scheduleRunnerProcessor = new ScheduleRunnerProcessor();
         scheduleRunnerProcessor.registerTTAllocationStrategy(ttStateProcessor);
+        scheduleRunnerProcessor.registerSubProcessor(new TTUnavailableHandler());
+        engine.register(scheduleRunnerProcessor);
+        engine.register(new DelayProcessor());
         // Take initial snapshot so we can always reset to clean state
         engine.snapshot();
         snapshotStepIndex = 0;
@@ -682,11 +685,13 @@ public class DemoServer {
                                 ActionState actionState = scheduleRunnerProcessor != null
                                         ? mapActionStatus(scheduleRunnerProcessor.getActionStatus(wqId, action.id()))
                                         : ActionState.PENDING;
+                                String reason = action.completionReason() != null
+                                        ? action.completionReason().displayName() : null;
                                 actionViews.add(new ActionView(
                                         action.id(), action.deviceType(), action.description(),
                                         actionState, action.dependsOn(), action.containerIndex(),
                                         action.durationSeconds(), action.deviceIndex(), List.of(), cIds,
-                                        action.cheShortName()));
+                                        action.cheShortName(), reason));
                             }
                             // Get takt status from processor's authoritative state
                             TaktState taktState = scheduleRunnerProcessor != null
@@ -879,7 +884,8 @@ public class DemoServer {
                             action.id(), action.deviceType(), action.description(),
                             actionState, action.dependsOn(), action.containerIndex(),
                             action.durationSeconds(), action.deviceIndex(), actionConditions,
-                            action.containerIds(), action.cheShortName()));
+                            action.containerIds(), action.cheShortName(),
+                            action.completionReason()));
                 }
 
                 // Build conditions for WAITING takts

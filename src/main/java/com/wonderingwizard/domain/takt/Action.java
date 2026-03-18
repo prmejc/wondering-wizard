@@ -24,11 +24,12 @@ import java.util.UUID;
  * @param eventGates event gate conditions that must be satisfied before this action can activate
  * @param cheId the CHE identifier of the assigned truck (nullable, only for TT actions)
  * @param cheShortName the short name of the assigned truck (nullable, only for TT actions)
+ * @param completionReason the reason for force-completion (nullable, null means normal completion)
  */
 public record Action(UUID id, DeviceType deviceType, ActionType actionType, String description, Set<UUID> dependsOn,
                      int containerIndex, int durationSeconds, int deviceIndex, List<WorkInstructionEvent> workInstructions,
                      List<EventGateCondition> eventGates, boolean skipWhenGatesSatisfied,
-                     Long cheId, String cheShortName) {
+                     Long cheId, String cheShortName, CompletionReason completionReason) {
 
     /**
      * Constructor without cheId and cheShortName.
@@ -37,7 +38,7 @@ public record Action(UUID id, DeviceType deviceType, ActionType actionType, Stri
                   int containerIndex, int durationSeconds, int deviceIndex, List<WorkInstructionEvent> workInstructions,
                   List<EventGateCondition> eventGates, boolean skipWhenGatesSatisfied) {
         this(id, deviceType, actionType, description, dependsOn, containerIndex, durationSeconds, deviceIndex,
-                workInstructions, eventGates, skipWhenGatesSatisfied, null, null);
+                workInstructions, eventGates, skipWhenGatesSatisfied, null, null, null);
     }
 
     /**
@@ -46,7 +47,7 @@ public record Action(UUID id, DeviceType deviceType, ActionType actionType, Stri
     public Action(UUID id, DeviceType deviceType, ActionType actionType, String description, Set<UUID> dependsOn,
                   int containerIndex, int durationSeconds, int deviceIndex, List<WorkInstructionEvent> workInstructions,
                   List<EventGateCondition> eventGates) {
-        this(id, deviceType, actionType, description, dependsOn, containerIndex, durationSeconds, deviceIndex, workInstructions, eventGates, false, null, null);
+        this(id, deviceType, actionType, description, dependsOn, containerIndex, durationSeconds, deviceIndex, workInstructions, eventGates, false, null, null, null);
     }
 
     /**
@@ -54,7 +55,7 @@ public record Action(UUID id, DeviceType deviceType, ActionType actionType, Stri
      */
     public Action(UUID id, DeviceType deviceType, ActionType actionType, String description, Set<UUID> dependsOn,
                   int containerIndex, int durationSeconds, int deviceIndex, List<WorkInstructionEvent> workInstructions) {
-        this(id, deviceType, actionType, description, dependsOn, containerIndex, durationSeconds, deviceIndex, workInstructions, List.of(), false, null, null);
+        this(id, deviceType, actionType, description, dependsOn, containerIndex, durationSeconds, deviceIndex, workInstructions, List.of(), false, null, null, null);
     }
 
     /**
@@ -62,63 +63,63 @@ public record Action(UUID id, DeviceType deviceType, ActionType actionType, Stri
      */
     public Action(UUID id, DeviceType deviceType, ActionType actionType, String description, Set<UUID> dependsOn,
                   int containerIndex, int durationSeconds) {
-        this(id, deviceType, actionType, description, dependsOn, containerIndex, durationSeconds, 0, List.of(), List.of(), false, null, null);
+        this(id, deviceType, actionType, description, dependsOn, containerIndex, durationSeconds, 0, List.of(), List.of(), false, null, null, null);
     }
 
     /**
      * Constructor without containerIndex, duration, deviceIndex, workInstructions, and eventGates.
      */
     public Action(UUID id, DeviceType deviceType, ActionType actionType, String description, Set<UUID> dependsOn) {
-        this(id, deviceType, actionType, description, dependsOn, 0, DeviceActionTemplate.DEFAULT_DURATION_SECONDS, 0, List.of(), List.of(), false, null, null);
+        this(id, deviceType, actionType, description, dependsOn, 0, DeviceActionTemplate.DEFAULT_DURATION_SECONDS, 0, List.of(), List.of(), false, null, null, null);
     }
 
     /**
      * Creates an action with a generated UUID and no dependencies.
      */
     public static Action create(DeviceType deviceType, ActionType actionType) {
-        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(), 0, DeviceActionTemplate.DEFAULT_DURATION_SECONDS, 0, List.of(), List.of(), false, null, null);
+        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(), 0, DeviceActionTemplate.DEFAULT_DURATION_SECONDS, 0, List.of(), List.of(), false, null, null, null);
     }
 
     /**
      * Creates an action with a generated UUID, no dependencies, and a container index.
      */
     public static Action create(DeviceType deviceType, ActionType actionType, int containerIndex) {
-        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(), containerIndex, DeviceActionTemplate.DEFAULT_DURATION_SECONDS, 0, List.of(), List.of(), false, null, null);
+        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(), containerIndex, DeviceActionTemplate.DEFAULT_DURATION_SECONDS, 0, List.of(), List.of(), false, null, null, null);
     }
 
     /**
      * Creates an action with a generated UUID, no dependencies, a container index, and custom duration.
      */
     public static Action create(DeviceType deviceType, ActionType actionType, int containerIndex, int durationSeconds) {
-        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(), containerIndex, durationSeconds, 0, List.of(), List.of(), false, null, null);
+        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(), containerIndex, durationSeconds, 0, List.of(), List.of(), false, null, null, null);
     }
 
     /**
      * Creates an action with a generated UUID, no dependencies, a container index, custom duration, and display suffix.
      */
     public static Action create(DeviceType deviceType, ActionType actionType, int containerSuffix, int containerIndex, int durationSeconds) {
-        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(containerSuffix), Set.of(), containerIndex, durationSeconds, 0, List.of(), List.of(), false, null, null);
+        return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(containerSuffix), Set.of(), containerIndex, durationSeconds, 0, List.of(), List.of(), false, null, null, null);
     }
 
     /**
      * Creates a copy of this action with the specified dependencies.
      */
     public Action withDependencies(Set<UUID> dependsOn) {
-        return new Action(this.id, this.deviceType, this.actionType, this.description, dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, this.workInstructions, this.eventGates, this.skipWhenGatesSatisfied, this.cheId, this.cheShortName);
+        return new Action(this.id, this.deviceType, this.actionType, this.description, dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, this.workInstructions, this.eventGates, this.skipWhenGatesSatisfied, this.cheId, this.cheShortName, this.completionReason);
     }
 
     /**
      * Creates a copy of this action with the specified work instructions.
      */
     public Action withWorkInstructions(List<WorkInstructionEvent> workInstructions) {
-        return new Action(this.id, this.deviceType, this.actionType, this.description, this.dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, workInstructions, this.eventGates, this.skipWhenGatesSatisfied, this.cheId, this.cheShortName);
+        return new Action(this.id, this.deviceType, this.actionType, this.description, this.dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, workInstructions, this.eventGates, this.skipWhenGatesSatisfied, this.cheId, this.cheShortName, this.completionReason);
     }
 
     /**
      * Creates a copy of this action with the specified event gates.
      */
     public Action withEventGates(List<EventGateCondition> eventGates) {
-        return new Action(this.id, this.deviceType, this.actionType, this.description, this.dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, this.workInstructions, eventGates, this.skipWhenGatesSatisfied, this.cheId, this.cheShortName);
+        return new Action(this.id, this.deviceType, this.actionType, this.description, this.dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, this.workInstructions, eventGates, this.skipWhenGatesSatisfied, this.cheId, this.cheShortName, this.completionReason);
     }
 
     /**
@@ -128,7 +129,16 @@ public record Action(UUID id, DeviceType deviceType, ActionType actionType, Stri
      * @param cheShortName the short name of the truck
      */
     public Action withTruckAssignment(Long cheId, String cheShortName) {
-        return new Action(this.id, this.deviceType, this.actionType, this.description, this.dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, this.workInstructions, this.eventGates, this.skipWhenGatesSatisfied, cheId, cheShortName);
+        return new Action(this.id, this.deviceType, this.actionType, this.description, this.dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, this.workInstructions, this.eventGates, this.skipWhenGatesSatisfied, cheId, cheShortName, this.completionReason);
+    }
+
+    /**
+     * Creates a copy of this action with the specified completion reason.
+     *
+     * @param completionReason the reason for force-completion
+     */
+    public Action withCompletionReason(CompletionReason completionReason) {
+        return new Action(this.id, this.deviceType, this.actionType, this.description, this.dependsOn, this.containerIndex, this.durationSeconds, this.deviceIndex, this.workInstructions, this.eventGates, this.skipWhenGatesSatisfied, this.cheId, this.cheShortName, completionReason);
     }
 
     /**

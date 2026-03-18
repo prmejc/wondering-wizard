@@ -27,6 +27,7 @@ import com.wonderingwizard.sideeffects.TTStateUpdated;
 import com.wonderingwizard.sideeffects.TaktActivated;
 import com.wonderingwizard.sideeffects.TaktCompleted;
 import com.wonderingwizard.sideeffects.TruckAssigned;
+import com.wonderingwizard.sideeffects.TruckUnassigned;
 import com.wonderingwizard.sideeffects.WorkInstructionReassigned;
 
 import java.time.Instant;
@@ -361,6 +362,7 @@ public final class JsonSerializer {
                 writeField(sb, "taktName", e.taktName(), false);
                 writeField(sb, "actionDescription", e.actionDescription(), false);
                 writeField(sb, "completedAt", e.completedAt(), false);
+                if (e.reason() != null) writeField(sb, "reason", e.reason().displayName(), false);
                 sb.append('}');
             }
             case TaktActivated e -> {
@@ -402,6 +404,14 @@ public final class JsonSerializer {
                 writeField(sb, "workQueueId", e.workQueueId(), false);
                 writeField(sb, "cheShortName", e.cheShortName(), false);
                 writeField(sb, "cheId", e.cheId(), false);
+                sb.append('}');
+            }
+            case TruckUnassigned e -> {
+                sb.append('{');
+                writeField(sb, "type", "TruckUnassigned", true);
+                writeField(sb, "actionId", e.actionId(), false);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "cheShortName", e.cheShortName(), false);
                 sb.append('}');
             }
         }
@@ -518,6 +528,7 @@ public final class JsonSerializer {
         writeFieldKey(sb, "containerIds", false);
         writeValue(sb, view.containerIds() != null ? view.containerIds() : List.of());
         if (view.cheShortName() != null) writeField(sb, "cheShortName", view.cheShortName(), false);
+        if (view.completionReason() != null) writeField(sb, "completionReason", view.completionReason(), false);
         sb.append('}');
     }
 

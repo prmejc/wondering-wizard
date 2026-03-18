@@ -72,6 +72,26 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.3">
+  <h2>v4.0.3</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>TT unavailable event handling &mdash; when a terminal truck becomes unavailable mid-operation, the system either reassigns work or force-completes remaining actions depending on workflow progress</li>
+    <li>Sub-processor pattern (<code>ScheduleSubProcessor</code>) for encapsulating schedule event handling logic, with controlled state access via <code>ScheduleContext</code></li>
+    <li><code>TruckUnassigned</code> side effect emitted when a truck is removed from actions</li>
+    <li><code>CompletionReason</code> enum and <code>completionReason</code> field on actions and <code>ActionCompleted</code> side effect to track force-completion causes</li>
+  </ul>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li>Schedule viewer shows force-completed actions with gray background and ⚠ icon instead of the normal green check mark</li>
+    <li>Before TT-under-QC activation: truck is unassigned from all TT actions and a new truck is allocated if available</li>
+    <li>After TT-under-QC activation: all remaining actions for the container and its twin are completed with reason <code>TT_UNAVAILABLE</code></li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.2">
   <h2>v4.0.2</h2>
   <div class="date">2026-03-18</div>

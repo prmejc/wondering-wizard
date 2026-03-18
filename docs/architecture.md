@@ -40,6 +40,7 @@ Marker interface for all side effects produced by event processing. Side effects
 - `DelayUpdated` - Indicates a schedule's total delay has changed
 - `TTStateUpdated` - Indicates a terminal truck's state has been updated
 - `TruckAssigned` - Indicates a truck has been assigned to a TT action
+- `TruckUnassigned` - Indicates a truck has been unassigned from a TT action (due to TT becoming unavailable)
 
 ### EventProcessor (Interface)
 ```
@@ -182,6 +183,7 @@ com.wonderingwizard
 │       ├── Action.java              # Action with UUID, deviceType, description, and dependsOn set
 │       ├── DeviceType.java          # Device type enum (RTG, TT, QC)
 │       ├── DeviceActionTemplate.java # Template for device actions in workflow
+│       ├── CompletionReason.java    # Enum for force-completion reasons (TT_UNAVAILABLE)
 │       └── ContainerWorkflow.java   # Defines RTG→TT→QC workflow with takt offsets
 ├── engine/
 │   ├── Event.java                   # Interface for events
@@ -213,7 +215,8 @@ com.wonderingwizard
 │   ├── TaktCompleted.java           # Takt completion (also implements Event)
 │   ├── DelayUpdated.java            # Schedule delay change notification
 │   ├── TTStateUpdated.java          # Terminal truck state update notification
-│   └── TruckAssigned.java          # Truck assigned to TT action notification
+│   ├── TruckAssigned.java          # Truck assigned to TT action notification
+│   └── TruckUnassigned.java        # Truck unassigned from TT action notification
 ├── processors/
 │   ├── TimeAlarmProcessor.java      # Time alarm handling
 │   ├── WorkQueueProcessor.java      # Work queue schedule and takt generation (with pipeline)
@@ -225,7 +228,10 @@ com.wonderingwizard
 │   ├── DelayProcessor.java         # Schedule delay tracking and calculation
 │   ├── EventLogProcessor.java      # Records all events for export/import
 │   ├── TTStateProcessor.java       # Terminal truck state management (implements TTAllocationStrategy)
-│   └── TTAllocationStrategy.java   # Interface for truck allocation to TT actions
+│   ├── TTAllocationStrategy.java   # Interface for truck allocation to TT actions
+│   ├── ScheduleSubProcessor.java   # Interface for sub-processors registered with ScheduleRunnerProcessor
+│   ├── ScheduleContext.java        # Controlled access to schedule state for sub-processors
+│   └── TTUnavailableHandler.java   # Handles TT unavailable events (implements ScheduleSubProcessor)
 ├── kafka/
 │   ├── KafkaConfiguration.java      # Top-level Kafka connection config (broker, SASL, schema registry)
 │   ├── ConsumerConfiguration.java   # Per-topic consumer config (topic, group, message type)

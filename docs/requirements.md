@@ -1407,3 +1407,59 @@ mvn test -Dtest=DemoServerTest
 - `src/main/resources/trucks.html` (new — Trucks web UI with SSE live updates)
 - `src/test/java/com/wonderingwizard/processors/TTStateProcessorTest.java` (new — 13 tests)
 - `src/test/java/com/wonderingwizard/processors/TTAllocationTest.java` (new — 10 tests)
+
+### F-24: TT Unavailable Event Handling
+
+**Status:** Implemented
+
+**Description:**
+Handle the case when a terminal truck (TT) becomes unavailable mid-operation (cheStatus=Unavailable in ContainerHandlingEquipmentEvent). The behavior depends on whether the truck has already gone under the QC:
+
+1. **Before TT under QC activated:** All TT actions for the affected container are reset to pending (truck unassigned), and the system attempts to allocate a new truck.
+2. **After TT under QC activated or completed:** All remaining actions for the affected container and its twin container are completed with reason "TT Unavailable".
+
+On the schedule viewer, actions completed with a reason are displayed with a gray background and an exclamation mark icon (⚠) instead of the normal green check mark.
+
+**Requested Behavior:**
+- `ContainerHandlingEquipmentEvent` with `cheKind=TT` and `cheStatus=UNAVAILABLE` triggers the handling
+- A `ScheduleSubProcessor` pattern is used to encapsulate the logic in `TTUnavailableHandler`
+- The `Action` record has a `completionReason` field to track why an action was force-completed
+- The `ActionCompleted` side effect has an optional `CompletionReason reason` field
+- `TruckUnassigned` side effect is emitted when a truck is removed from actions
+
+**Expected Results:**
+- Before TT under QC: truck unassigned from all TT actions, new truck allocated if available
+- After TT under QC: all remaining actions for container + twin completed with TT_UNAVAILABLE reason
+- Schedule viewer shows gray background + ⚠ for completed-with-reason actions
+- WORKING status events do not trigger any handling
+- Unknown trucks are ignored
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Send CHE WORKING for TT01, create schedule, send time event | TT01 assigned, first TT action activated |
+| 2 | Send CHE UNAVAILABLE for TT01 before TT under QC | TT actions reset to pending, TruckUnassigned emitted |
+| 3 | Send CHE WORKING for TT02 + time event | TT02 assigned as replacement |
+| 4 | Advance to TT_DRIVE_UNDER_QC active, then send CHE UNAVAILABLE | Remaining actions completed with TT_UNAVAILABLE reason |
+| 5 | Check schedule viewer | Force-completed actions show gray + ⚠ |
+
+**Test Execution:**
+```bash
+mvn test -Dtest=TTUnavailableHandlerTest
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/domain/takt/CompletionReason.java` (new — enum for completion reasons)
+- `src/main/java/com/wonderingwizard/domain/takt/Action.java` (modified — added completionReason field)
+- `src/main/java/com/wonderingwizard/processors/ScheduleSubProcessor.java` (new — sub-processor interface)
+- `src/main/java/com/wonderingwizard/processors/ScheduleContext.java` (new — controlled access to schedule state)
+- `src/main/java/com/wonderingwizard/processors/TTUnavailableHandler.java` (new — TT unavailable logic)
+- `src/main/java/com/wonderingwizard/processors/ScheduleRunnerProcessor.java` (modified — sub-processor delegation, ScheduleContext impl)
+- `src/main/java/com/wonderingwizard/sideeffects/ActionCompleted.java` (modified — added CompletionReason field)
+- `src/main/java/com/wonderingwizard/sideeffects/TruckUnassigned.java` (new — side effect)
+- `src/main/java/com/wonderingwizard/engine/SideEffect.java` (modified — added TruckUnassigned to permits)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — completionReason in ActionView, TTUnavailableHandler registration)
+- `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — TruckUnassigned serialization, completionReason in ActionView)
+- `src/main/resources/index.html` (modified — gray + ⚠ for completed-with-reason actions)
+- `src/test/java/com/wonderingwizard/processors/TTUnavailableHandlerTest.java` (new — 8 tests)

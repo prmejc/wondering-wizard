@@ -159,16 +159,13 @@ class TTAllocationTest {
     class DelayedTruckAvailability {
 
         @Test
-        @DisplayName("Should activate TT action on next tick after truck becomes available")
-        void truckBecomesAvailable_activatesOnTick() {
+        @DisplayName("Should activate TT action immediately when truck becomes available")
+        void truckBecomesAvailable_activatesImmediately() {
             // Create schedule with no trucks available
             engine.processEvent(simpleScheduleWithTTAction(1));
 
-            // Add a truck
-            engine.processEvent(workingTruck("TT01", 23));
-
-            // Tick to trigger re-evaluation
-            List<SideEffect> effects = engine.processEvent(new TimeEvent(now.plusSeconds(5)));
+            // Add a truck — activation happens immediately (reactivateAllSchedules runs after every event)
+            List<SideEffect> effects = engine.processEvent(workingTruck("TT01", 23));
 
             assertTrue(effects.stream().anyMatch(e -> e instanceof TruckAssigned ta
                     && "TT01".equals(ta.cheShortName())));
@@ -224,11 +221,8 @@ class TTAllocationTest {
             List<SideEffect> effects2 = engine.processEvent(simpleScheduleWithTTAction(2));
             assertFalse(effects2.stream().anyMatch(e -> e instanceof TruckAssigned));
 
-            // Nuke first schedule
-            engine.processEvent(new com.wonderingwizard.events.NukeWorkQueueEvent(1));
-
-            // Tick to re-evaluate — second schedule should now get TT01
-            List<SideEffect> effects3 = engine.processEvent(new TimeEvent(now.plusSeconds(5)));
+            // Nuke first schedule — second schedule gets TT01 immediately
+            List<SideEffect> effects3 = engine.processEvent(new com.wonderingwizard.events.NukeWorkQueueEvent(1));
             assertTrue(effects3.stream().anyMatch(e -> e instanceof TruckAssigned ta
                     && "TT01".equals(ta.cheShortName())));
         }

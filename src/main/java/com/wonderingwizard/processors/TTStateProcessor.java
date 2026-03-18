@@ -61,7 +61,7 @@ public class TTStateProcessor implements EventProcessor, TTAllocationStrategy {
     }
 
     @Override
-    public Optional<String> allocateFreeTruck(Set<String> currentlyAssignedTrucks) {
+    public Optional<TruckAssignment> allocateFreeTruck(Set<String> currentlyAssignedTrucks) {
         for (Map.Entry<String, ContainerHandlingEquipmentEvent> entry : truckState.entrySet()) {
             String name = entry.getKey();
             ContainerHandlingEquipmentEvent event = entry.getValue();
@@ -69,7 +69,7 @@ public class TTStateProcessor implements EventProcessor, TTAllocationStrategy {
                     && event.chePoolId() != null
                     && event.chePoolId() == fesPoolId
                     && !currentlyAssignedTrucks.contains(name)) {
-                return Optional.of(name);
+                return Optional.of(new TruckAssignment(name, event.cheId()));
             }
         }
         return Optional.empty();
