@@ -6,14 +6,14 @@
 <title>FES - Release Notes</title>
 <style>
   :root {
-    --bg: #0f172a;
-    --surface: #1e293b;
-    --surface2: #334155;
-    --text: #e2e8f0;
-    --text-muted: #94a3b8;
-    --border: #475569;
-    --active: #3b82f6;
-    --completed: #22c55e;
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --surface2: #f3f4f6;
+    --text: #1f2937;
+    --text-muted: #6b7280;
+    --border: #d1d5db;
+    --active: #ea580c;
+    --completed: #2563eb;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -71,6 +71,19 @@
   const API = window.location.pathname.replace(/\/release-notes\/?$/, '');
   document.getElementById('nav-home').href = API || '/';
 </script>
+
+<section class="release" id="v4.0.9">
+  <h2>v4.0.9</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li>New color palette across all pages &mdash; white background with orange/red accents replacing the dark navy theme</li>
+    <li>Container group top bars now use a curated hue palette that avoids green and red for better distinction</li>
+    <li>Cancelled actions now show stronger red diagonal stripes for better visibility</li>
+    <li>Pathfinder page updated to match the new light theme</li>
+  </ul>
+</section>
 
 <section class="release" id="v4.0.8">
   <h2>v4.0.8</h2>

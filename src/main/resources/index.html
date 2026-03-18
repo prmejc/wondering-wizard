@@ -6,18 +6,18 @@
 <title>FES - Schedule Viewer</title>
 <style>
   :root {
-    --rtg-color: #3b82f6;
-    --tt-color: #f59e0b;
-    --qc-color: #22c55e;
-    --bg: #0f172a;
-    --surface: #1e293b;
-    --surface2: #334155;
-    --text: #e2e8f0;
-    --text-muted: #94a3b8;
-    --border: #475569;
-    --pending: #64748b;
-    --active: #3b82f6;
-    --completed: #22c55e;
+    --rtg-color: #2563eb;
+    --tt-color: #ea580c;
+    --qc-color: #ea580c;
+    --bg: #fafafa;
+    --surface: #ffffff;
+    --surface2: #f3f4f6;
+    --text: #1f2937;
+    --text-muted: #6b7280;
+    --border: #d1d5db;
+    --pending: #9ca3af;
+    --active: #ea580c;
+    --completed: #2563eb;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -856,7 +856,7 @@ class ScheduleView extends HTMLElement {
         popup.className = 'conditions-popup';
         const rect = btn.getBoundingClientRect();
         const parentRect = self.getBoundingClientRect();
-        popup.style.cssText = 'position:absolute;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,0.4);min-width:260px;max-width:400px;left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 4) + 'px';
+        popup.style.cssText = 'position:absolute;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,0.12);min-width:260px;max-width:400px;left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 4) + 'px';
 
         let popupHtml = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
         popupHtml += '<strong style="font-size:13px">Conditions for "' + actionDesc + '"</strong>';
@@ -915,7 +915,7 @@ class ScheduleView extends HTMLElement {
         popup.className = 'conditions-popup';
         const rect = btn.getBoundingClientRect();
         const parentRect = self.getBoundingClientRect();
-        popup.style.cssText = 'position:absolute;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,0.4);min-width:160px;max-width:300px;left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 4) + 'px';
+        popup.style.cssText = 'position:absolute;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,0.12);min-width:160px;max-width:300px;left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 4) + 'px';
 
         let popupHtml = '<div style="display:flex;justify-content:space-between;align-items:center">';
         popupHtml += '<span style="color:#f59e0b;font-weight:600">&#9888; ' + reason + '</span>';
@@ -942,7 +942,7 @@ class ScheduleView extends HTMLElement {
         popup.className = 'conditions-popup';
         const rect = btn.getBoundingClientRect();
         const parentRect = self.getBoundingClientRect();
-        popup.style.cssText = 'position:absolute;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,0.4);min-width:260px;max-width:400px;left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 4) + 'px';
+        popup.style.cssText = 'position:absolute;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,0.12);min-width:260px;max-width:400px;left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 4) + 'px';
 
         let popupHtml = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
         popupHtml += '<strong style="font-size:13px">Conditions for ' + taktName + '</strong>';
@@ -992,21 +992,23 @@ class ScheduleView extends HTMLElement {
   }
   _renderAction(action, wqId, scale) {
     const ci = action.containerIndex != null ? action.containerIndex : 0;
-    const containerHue = (ci * 137) % 360;
-    const containerColor = 'hsl(' + containerHue + ',70%,60%)';
+    const rawHue = (ci * 137) % 360;
+    const safeHues = [210, 270, 45, 190, 300, 170, 55, 240, 320, 200];
+    const containerHue = safeHues[ci % safeHues.length] || ((rawHue >= 80 && rawHue <= 160) || rawHue >= 340 || rawHue <= 20 ? (rawHue + 180) % 360 : rawHue);
+    const containerColor = 'hsl(' + containerHue + ',65%,45%)';
 
     let bgColor, borderColor, textOpacity, statusLabel, extraStyle = '';
     if (action.status === 'COMPLETED' && action.completionReason) {
-      bgColor = 'rgba(100,116,139,0.12)';
-      borderColor = '#94a3b8';
+      bgColor = 'rgba(239,68,68,0.08)';
+      borderColor = '#f87171';
       textOpacity = '0.6';
-      extraStyle = 'background-image:repeating-linear-gradient(135deg,transparent,transparent 4px,rgba(148,163,184,0.18) 4px,rgba(148,163,184,0.18) 6px);';
+      extraStyle = 'background-image:repeating-linear-gradient(135deg,transparent,transparent 4px,rgba(239,68,68,0.22) 4px,rgba(239,68,68,0.22) 6px);';
       statusLabel = '<span class="completion-reason-btn" data-completion-reason="' + action.completionReason.replace(/"/g, '&quot;') + '" style="cursor:pointer;color:#f59e0b" title="' + action.completionReason + '">&#9888;</span>';
     } else if (action.status === 'COMPLETED') {
-      bgColor = 'rgba(34,197,94,0.15)'; borderColor = 'var(--completed)'; textOpacity = '0.7';
+      bgColor = 'rgba(37,99,235,0.10)'; borderColor = 'var(--completed)'; textOpacity = '0.7';
       statusLabel = '<span style="color:var(--completed)">&#10003;</span>';
     } else if (action.status === 'ACTIVE') {
-      bgColor = 'rgba(59,130,246,0.18)'; borderColor = 'var(--active)'; textOpacity = '1';
+      bgColor = 'rgba(234,88,12,0.12)'; borderColor = 'var(--active)'; textOpacity = '1';
       statusLabel = '<span style="color:var(--active)">&#9654;</span>';
     } else {
       bgColor = 'rgba(100,116,139,0.10)'; borderColor = 'var(--border)'; textOpacity = '0.5';
@@ -1026,7 +1028,7 @@ class ScheduleView extends HTMLElement {
     }
 
     const containerLabel = (action.containerIds && action.containerIds.length > 0) ? action.containerIds.join(', ') : 'C' + ci;
-    const truckLabel = action.cheShortName ? ' <span style="font-size:9px;color:#facc15;font-weight:600" title="Assigned truck">' + action.cheShortName + '</span>' : '';
+    const truckLabel = action.cheShortName ? ' <span style="font-size:9px;color:#c2410c;font-weight:600" title="Assigned truck">' + action.cheShortName + '</span>' : '';
     let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600;min-width:0">' + statusLabel + ' <span title="' + containerLabel + '" style="color:' + containerColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + containerLabel + '</span>' + truckLabel + conditionsIcon + '</div><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + action.description + '</div>';
     if (action.status === 'ACTIVE') {
       innerHtml += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Complete</button>';

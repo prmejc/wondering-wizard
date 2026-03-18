@@ -8,8 +8,8 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: #1a1a2e;
-            color: #e0e0e0;
+            background: #fafafa;
+            color: #1f2937;
             min-height: 100vh;
             display: flex;
             flex-direction: column;
@@ -21,9 +21,9 @@
 </head>
 <body>
     <nav style="width:100%;max-width:1200px;display:flex;gap:12px;font-size:0.9em" id="nav">
-        <a id="nav-home" href="/" style="color:#4ecca3;text-decoration:none">Schedule Viewer</a>
-        <a id="nav-wi" href="/workinstructions" style="color:#4ecca3;text-decoration:none">Work Instructions</a>
-        <a id="nav-wq" href="/workqueues" style="color:#4ecca3;text-decoration:none">Work Queues</a>
+        <a id="nav-home" href="/" style="color:#ea580c;text-decoration:none">Schedule Viewer</a>
+        <a id="nav-wi" href="/workinstructions" style="color:#ea580c;text-decoration:none">Work Instructions</a>
+        <a id="nav-wq" href="/workqueues" style="color:#ea580c;text-decoration:none">Work Queues</a>
     </nav>
     <pathfinder-app></pathfinder-app>
     <digital-map></digital-map>
@@ -48,15 +48,15 @@
                             max-width: 600px;
                         }
                         .card {
-                            background: #16213e;
+                            background: #ffffff;
                             border-radius: 12px;
                             padding: 32px;
-                            box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+                            box-shadow: 0 4px 24px rgba(0,0,0,0.08); border: 1px solid #d1d5db;
                         }
                         h1 {
                             font-size: 1.4em;
                             margin-bottom: 24px;
-                            color: #e94560;
+                            color: #ea580c;
                             font-weight: 600;
                         }
                         .form-row {
@@ -73,30 +73,30 @@
                         }
                         label {
                             font-size: 0.85em;
-                            color: #8892b0;
+                            color: #6b7280;
                             text-transform: uppercase;
                             letter-spacing: 0.05em;
                         }
                         input {
                             padding: 10px 14px;
-                            border: 1px solid #2a3a5c;
+                            border: 1px solid #d1d5db;
                             border-radius: 6px;
-                            background: #0f3460;
-                            color: #e0e0e0;
+                            background: #f3f4f6;
+                            color: #1f2937;
                             font-size: 1em;
                             font-family: 'SF Mono', 'Fira Code', monospace;
                             outline: none;
                             transition: border-color 0.2s;
                         }
                         input:focus {
-                            border-color: #e94560;
+                            border-color: #ea580c;
                         }
                         input::placeholder {
-                            color: #4a5568;
+                            color: #9ca3af;
                         }
                         button {
                             padding: 10px 24px;
-                            background: #e94560;
+                            background: #ea580c;
                             color: white;
                             border: none;
                             border-radius: 6px;
@@ -107,10 +107,10 @@
                             white-space: nowrap;
                         }
                         button:hover {
-                            background: #c81e45;
+                            background: #c2410c;
                         }
                         button:disabled {
-                            background: #4a5568;
+                            background: #d1d5db;
                             cursor: not-allowed;
                         }
                         .result {
@@ -123,16 +123,16 @@
                             display: block;
                         }
                         .result.success {
-                            background: #1a3a2a;
-                            border: 1px solid #2d6a4f;
+                            background: #f0fdf4;
+                            border: 1px solid #86efac;
                         }
                         .result.not-found {
-                            background: #3a1a1a;
-                            border: 1px solid #6a2d2d;
+                            background: #fef2f2;
+                            border: 1px solid #fca5a5;
                         }
                         .result.error {
-                            background: #3a2a1a;
-                            border: 1px solid #6a4a2d;
+                            background: #fff7ed;
+                            border: 1px solid #fdba74;
                         }
                         .result-path {
                             font-size: 1.1em;
@@ -143,36 +143,36 @@
                         }
                         .result-path .node {
                             font-family: 'SF Mono', 'Fira Code', monospace;
-                            background: #0f3460;
+                            background: #f3f4f6;
                             padding: 4px 10px;
                             border-radius: 4px;
                             font-weight: 600;
                         }
                         .result-path .arrow {
-                            color: #e94560;
+                            color: #ea580c;
                             font-size: 1.2em;
                         }
                         .result-duration {
                             font-size: 2em;
                             font-weight: 700;
-                            color: #4ecca3;
+                            color: #ea580c;
                             font-family: 'SF Mono', 'Fira Code', monospace;
                         }
                         .result-duration .unit {
                             font-size: 0.5em;
-                            color: #8892b0;
+                            color: #6b7280;
                             font-weight: 400;
                         }
                         .result-message {
                             font-size: 1em;
-                            color: #e94560;
+                            color: #ea580c;
                         }
                         .swap-btn {
                             padding: 8px;
                             background: transparent;
-                            border: 1px solid #2a3a5c;
+                            border: 1px solid #d1d5db;
                             border-radius: 6px;
-                            color: #8892b0;
+                            color: #6b7280;
                             cursor: pointer;
                             font-size: 1.2em;
                             line-height: 1;
@@ -181,24 +181,24 @@
                             margin-bottom: 1px;
                         }
                         .swap-btn:hover {
-                            border-color: #e94560;
-                            color: #e94560;
+                            border-color: #ea580c;
+                            color: #ea580c;
                         }
                         .divider {
                             border: none;
-                            border-top: 1px solid #2a3a5c;
+                            border-top: 1px solid #d1d5db;
                             margin: 24px 0;
                         }
                         h2 {
                             font-size: 1.1em;
                             margin-bottom: 16px;
-                            color: #8892b0;
+                            color: #6b7280;
                             font-weight: 500;
                         }
                         .result-standby {
                             font-size: 1.6em;
                             font-weight: 700;
-                            color: #4ecca3;
+                            color: #ea580c;
                             font-family: 'SF Mono', 'Fira Code', monospace;
                         }
                     </style>
@@ -385,10 +385,10 @@
                             max-width: 1200px;
                         }
                         .card {
-                            background: #16213e;
+                            background: #ffffff;
                             border-radius: 12px;
                             padding: 24px;
-                            box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+                            box-shadow: 0 4px 24px rgba(0,0,0,0.08); border: 1px solid #d1d5db;
                         }
                         .header {
                             display: flex;
@@ -398,20 +398,20 @@
                         }
                         h2 {
                             font-size: 1.2em;
-                            color: #e94560;
+                            color: #ea580c;
                             font-weight: 600;
                         }
                         .stats {
                             font-size: 0.85em;
-                            color: #8892b0;
+                            color: #6b7280;
                             font-family: 'SF Mono', 'Fira Code', monospace;
                         }
                         .canvas-wrap {
                             position: relative;
                             border-radius: 8px;
                             overflow: hidden;
-                            background: #0a0f1e;
-                            border: 1px solid #2a3a5c;
+                            background: #f9fafb;
+                            border: 1px solid #d1d5db;
                         }
                         canvas {
                             display: block;
@@ -424,13 +424,13 @@
                         .tooltip {
                             position: absolute;
                             pointer-events: none;
-                            background: #16213e;
-                            border: 1px solid #e94560;
+                            background: #ffffff;
+                            border: 1px solid #ea580c;
                             border-radius: 6px;
                             padding: 6px 10px;
                             font-family: 'SF Mono', 'Fira Code', monospace;
                             font-size: 0.85em;
-                            color: #e0e0e0;
+                            color: #1f2937;
                             white-space: nowrap;
                             display: none;
                             z-index: 10;
@@ -441,7 +441,7 @@
                         .loading {
                             text-align: center;
                             padding: 60px 0;
-                            color: #8892b0;
+                            color: #6b7280;
                         }
                         .controls {
                             display: flex;
@@ -449,17 +449,17 @@
                         }
                         .controls button {
                             padding: 4px 10px;
-                            background: #0f3460;
-                            border: 1px solid #2a3a5c;
+                            background: #f3f4f6;
+                            border: 1px solid #d1d5db;
                             border-radius: 4px;
-                            color: #8892b0;
+                            color: #6b7280;
                             cursor: pointer;
                             font-size: 0.85em;
                             transition: all 0.2s;
                         }
                         .controls button:hover {
-                            border-color: #e94560;
-                            color: #e94560;
+                            border-color: #ea580c;
+                            color: #ea580c;
                         }
                     </style>
                     <div class="card">
@@ -598,14 +598,14 @@
 
                     ctx.beginPath();
                     ctx.arc(sp.x, sp.y, isHovered ? poiRadius * 1.5 : poiRadius, 0, Math.PI * 2);
-                    ctx.fillStyle = isHovered ? '#e94560' : '#4ecca3';
+                    ctx.fillStyle = isHovered ? '#ea580c' : '#2563eb';
                     ctx.fill();
 
                     // Draw label if zoomed in enough or hovered
                     const effectiveScale = this._transform.scale / (this._initialScale || this._transform.scale);
                     if (effectiveScale > 0.8 || isHovered) {
                         ctx.font = (isHovered ? 'bold ' : '') + fontSize + 'px -apple-system, sans-serif';
-                        ctx.fillStyle = isHovered ? '#e94560' : '#8892b0';
+                        ctx.fillStyle = isHovered ? '#ea580c' : '#6b7280';
                         ctx.textAlign = 'center';
                         ctx.fillText(p.name, sp.x, sp.y - poiRadius - 4 * dpr);
                     }
