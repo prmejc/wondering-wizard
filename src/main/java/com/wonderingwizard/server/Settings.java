@@ -157,6 +157,17 @@ public class Settings {
                 "apmt.terminaloperations.equipmentinstruction.quaycrane.topic.confidential.dedicated.v1");
     }
 
+    public ConsumerConfiguration containerHandlingEquipmentConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.container-handling-equipment.topic",
+                        "APMT.terminalOperations.containerHandlingEquipment.topic.confidential.dedicated.v1"),
+                get("kafka.consumer.container-handling-equipment.group-id", "wondering-wizard-che"),
+                get("kafka.consumer.container-handling-equipment.avro-message-type", null),
+                null,
+                getBoolean("kafka.consumer.container-handling-equipment.read-all-at-startup", false)
+        );
+    }
+
     public ConsumerConfiguration workInstructionConsumerConfiguration() {
         return new ConsumerConfiguration(
                 get("kafka.consumer.work-instruction.topic", "work-instruction"),

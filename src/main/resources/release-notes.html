@@ -6,14 +6,14 @@
 <title>FES - Release Notes</title>
 <style>
   :root {
-    --bg: #fafafa;
-    --surface: #ffffff;
-    --surface2: #f3f4f6;
-    --text: #1f2937;
-    --text-muted: #6b7280;
-    --border: #d1d5db;
+    --bg: #e2e8f0;
+    --surface: #f8fafc;
+    --surface2: #f1f5f9;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #cbd5e1;
     --active: #ea580c;
-    --completed: #2563eb;
+    --completed: #059669;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -71,6 +71,23 @@
   const API = window.location.pathname.replace(/\/release-notes\/?$/, '');
   document.getElementById('nav-home').href = API || '/';
 </script>
+
+<section class="release" id="v4.0.10">
+  <h2>v4.0.10</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>Kafka consumer for ContainerHandlingEquipment topic &mdash; maps Avro messages to <code>ContainerHandlingEquipmentEvent</code> with <code>CheStatus</code> and <code>CheJobStepState</code> enum conversion</li>
+  </ul>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li>Refined color palette &mdash; cohesive Slate-based theme: solid action backgrounds (white pending, peach active, mint completed, gray striped cancelled), QC device badge now violet</li>
+    <li>Narrow action popups are now opaque with larger fonts (13px) and the close button moved below content so conditions/completion-reason icons are fully clickable</li>
+    <li>Conditions and completion-reason buttons inside narrow-action popups are now interactive (event listeners bound after popup creation)</li>
+  </ul>
+</section>
 
 <section class="release" id="v4.0.9">
   <h2>v4.0.9</h2>

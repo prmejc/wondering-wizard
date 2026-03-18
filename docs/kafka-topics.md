@@ -8,7 +8,7 @@ Tracking implementation progress for all Kafka topics used by the system.
 |---|-------|-------------|:-----------:|:-----------:|
 | 0 | `APMT.terminalOperations.workInstruction.topic.confidential.dedicated.v1` | WorkInstruction |     Yes     | No |
 | 1 | `APMT.terminalOperations.workQueue.topic.confidential.dedicated.v1` | WorkQueue |     Yes     | No |
-| 2 | `APMT.terminalOperations.containerHandlingEquipment.topic.confidential.dedicated.v1` | ContainerHandlingEquipment |     No      | No |
+| 2 | `APMT.terminalOperations.containerHandlingEquipment.topic.confidential.dedicated.v1` | ContainerHandlingEquipment |     Yes     | No |
 | 3 | `apmt.terminaloperations.digitalmap.topic.confidential.dedicated.v1` | TerminalLayout |     No      | No |
 | 4 | `apmt.terminaloperations.joboperation.topic.confidential.dedicated.v1` | JobOperation |     No      | No |
 | 5 | `apmt.terminaloperations.chetargetposition.topic.confidential.dedicated.v1` | CheTargetPositionConfirmation |     No      | No |
@@ -43,6 +43,6 @@ Tracking implementation progress for all Kafka topics used by the system.
 
 | Direction | Total | Implemented | Well Tested |
 |-----------|:-----:|:-----------:|:-----------:|
-| Consumer  | 16    | 5           | 0           |
+| Consumer  | 16    | 6           | 0           |
 | Producer  | 11    | 3           | 0           |
-| **Total** | **27**| **8**       | **0**       |
+| **Total** | **27**| **9**       | **0**       |

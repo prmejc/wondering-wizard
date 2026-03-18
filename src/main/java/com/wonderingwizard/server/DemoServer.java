@@ -24,6 +24,7 @@ import com.wonderingwizard.kafka.ActionActivatedToEquipmentInstructionMapper;
 import com.wonderingwizard.kafka.AssetEventMapper;
 import com.wonderingwizard.kafka.KafkaConsumerManager;
 import com.wonderingwizard.kafka.KafkaSideEffectPublisher;
+import com.wonderingwizard.kafka.ContainerHandlingEquipmentEventMapper;
 import com.wonderingwizard.kafka.WorkInstructionEventMapper;
 import com.wonderingwizard.kafka.WorkQueueEventMapper;
 import com.wonderingwizard.events.ActionCompletedEvent;
@@ -375,6 +376,10 @@ public class DemoServer {
         kafkaConsumerManager.register(
                 settings.workInstructionConsumerConfiguration(),
                 new WorkInstructionEventMapper()
+        );
+        kafkaConsumerManager.register(
+                settings.containerHandlingEquipmentConsumerConfiguration(),
+                new ContainerHandlingEquipmentEventMapper()
         );
         AssetEventMapper assetEventMapper = new AssetEventMapper();
         kafkaConsumerManager.registerJson(

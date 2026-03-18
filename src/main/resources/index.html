@@ -7,17 +7,17 @@
 <style>
   :root {
     --rtg-color: #2563eb;
-    --tt-color: #ea580c;
-    --qc-color: #ea580c;
-    --bg: #fafafa;
-    --surface: #ffffff;
-    --surface2: #f3f4f6;
-    --text: #1f2937;
-    --text-muted: #6b7280;
-    --border: #d1d5db;
-    --pending: #9ca3af;
+    --tt-color: #c2410c;
+    --qc-color: #7c3aed;
+    --bg: #e2e8f0;
+    --surface: #f8fafc;
+    --surface2: #f1f5f9;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #cbd5e1;
+    --pending: #94a3b8;
     --active: #ea580c;
-    --completed: #2563eb;
+    --completed: #059669;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -564,7 +564,7 @@ customElements.define('event-panel', EventPanel);
 // --- Schedule View (Center Panel) ---
 class ScheduleView extends HTMLElement {
   connectedCallback() {
-    this.style.cssText = 'grid-area:center;overflow:auto;position:relative';
+    this.style.cssText = 'grid-area:center;overflow:auto;position:relative;background:var(--bg)';
     this.classList.add('panel');
     this.setAttribute('data-refresh', '');
     this._pxPerSec = 3;
@@ -835,9 +835,58 @@ class ScheduleView extends HTMLElement {
         el.dataset.popupId = uid;
         const rect = el.getBoundingClientRect();
         const parentRect = self.getBoundingClientRect();
-        popup.style.cssText = 'position:absolute;z-index:100;background:' + el.dataset.popupBg + ';border:1px solid ' + el.dataset.popupBorder + ';border-top:3px solid ' + el.dataset.popupContainer + ';border-radius:4px;padding:3px 5px;font-size:11px;white-space:nowrap;box-shadow:0 2px 8px rgba(0,0,0,0.25);left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 2) + 'px';
-        popup.innerHTML = '<div style="display:flex;justify-content:flex-end"><span style="cursor:pointer;font-size:13px;line-height:1;color:var(--text-muted)" onclick="this.closest(\'.action-popup\').remove()">&#10005;</span></div>' + el.dataset.popupHtml;
+        popup.style.cssText = 'position:absolute;z-index:100;background:var(--surface);border:1px solid ' + el.dataset.popupBorder + ';border-top:3px solid ' + el.dataset.popupContainer + ';border-radius:6px;padding:8px 10px;font-size:13px;white-space:nowrap;box-shadow:0 4px 16px rgba(0,0,0,0.12);left:' + (rect.left - parentRect.left + self.scrollLeft) + 'px;top:' + (rect.bottom - parentRect.top + self.scrollTop + 2) + 'px';
+        popup.innerHTML = el.dataset.popupHtml + '<div style="margin-top:4px;text-align:right"><span style="cursor:pointer;font-size:11px;color:var(--text-muted);padding:2px 4px" onclick="this.closest(\'.action-popup\').remove()">&#10005; close</span></div>';
         self.appendChild(popup);
+
+        // Bind action conditions buttons inside popup
+        popup.querySelectorAll('.action-conditions-btn').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            self.querySelectorAll('.conditions-popup').forEach(p => p.remove());
+            const conditions = JSON.parse(decodeURIComponent(btn.dataset.conditions));
+            const actionDesc = btn.dataset.actionDesc;
+            const actionId = btn.dataset.actionId;
+            const wqId = btn.dataset.wq;
+            const condPopup = document.createElement('div');
+            condPopup.className = 'conditions-popup';
+            const cRect = btn.getBoundingClientRect();
+            const cParent = self.getBoundingClientRect();
+            condPopup.style.cssText = 'position:absolute;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,0.12);min-width:260px;max-width:400px;left:' + (cRect.left - cParent.left + self.scrollLeft) + 'px;top:' + (cRect.bottom - cParent.top + self.scrollTop + 4) + 'px';
+            let cHtml = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><strong style="font-size:13px">Conditions for "' + actionDesc + '"</strong><span style="cursor:pointer;font-size:15px;line-height:1;color:var(--text-muted);padding:0 2px" onclick="this.closest(\'.conditions-popup\').remove()">&#10005;</span></div>';
+            for (const cond of conditions) {
+              const icon = cond.satisfied ? '<span style="color:var(--completed)">&#10003;</span>' : cond.overridden ? '<span style="color:var(--tt-color)">&#8623;</span>' : '<span style="color:#ef4444">&#10007;</span>';
+              const label = cond.type === 'TAKT_ACTIVATION' ? 'Takt Activation' : 'Action Dependencies';
+              cHtml += '<div style="padding:6px 0;border-top:1px solid var(--border)"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span>' + icon + ' <strong>' + label + '</strong></span>';
+              if (!cond.satisfied && !cond.overridden) cHtml += '<button class="action-override-btn" data-wq="' + wqId + '" data-action-id="' + actionId + '" data-cond-id="' + cond.id + '" style="background:#f59e0b;color:white;border:none;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-weight:600">Override</button>';
+              cHtml += '</div>';
+              if (cond.explanation) cHtml += '<div style="font-size:11px;color:var(--text-muted);margin-top:3px;word-break:break-word">' + cond.explanation + '</div>';
+              if (cond.overridden) cHtml += '<div style="font-size:10px;color:var(--tt-color);margin-top:2px">Overridden</div>';
+              cHtml += '</div>';
+            }
+            condPopup.innerHTML = cHtml;
+            self.appendChild(condPopup);
+            condPopup.querySelectorAll('.action-override-btn').forEach(obtn => {
+              obtn.addEventListener('click', async (ev) => { ev.stopPropagation(); await apiCall('/api/override-action-condition', { workQueueId: obtn.dataset.wq, actionId: obtn.dataset.actionId, conditionId: obtn.dataset.condId }); condPopup.remove(); refreshState(); });
+            });
+          });
+        });
+
+        // Bind completion reason buttons inside popup
+        popup.querySelectorAll('.completion-reason-btn').forEach(btn => {
+          btn.addEventListener('click', e => {
+            e.stopPropagation();
+            self.querySelectorAll('.conditions-popup').forEach(p => p.remove());
+            const reason = btn.dataset.completionReason;
+            const rPopup = document.createElement('div');
+            rPopup.className = 'conditions-popup';
+            const rRect = btn.getBoundingClientRect();
+            const rParent = self.getBoundingClientRect();
+            rPopup.style.cssText = 'position:absolute;z-index:200;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px 14px;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,0.12);min-width:160px;max-width:300px;left:' + (rRect.left - rParent.left + self.scrollLeft) + 'px;top:' + (rRect.bottom - rParent.top + self.scrollTop + 4) + 'px';
+            rPopup.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center"><span style="color:#d97706;font-weight:600">&#9888; ' + reason + '</span><span style="cursor:pointer;font-size:15px;line-height:1;color:var(--text-muted);padding:0 2px;margin-left:12px" onclick="this.closest(\'.conditions-popup\').remove()">&#10005;</span></div>';
+            self.appendChild(rPopup);
+          });
+        });
       });
     });
 
@@ -999,19 +1048,19 @@ class ScheduleView extends HTMLElement {
 
     let bgColor, borderColor, textOpacity, statusLabel, extraStyle = '';
     if (action.status === 'COMPLETED' && action.completionReason) {
-      bgColor = 'rgba(239,68,68,0.08)';
-      borderColor = '#f87171';
+      bgColor = '#e2e8f0';
+      borderColor = '#94a3b8';
       textOpacity = '0.6';
-      extraStyle = 'background-image:repeating-linear-gradient(135deg,transparent,transparent 4px,rgba(239,68,68,0.22) 4px,rgba(239,68,68,0.22) 6px);';
-      statusLabel = '<span class="completion-reason-btn" data-completion-reason="' + action.completionReason.replace(/"/g, '&quot;') + '" style="cursor:pointer;color:#f59e0b" title="' + action.completionReason + '">&#9888;</span>';
+      extraStyle = 'background-image:repeating-linear-gradient(135deg,transparent,transparent 4px,#94a3b8 4px,#94a3b8 5px);';
+      statusLabel = '<span class="completion-reason-btn" data-completion-reason="' + action.completionReason.replace(/"/g, '&quot;') + '" style="cursor:pointer;color:#d97706" title="' + action.completionReason + '">&#9888;</span>';
     } else if (action.status === 'COMPLETED') {
-      bgColor = 'rgba(37,99,235,0.10)'; borderColor = 'var(--completed)'; textOpacity = '0.7';
+      bgColor = '#d1fae5'; borderColor = 'var(--completed)'; textOpacity = '0.9';
       statusLabel = '<span style="color:var(--completed)">&#10003;</span>';
     } else if (action.status === 'ACTIVE') {
-      bgColor = 'rgba(234,88,12,0.12)'; borderColor = 'var(--active)'; textOpacity = '1';
-      statusLabel = '<span style="color:var(--active)">&#9654;</span>';
+      bgColor = '#fed7aa'; borderColor = 'var(--active)'; textOpacity = '1';
+      statusLabel = '<span style="color:#9a3412">&#9654;</span>';
     } else {
-      bgColor = 'rgba(100,116,139,0.10)'; borderColor = 'var(--border)'; textOpacity = '0.5';
+      bgColor = '#ffffff'; borderColor = '#cbd5e1'; textOpacity = '0.85';
       statusLabel = '<span style="color:var(--pending)">&#9679;</span>';
     }
 
@@ -1028,7 +1077,7 @@ class ScheduleView extends HTMLElement {
     }
 
     const containerLabel = (action.containerIds && action.containerIds.length > 0) ? action.containerIds.join(', ') : 'C' + ci;
-    const truckLabel = action.cheShortName ? ' <span style="font-size:9px;color:#c2410c;font-weight:600" title="Assigned truck">' + action.cheShortName + '</span>' : '';
+    const truckLabel = action.cheShortName ? ' <span style="font-size:9px;color:#9a3412;font-weight:600" title="Assigned truck">' + action.cheShortName + '</span>' : '';
     let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600;min-width:0">' + statusLabel + ' <span title="' + containerLabel + '" style="color:' + containerColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + containerLabel + '</span>' + truckLabel + conditionsIcon + '</div><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + action.description + '</div>';
     if (action.status === 'ACTIVE') {
       innerHtml += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Complete</button>';
