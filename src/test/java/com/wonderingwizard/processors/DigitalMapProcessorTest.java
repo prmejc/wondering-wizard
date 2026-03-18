@@ -508,16 +508,24 @@ class DigitalMapProcessorTest {
                     <tag k="amenity" v="apmt_poi_destination" />
                     <tag k="name" v="A" />
                     <tag k="apmt_poi_standby_bay" v="A-SB" />
+                    <tag k="alt_name" v="A40" />
+                    <tag k="apmt_poi_standby_bay_40" v="A40-SB" />
                   </node>
                   <node id="2" lat="35.888" lon="-5.493" version="1">
                     <tag k="amenity" v="apmt_poi_destination" />
                     <tag k="name" v="A-SB" />
                   </node>
+                  <node id="3" lat="35.889" lon="-5.492" version="1">
+                    <tag k="amenity" v="apmt_poi_destination" />
+                    <tag k="name" v="A40-SB" />
+                  </node>
                   <node id="10" lat="35.887" lon="-5.494" version="1" />
                   <node id="11" lat="35.888" lon="-5.493" version="1" />
+                  <node id="12" lat="35.889" lon="-5.492" version="1" />
                   <way id="100" version="1">
                     <nd ref="10" />
                     <nd ref="11" />
+                    <nd ref="12" />
                     <tag k="highway" v="service" />
                     <tag k="apmt_average_speed" v="20" />
                   </way>
@@ -540,6 +548,86 @@ class DigitalMapProcessorTest {
         } catch (Exception e) {
             throw new RuntimeException("Failed to create test map payload", e);
         }
+    }
+
+    // ── 40ft standby tests ─────────────────────────────────────────
+
+    @Test
+    void findStandbyLocation40_returnsDeclaredStandby() {
+        loadMapWithStandby();
+        assertEquals("A40-SB", processor.findStandbyLocation40("A40"));
+    }
+
+    @Test
+    void findStandbyLocation40_unknownPoi() {
+        loadMapWithStandby();
+        assertNull(processor.findStandbyLocation40("UNKNOWN"));
+    }
+
+    @Test
+    void findStandbyLocation40_noMapLoaded() {
+        assertNull(processor.findStandbyLocation40("A40"));
+    }
+
+    @Test
+    void altName_createsPathfindablePoiEntry() {
+        loadMapWithStandby();
+        // alt_name "A40" shares nodeId with "A" → same road node → pathfinding works
+        int duration = processor.findPathDuration("A40", "A-SB");
+        assertTrue(duration > 0, "Should find path from alt_name POI");
+    }
+
+    // ── Priority-weighted routing test ───────────────────────────────
+
+    @Test
+    void pathfinding_preferLowPriorityRoads() {
+        // Two routes from START to END:
+        // Route 1 (direct): service road, fast (20km/h), but high priority (100) → high weight
+        // Route 2 (via MID): secondary road, slower (10km/h), but low priority (1) → low weight
+        // Dijkstra with weight = (duration/60) * priority should prefer route 2
+        String osm = """
+                <?xml version='1.0' encoding='UTF-8'?>
+                <osm version="0.6">
+                  <node id="1" lat="35.8870" lon="-5.4940" version="1">
+                    <tag k="amenity" v="apmt_poi_destination" />
+                    <tag k="name" v="START" />
+                  </node>
+                  <node id="2" lat="35.8890" lon="-5.4920" version="1">
+                    <tag k="amenity" v="apmt_poi_destination" />
+                    <tag k="name" v="END" />
+                  </node>
+                  <node id="3" lat="35.8900" lon="-5.4900" version="1">
+                    <tag k="amenity" v="apmt_poi_destination" />
+                    <tag k="name" v="MID" />
+                  </node>
+                  <way id="100" version="1">
+                    <nd ref="1" />
+                    <nd ref="2" />
+                    <tag k="highway" v="service" />
+                    <tag k="apmt_average_speed" v="20" />
+                    <tag k="apmt_route_priority" v="100" />
+                  </way>
+                  <way id="200" version="1">
+                    <nd ref="1" />
+                    <nd ref="3" />
+                    <nd ref="2" />
+                    <tag k="highway" v="secondary" />
+                    <tag k="apmt_average_speed" v="20" />
+                    <tag k="apmt_route_priority" v="1" />
+                  </way>
+                </osm>
+                """;
+        processor.process(new DigitalMapEvent(createMapPayload(osm)));
+
+        int duration = processor.findPathDuration("START", "END");
+        assertTrue(duration > 0);
+        // Both routes have same speed. Direct is shorter distance but weight = dur * 100.
+        // Via MID is longer distance but weight = dur * 1. Dijkstra prefers low weight.
+        // So duration should be the via-MID route (longer than direct).
+        int directOnly = processor.findPathDuration("START", "MID");
+        assertTrue(directOnly > 0, "START→MID path should exist");
+        // The chosen route goes via MID, so total duration = START→MID + MID→END
+        assertTrue(duration > directOnly, "Should route via MID (priority=1) not direct (priority=100), duration=" + duration);
     }
 
     private WorkInstructionEvent createWorkInstruction(String toPosition, String fetchChe) {

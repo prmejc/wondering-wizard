@@ -46,22 +46,39 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
     private static final double DEFAULT_SPEED_KMH = 10.0;
 
     private record NodeCoord(double lat, double lon) {}
-    record GraphEdge(String toNodeId, double durationSeconds) {}
+    record GraphEdge(String toNodeId, double durationSeconds, int priority) {
+        /** Weight used for pathfinding: duration × priority (matching C# WeightCalculator). */
+        double weight() { return (durationSeconds / 60.0) * priority; }
+    }
 
     /** Precomputed POI-to-POI durations: "fromName\0toName" → duration in seconds (-1 if unreachable) */
     private final Map<String, Integer> poiDurations = new HashMap<>();
     private boolean mapLoaded = false;
 
     private static final String POI_TAG_NAME = "name";
+    private static final String POI_ALT_NAME_TAG = "alt_name";
     private static final String POI_STANDBY_TAG = "apmt_poi_standby_bay";
+    private static final String POI_STANDBY_40_TAG = "apmt_poi_standby_bay_40";
+    private static final Set<String> VALID_APMT_TAG_KEYS = Set.of(
+            "apmt_average_speed", "apmt_route_priority", "apmt_service_block",
+            "apmt_poi_standby_bay", "apmt_poi_standby_bay_40");
+    private static final Set<String> VALID_HIGHWAY_VALUES = Set.of(
+            "service", "secondary", "primary", "tertiary", "residential", "unclassified", "trunk");
 
     // Visualization data retained after parsing
     public record PoiInfo(String name, double lat, double lon) {}
-    public record RoadSegment(double lat1, double lon1, double lat2, double lon2, double speedKmh, boolean oneway) {}
+    public record RoadSegment(double lat1, double lon1, double lat2, double lon2, double speedKmh, boolean oneway,
+                                  String highway, String name, int lanes, int priority) {}
     private final List<PoiInfo> pois = new ArrayList<>();
     private final List<RoadSegment> roadSegments = new ArrayList<>();
-    /** POI name → standby POI name, as declared by apmt_poi_standby_bay tag */
+    /** POI name → standby POI name, as declared by apmt_poi_standby_bay tag (20ft) */
     private final Map<String, String> standbyLocations = new HashMap<>();
+    /** POI name → standby POI name for 40ft containers, as declared by apmt_poi_standby_bay_40 tag */
+    private final Map<String, String> standbyLocations40 = new HashMap<>();
+    /** Retained graph and node coordinates for on-demand pathfinding (path reconstruction) */
+    private Map<String, List<GraphEdge>> graph = Map.of();
+    private Map<String, NodeCoord> nodeCoords = Map.of();
+    private Map<String, String> poiToRoadNode = Map.of();
 
     @Override
     public List<SideEffect> process(Event event) {
@@ -80,6 +97,7 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
         pois.clear();
         roadSegments.clear();
         standbyLocations.clear();
+        standbyLocations40.clear();
         mapLoaded = false;
 
         if (payload == null || payload.isBlank()) {
@@ -194,15 +212,21 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
             }
         }
 
-        // Step 2: Parse POI destination nodes (nodes with amenity=apmt_poi_destination and a name)
+        // Step 2: Parse POI destination nodes (nodes with amenity=apmt_poi_destination)
+        // Each node can have a name (20ft) and alt_name (40ft), each with its own standby tag.
         var poiNameToNodeId = new HashMap<String, String>();
         Matcher nodeWithTagsMatcher = NODE_WITH_TAGS_PATTERN.matcher(osmXml);
         while (nodeWithTagsMatcher.find()) {
             String nodeId = nodeWithTagsMatcher.group(1);
             String content = nodeWithTagsMatcher.group(2);
             var tags = parseTags(content);
-            if ("apmt_poi_destination".equals(tags.get("amenity")) && tags.containsKey(POI_TAG_NAME)) {
-                String poiName = tags.get(POI_TAG_NAME);
+            if (!"apmt_poi_destination".equals(tags.get("amenity"))) {
+                continue;
+            }
+
+            // Primary POI (name tag, apmt_poi_standby_bay)
+            String poiName = tags.get(POI_TAG_NAME);
+            if (poiName != null) {
                 poiNameToNodeId.put(poiName, nodeId);
                 NodeCoord coord = nodeCoords.get(nodeId);
                 if (coord != null) {
@@ -213,16 +237,43 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
                     standbyLocations.put(poiName, standby);
                 }
             }
+
+            // 40ft POI (alt_name tag, apmt_poi_standby_bay_40)
+            String altName = tags.get(POI_ALT_NAME_TAG);
+            if (altName != null) {
+                poiNameToNodeId.put(altName, nodeId);
+                NodeCoord coord = nodeCoords.get(nodeId);
+                if (coord != null && poiName == null) {
+                    // Only add to POI list if no primary name (avoid duplicate markers)
+                    pois.add(new PoiInfo(altName, coord.lat(), coord.lon()));
+                }
+                String standby40 = tags.get(POI_STANDBY_40_TAG);
+                if (standby40 != null && !standby40.isEmpty()) {
+                    standbyLocations40.put(altName, standby40);
+                }
+            }
         }
 
         // Step 3: Parse highway ways and build road graph
-        var graph = new HashMap<String, List<GraphEdge>>();
+        var graphLocal = new HashMap<String, List<GraphEdge>>();
         var roadNodeIds = new java.util.HashSet<String>();
         Matcher wayMatcher = WAY_PATTERN.matcher(osmXml);
         while (wayMatcher.find()) {
             String content = wayMatcher.group(1);
             var tags = parseTags(content);
-            if (!tags.containsKey("highway")) {
+            String highwayValue = tags.get("highway");
+            if (highwayValue == null) {
+                continue;
+            }
+            // Skip ways with corrupted tags (from truncated gzip decompression).
+            // The gzip stream is often truncated, producing garbled XML at the tail.
+            // Detect corruption by checking: (1) tag keys contain only valid chars,
+            // (2) no unexpected tag keys (misspelled variants from corruption),
+            // (3) highway value is a known OSM type.
+            if (tags.keySet().stream().anyMatch(k -> !k.matches("[a-z_:]+"))
+                    || tags.keySet().stream().anyMatch(k -> k.startsWith("apmt_") && !VALID_APMT_TAG_KEYS.contains(k))
+                    || !VALID_HIGHWAY_VALUES.contains(highwayValue)) {
+                logger.fine("Skipping way with corrupted tags: " + tags);
                 continue;
             }
 
@@ -252,23 +303,50 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
                 double distMeters = haversine(c1.lat(), c1.lon(), c2.lat(), c2.lon());
                 double durationSec = speedMs > 0 ? distMeters / speedMs : 9999;
 
-                roadSegments.add(new RoadSegment(c1.lat(), c1.lon(), c2.lat(), c2.lon(), speedKmh, oneway));
+                String roadName = tags.getOrDefault("name", "");
+                int lanesCount = 1;
+                String lanesStr = tags.get("lanes");
+                if (lanesStr != null) {
+                    try { lanesCount = Integer.parseInt(lanesStr); } catch (NumberFormatException ignored) {}
+                }
+                int routePriority = 100;
+                String prioStr = tags.get("apmt_route_priority");
+                if (prioStr != null) {
+                    try { routePriority = Integer.parseInt(prioStr); } catch (NumberFormatException ignored) {}
+                }
+                roadSegments.add(new RoadSegment(c1.lat(), c1.lon(), c2.lat(), c2.lon(), speedKmh, oneway,
+                        tags.getOrDefault("highway", ""), roadName, lanesCount, routePriority));
 
-                graph.computeIfAbsent(n1, k -> new ArrayList<>())
-                        .add(new GraphEdge(n2, durationSec));
+                graphLocal.computeIfAbsent(n1, k -> new ArrayList<>())
+                        .add(new GraphEdge(n2, durationSec, routePriority));
                 if (!oneway) {
-                    graph.computeIfAbsent(n2, k -> new ArrayList<>())
-                            .add(new GraphEdge(n1, durationSec));
+                    graphLocal.computeIfAbsent(n2, k -> new ArrayList<>())
+                            .add(new GraphEdge(n1, durationSec, routePriority));
                 }
             }
         }
 
+        // Validate standby locations reference existing POIs
+        var allPoiNames = poiNameToNodeId.keySet();
+        for (var entry : standbyLocations.entrySet()) {
+            if (!allPoiNames.contains(entry.getValue())) {
+                logger.warning("Standby location '" + entry.getValue()
+                        + "' referenced by POI '" + entry.getKey() + "' does not exist as a POI");
+            }
+        }
+        for (var entry : standbyLocations40.entrySet()) {
+            if (!allPoiNames.contains(entry.getValue())) {
+                logger.warning("40ft standby location '" + entry.getValue()
+                        + "' referenced by POI '" + entry.getKey() + "' does not exist as a POI");
+            }
+        }
+
         // Step 4: Snap POI nodes to nearest road node
-        var poiToRoadNode = new HashMap<String, String>();
+        var poiToRoadNodeLocal = new HashMap<String, String>();
         for (var entry : poiNameToNodeId.entrySet()) {
             String poiNodeId = entry.getValue();
             if (roadNodeIds.contains(poiNodeId)) {
-                poiToRoadNode.put(poiNodeId, poiNodeId);
+                poiToRoadNodeLocal.put(poiNodeId, poiNodeId);
             } else {
                 NodeCoord poiCoord = nodeCoords.get(poiNodeId);
                 if (poiCoord == null) {
@@ -288,7 +366,7 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
                     }
                 }
                 if (nearest != null) {
-                    poiToRoadNode.put(poiNodeId, nearest);
+                    poiToRoadNodeLocal.put(poiNodeId, nearest);
                 }
             }
         }
@@ -298,7 +376,7 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
         // then populate the lookup table.
         var roadNodeToPois = new HashMap<String, List<String>>();
         for (var entry : poiNameToNodeId.entrySet()) {
-            String roadNode = poiToRoadNode.get(entry.getValue());
+            String roadNode = poiToRoadNodeLocal.get(entry.getValue());
             if (roadNode == null) {
                 roadNode = entry.getValue();
             }
@@ -313,7 +391,7 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
             List<String> sourcePoiNames = entry.getValue();
 
             // Single-source Dijkstra from this road node to all reachable road nodes
-            var dist = dijkstraAll(graph, sourceRoadNode, allPoiRoadNodes);
+            var dist = dijkstraAll(graphLocal, sourceRoadNode, allPoiRoadNodes);
 
             // Populate duration lookup for each source POI → all target POIs
             for (String fromName : sourcePoiNames) {
@@ -327,6 +405,17 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
                 }
             }
         }
+
+        // Retain graph and coordinates for on-demand path reconstruction
+        this.graph = graphLocal;
+        this.nodeCoords = nodeCoords;
+        // Build POI name → road node mapping (for path queries by POI name)
+        var poiNameToRoadNode = new HashMap<String, String>();
+        for (var entry : poiNameToNodeId.entrySet()) {
+            String roadNode = poiToRoadNodeLocal.get(entry.getValue());
+            poiNameToRoadNode.put(entry.getKey(), roadNode != null ? roadNode : entry.getValue());
+        }
+        this.poiToRoadNode = poiNameToRoadNode;
     }
 
     private Map<String, String> parseTags(String content) {
@@ -388,14 +477,82 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
     }
 
     /**
-     * Single-source Dijkstra that returns distances to all reachable nodes in {@code targets}.
+     * Finds the shortest path between two POIs and returns the list of coordinates.
+     *
+     * @return list of [lat, lon] pairs along the path, or empty list if no path found
+     */
+    public List<double[]> findPath(String fromName, String toName) {
+        if (!mapLoaded || fromName == null || toName == null || graph.isEmpty()) {
+            return List.of();
+        }
+        String startNode = poiToRoadNode.get(fromName);
+        String endNode = poiToRoadNode.get(toName);
+        if (startNode == null || endNode == null) {
+            return List.of();
+        }
+        if (startNode.equals(endNode)) {
+            NodeCoord c = nodeCoords.get(startNode);
+            return c != null ? List.of(new double[]{c.lat(), c.lon()}) : List.of();
+        }
+
+        // Dijkstra with predecessor tracking
+        var weight = new HashMap<String, Double>();
+        var prev = new HashMap<String, String>();
+        var pq = new PriorityQueue<Map.Entry<String, Double>>(Comparator.comparingDouble(Map.Entry::getValue));
+        weight.put(startNode, 0.0);
+        pq.add(Map.entry(startNode, 0.0));
+
+        while (!pq.isEmpty()) {
+            var current = pq.poll();
+            String node = current.getKey();
+            double w = current.getValue();
+            if (w > weight.getOrDefault(node, Double.MAX_VALUE)) continue;
+            if (node.equals(endNode)) break;
+            for (var edge : graph.getOrDefault(node, List.of())) {
+                double newWeight = w + edge.weight();
+                if (newWeight < weight.getOrDefault(edge.toNodeId(), Double.MAX_VALUE)) {
+                    weight.put(edge.toNodeId(), newWeight);
+                    prev.put(edge.toNodeId(), node);
+                    pq.add(Map.entry(edge.toNodeId(), newWeight));
+                }
+            }
+        }
+
+        if (!prev.containsKey(endNode)) {
+            return List.of();
+        }
+
+        // Reconstruct path
+        var path = new ArrayList<String>();
+        for (String n = endNode; n != null; n = prev.get(n)) {
+            path.add(n);
+        }
+        java.util.Collections.reverse(path);
+
+        // Convert to coordinates
+        var coords = new ArrayList<double[]>();
+        for (String n : path) {
+            NodeCoord c = nodeCoords.get(n);
+            if (c != null) {
+                coords.add(new double[]{c.lat(), c.lon()});
+            }
+        }
+        return coords;
+    }
+
+    /**
+     * Single-source Dijkstra that returns actual durations (seconds) to all reachable nodes
+     * in {@code targets}. Routing uses priority-weighted costs (driveTime × priority) to
+     * prefer higher-priority roads, matching the C# WeightCalculator behaviour.
      * Stops early once all targets have been settled.
      */
     private static Map<String, Double> dijkstraAll(
             Map<String, List<GraphEdge>> graph, String start, java.util.Set<String> targets) {
-        var dist = new HashMap<String, Double>();
+        var weight = new HashMap<String, Double>();   // weighted cost used for routing
+        var duration = new HashMap<String, Double>(); // actual travel duration in seconds
         var pq = new PriorityQueue<Map.Entry<String, Double>>(Comparator.comparingDouble(Map.Entry::getValue));
-        dist.put(start, 0.0);
+        weight.put(start, 0.0);
+        duration.put(start, 0.0);
         pq.add(Map.entry(start, 0.0));
         int settled = 0;
         int targetCount = targets.size();
@@ -403,9 +560,9 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
         while (!pq.isEmpty() && settled < targetCount) {
             var current = pq.poll();
             String node = current.getKey();
-            double d = current.getValue();
+            double w = current.getValue();
 
-            if (d > dist.getOrDefault(node, Double.MAX_VALUE)) {
+            if (w > weight.getOrDefault(node, Double.MAX_VALUE)) {
                 continue;
             }
             if (targets.contains(node)) {
@@ -413,15 +570,16 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
             }
 
             for (var edge : graph.getOrDefault(node, List.of())) {
-                double newDist = d + edge.durationSeconds();
-                if (newDist < dist.getOrDefault(edge.toNodeId(), Double.MAX_VALUE)) {
-                    dist.put(edge.toNodeId(), newDist);
-                    pq.add(Map.entry(edge.toNodeId(), newDist));
+                double newWeight = w + edge.weight();
+                if (newWeight < weight.getOrDefault(edge.toNodeId(), Double.MAX_VALUE)) {
+                    weight.put(edge.toNodeId(), newWeight);
+                    duration.put(edge.toNodeId(), duration.get(node) + edge.durationSeconds());
+                    pq.add(Map.entry(edge.toNodeId(), newWeight));
                 }
             }
         }
 
-        return dist;
+        return duration;
     }
 
     // ── SchedulePipelineStep ─────────────────────────────────────────
@@ -519,7 +677,7 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
     }
 
     /**
-     * Finds the standby location for the given POI, as declared by the
+     * Finds the 20ft standby location for the given POI, as declared by the
      * {@code apmt_poi_standby_bay} tag on the POI node in the OSM data.
      *
      * @param poiName the name of the POI to find a standby for
@@ -530,6 +688,20 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
             return null;
         }
         return standbyLocations.get(poiName);
+    }
+
+    /**
+     * Finds the 40ft standby location for the given POI, as declared by the
+     * {@code apmt_poi_standby_bay_40} tag on the POI node in the OSM data.
+     *
+     * @param poiName the name of the POI (from alt_name tag) to find a 40ft standby for
+     * @return the standby POI name, or null if not found or no standby declared
+     */
+    public String findStandbyLocation40(String poiName) {
+        if (!mapLoaded || poiName == null || poiName.isBlank()) {
+            return null;
+        }
+        return standbyLocations40.get(poiName);
     }
 
     // ── JSON helpers (no external library) ───────────────────────────
@@ -570,6 +742,7 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
         var state = new HashMap<String, Object>();
         state.put("poiDurations", new HashMap<>(poiDurations));
         state.put("standbyLocations", new HashMap<>(standbyLocations));
+        state.put("standbyLocations40", new HashMap<>(standbyLocations40));
         state.put("mapLoaded", mapLoaded);
         return state;
     }
@@ -593,6 +766,12 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
         Object standbyState = stateMap.get("standbyLocations");
         if (standbyState instanceof Map) {
             standbyLocations.putAll((Map<String, String>) standbyState);
+        }
+
+        standbyLocations40.clear();
+        Object standby40State = stateMap.get("standbyLocations40");
+        if (standby40State instanceof Map) {
+            standbyLocations40.putAll((Map<String, String>) standby40State);
         }
 
         Object loadedState = stateMap.get("mapLoaded");

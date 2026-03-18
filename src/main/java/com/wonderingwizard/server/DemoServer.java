@@ -1297,11 +1297,20 @@ public class DemoServer {
         }
 
         int duration = digitalMapProcessor.findPathDuration(from, to);
+        var pathCoords = digitalMapProcessor.findPath(from, to);
 
-        String json = "{\"from\":" + JsonSerializer.serialize(from)
-                + ",\"to\":" + JsonSerializer.serialize(to)
-                + ",\"durationSeconds\":" + duration
-                + ",\"found\":" + (duration >= 0) + "}";
+        var sb = new StringBuilder();
+        sb.append("{\"from\":").append(JsonSerializer.serialize(from))
+          .append(",\"to\":").append(JsonSerializer.serialize(to))
+          .append(",\"durationSeconds\":").append(duration)
+          .append(",\"found\":").append(duration >= 0)
+          .append(",\"path\":[");
+        for (int i = 0; i < pathCoords.size(); i++) {
+            if (i > 0) sb.append(',');
+            sb.append("[").append(pathCoords.get(i)[0]).append(",").append(pathCoords.get(i)[1]).append("]");
+        }
+        sb.append("]}");
+        String json = sb.toString();
 
         exchange.getResponseHeaders().set("Content-Type", "application/json");
         sendResponse(exchange, 200, json);
@@ -1338,7 +1347,11 @@ public class DemoServer {
               .append(",\"lat2\":").append(seg.lat2())
               .append(",\"lon2\":").append(seg.lon2())
               .append(",\"speed\":").append(seg.speedKmh())
-              .append(",\"oneway\":").append(seg.oneway()).append('}');
+              .append(",\"oneway\":").append(seg.oneway())
+              .append(",\"highway\":\"").append(escapeJson(seg.highway())).append('"')
+              .append(",\"name\":\"").append(escapeJson(seg.name())).append('"')
+              .append(",\"lanes\":").append(seg.lanes())
+              .append(",\"priority\":").append(seg.priority()).append('}');
         }
         sb.append("]}");
 
@@ -1359,12 +1372,14 @@ public class DemoServer {
         }
 
         String position = null;
+        String size = "20";
         for (String param : query.split("&")) {
             String[] kv = param.split("=", 2);
             if (kv.length == 2) {
                 String key = java.net.URLDecoder.decode(kv[0], StandardCharsets.UTF_8);
                 String value = java.net.URLDecoder.decode(kv[1], StandardCharsets.UTF_8);
                 if ("position".equals(key)) position = value;
+                if ("size".equals(key)) size = value;
             }
         }
 
@@ -1378,7 +1393,9 @@ public class DemoServer {
             return;
         }
 
-        String standby = digitalMapProcessor.findStandbyLocation(position);
+        String standby = "40".equals(size)
+                ? digitalMapProcessor.findStandbyLocation40(position)
+                : digitalMapProcessor.findStandbyLocation(position);
 
         String json;
         if (standby == null) {

@@ -72,6 +72,24 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.11">
+  <h2>v4.0.11</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>Path highlighting in pathfinder &mdash; found routes are drawn as a thick orange line on the digital map with green start and red end markers</li>
+    <li>40ft container standby locations &mdash; <code>alt_name</code> and <code>apmt_poi_standby_bay_40</code> tags are now parsed; pathfinder has a 20ft/40ft radio toggle for standby lookup</li>
+  </ul>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li>Priority-weighted pathfinding &mdash; Dijkstra now uses <code>driveTime &times; priority</code> as cost, preferring low-priority (main) roads over high-priority service lanes, matching the C# WeightCalculator</li>
+    <li>Standby location validation &mdash; warns at map parse time if a standby references a non-existent POI</li>
+    <li>Corrupted OSM way filtering &mdash; ways from truncated gzip tails are detected and skipped, eliminating phantom diagonal lines on the map</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.10">
   <h2>v4.0.10</h2>
   <div class="date">2026-03-18</div>

@@ -224,6 +224,13 @@
                                 <label for="position">Position</label>
                                 <input type="text" id="position" placeholder="e.g. 4D11" autocomplete="off" />
                             </div>
+                            <div class="field" style="flex:0 0 auto">
+                                <label>Size</label>
+                                <div style="display:flex;gap:4px">
+                                    <label style="display:flex;align-items:center;gap:3px;cursor:pointer;text-transform:none;letter-spacing:normal;font-size:1em"><input type="radio" name="standby-size" value="20" checked /> 20ft</label>
+                                    <label style="display:flex;align-items:center;gap:3px;cursor:pointer;text-transform:none;letter-spacing:normal;font-size:1em"><input type="radio" name="standby-size" value="40" /> 40ft</label>
+                                </div>
+                            </div>
                             <button id="find-standby">Find Standby</button>
                         </div>
                         <div class="result" id="standby-result"></div>
@@ -265,6 +272,7 @@
                                 </div>
                                 <div class="result-message">No path found</div>
                             `;
+                            document.dispatchEvent(new CustomEvent('highlight-path', { detail: { path: [] } }));
                         } else {
                             resultDiv.classList.add('success');
                             const mins = Math.floor(data.durationSeconds / 60);
@@ -280,6 +288,7 @@
                                 </div>
                                 <div class="result-duration">${formatted}</div>
                             `;
+                            document.dispatchEvent(new CustomEvent('highlight-path', { detail: { path: data.path || [] } }));
                         }
                     } catch (err) {
                         resultDiv.classList.add('visible', 'error');
@@ -314,11 +323,14 @@
                     const position = posInput.value.trim();
                     if (!position) return;
 
+                    const sizeRadio = this.shadowRoot.querySelector('input[name="standby-size"]:checked');
+                    const size = sizeRadio ? sizeRadio.value : '20';
+
                     findStandbyBtn.disabled = true;
                     findStandbyBtn.textContent = '...';
 
                     try {
-                        const params = new URLSearchParams({ position });
+                        const params = new URLSearchParams({ position, size });
                         const resp = await fetch(API + '/api/standby?' + params);
                         const data = await resp.json();
 
@@ -486,8 +498,14 @@
                 this._loading = this.shadowRoot.getElementById('loading');
                 this._statsEl = this.shadowRoot.getElementById('stats');
 
+                this._highlightPath = [];
                 this._setupInteractions();
                 this._loadMap();
+
+                document.addEventListener('highlight-path', (e) => {
+                    this._highlightPath = e.detail.path || [];
+                    this._render();
+                });
             }
 
             async _loadMap() {
@@ -609,6 +627,30 @@
                         ctx.textAlign = 'center';
                         ctx.fillText(p.name, sp.x, sp.y - poiRadius - 4 * dpr);
                     }
+                }
+
+                // Draw highlighted path
+                if (this._highlightPath && this._highlightPath.length > 1) {
+                    ctx.strokeStyle = '#ea580c';
+                    ctx.lineWidth = Math.max(3, 4 * dpr * (this._transform.scale / this._initialScale || 1));
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.beginPath();
+                    for (let i = 0; i < this._highlightPath.length; i++) {
+                        const p = this._toScreen(this._highlightPath[i][0], this._highlightPath[i][1]);
+                        if (i === 0) ctx.moveTo(p.x, p.y);
+                        else ctx.lineTo(p.x, p.y);
+                    }
+                    ctx.stroke();
+
+                    // Draw start and end markers
+                    const startP = this._toScreen(this._highlightPath[0][0], this._highlightPath[0][1]);
+                    const endP = this._toScreen(this._highlightPath[this._highlightPath.length - 1][0], this._highlightPath[this._highlightPath.length - 1][1]);
+                    const markerR = Math.max(5, 6 * dpr);
+                    ctx.fillStyle = '#16a34a';
+                    ctx.beginPath(); ctx.arc(startP.x, startP.y, markerR, 0, Math.PI * 2); ctx.fill();
+                    ctx.fillStyle = '#dc2626';
+                    ctx.beginPath(); ctx.arc(endP.x, endP.y, markerR, 0, Math.PI * 2); ctx.fill();
                 }
 
                 if (!this._initialScale) {
