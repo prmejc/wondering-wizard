@@ -21,12 +21,13 @@ import java.util.logging.Logger;
 /**
  * Handles TT (terminal truck) unavailability events within the schedule context.
  * <p>
- * When a truck becomes unavailable, the behavior depends on whether the truck
- * has already gone under the QC (quay crane):
+ * When a truck becomes unavailable, the behavior depends on whether the
+ * handover to QC has started:
  * <ul>
- *   <li><b>Before TT under QC is activated:</b> All TT actions for the affected container
- *       are reset to pending (truck unassigned), and the system attempts to allocate a new truck.</li>
- *   <li><b>After TT under QC is activated or completed:</b> All remaining actions for the
+ *   <li><b>Before TT handover from QC is activated:</b> All TT actions for the affected container
+ *       are reset to pending (truck unassigned), and the system attempts to allocate a new truck.
+ *       This covers drive-to-QC-pull, drive-to-QC-standby, and drive-under-QC.</li>
+ *   <li><b>After TT handover from QC is activated or completed:</b> All remaining actions for the
  *       affected container and its twin container are completed with reason
  *       {@link CompletionReason#TT_UNAVAILABLE}.</li>
  * </ul>
@@ -80,10 +81,10 @@ public class TTUnavailableHandler implements ScheduleSubProcessor {
         List<SideEffect> sideEffects = new ArrayList<>();
 
         for (int containerIndex : affectedContainerIndices) {
-            boolean ttUnderQCActivated = isTTUnderQCActivatedOrCompleted(
+            boolean handoverStarted = isTTHandoverFromQCActivatedOrCompleted(
                     workQueueId, containerIndex, actions, context);
 
-            if (ttUnderQCActivated) {
+            if (handoverStarted) {
                 sideEffects.addAll(completeRemainingActions(
                         workQueueId, cheShortName, actions, context));
                 // After completing actions for all affected containers, cascade once
@@ -104,14 +105,16 @@ public class TTUnavailableHandler implements ScheduleSubProcessor {
     }
 
     /**
-     * Checks if the TT_DRIVE_UNDER_QC action for the given container is ACTIVE or COMPLETED.
+     * Checks if TT_HANDOVER_FROM_QC (or any later action) for the given container
+     * is ACTIVE or COMPLETED. Once the handover from QC has started the truck cannot be
+     * replaced, so all remaining actions must be force-completed.
      */
-    private boolean isTTUnderQCActivatedOrCompleted(long workQueueId, int containerIndex,
-                                                     Map<UUID, Action> actions,
-                                                     ScheduleContext context) {
+    private boolean isTTHandoverFromQCActivatedOrCompleted(long workQueueId, int containerIndex,
+                                                            Map<UUID, Action> actions,
+                                                            ScheduleContext context) {
         for (Map.Entry<UUID, Action> entry : actions.entrySet()) {
             Action action = entry.getValue();
-            if (action.actionType() == ActionType.TT_DRIVE_UNDER_QC
+            if (action.actionType() == ActionType.TT_HANDOVER_FROM_QC
                     && action.containerIndex() == containerIndex) {
                 ActionStatus status =
                         context.getActionStatus(workQueueId, entry.getKey());

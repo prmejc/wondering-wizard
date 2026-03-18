@@ -72,6 +72,16 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.5">
+  <h2>v4.0.5</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Fixed TT unavailable boundary &mdash; trucks are now recoverable (reset + reallocate) through <code>TT_DRIVE_UNDER_QC</code>; cancellation only triggers once <code>TT_HANDOVER_FROM_QC</code> is active or completed</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.4">
   <h2>v4.0.4</h2>
   <div class="date">2026-03-18</div>

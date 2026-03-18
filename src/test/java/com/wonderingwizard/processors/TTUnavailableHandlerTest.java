@@ -71,7 +71,7 @@ class TTUnavailableHandlerTest {
 
     /**
      * Creates a schedule with a full TT workflow for a single container:
-     * TT_DRIVE_TO_QC_PULL -> TT_DRIVE_TO_QC_STANDBY -> TT_DRIVE_UNDER_QC -> TT_HANDOVER_TO_QC
+     * TT_DRIVE_TO_QC_PULL -> TT_DRIVE_TO_QC_STANDBY -> TT_DRIVE_UNDER_QC -> TT_HANDOVER_FROM_QC
      */
     private ScheduleCreated scheduleWithTTWorkflow(long workQueueId, int containerIndex) {
         Action drive = Action.create(DeviceType.TT, ActionType.TT_DRIVE_TO_QC_PULL, containerIndex, 30);
@@ -79,7 +79,7 @@ class TTUnavailableHandlerTest {
                 "drive to QC standby", Set.of(drive.id()), containerIndex, 20);
         Action underQC = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_UNDER_QC,
                 "drive under QC", Set.of(standby.id()), containerIndex, 15);
-        Action handover = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_HANDOVER_TO_QC,
+        Action handover = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_HANDOVER_FROM_QC,
                 "handover to QC", Set.of(underQC.id()), containerIndex, 20);
         // Add a QC action that depends on TT handover
         Action qcLift = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.QC_LIFT,
@@ -99,7 +99,7 @@ class TTUnavailableHandlerTest {
                 "drive to QC standby", Set.of(drive0.id()), 0, 20);
         Action underQC0 = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_UNDER_QC,
                 "drive under QC", Set.of(standby0.id()), 0, 15);
-        Action handover0 = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_HANDOVER_TO_QC,
+        Action handover0 = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_HANDOVER_FROM_QC,
                 "handover to QC", Set.of(underQC0.id()), 0, 20);
         Action qcLift0 = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.QC_LIFT,
                 "QC Lift1", Set.of(handover0.id()), 0, 30);
@@ -110,7 +110,7 @@ class TTUnavailableHandlerTest {
                 "drive to QC standby", Set.of(drive1.id()), 1, 20);
         Action underQC1 = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_DRIVE_UNDER_QC,
                 "drive under QC", Set.of(standby1.id()), 1, 15);
-        Action handover1 = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_HANDOVER_TO_QC,
+        Action handover1 = new Action(UUID.randomUUID(), DeviceType.TT, ActionType.TT_HANDOVER_FROM_QC,
                 "handover to QC", Set.of(underQC1.id()), 1, 20);
         Action qcLift1 = new Action(UUID.randomUUID(), DeviceType.QC, ActionType.QC_LIFT,
                 "QC Lift2", Set.of(handover1.id()), 1, 30);
@@ -123,8 +123,8 @@ class TTUnavailableHandlerTest {
     }
 
     @Nested
-    @DisplayName("Before TT under QC activated")
-    class BeforeTTUnderQC {
+    @DisplayName("Before TT handover to QC activated")
+    class BeforeTTHandoverToQC {
 
         @Test
         @DisplayName("Should reset TT actions to pending and unassign truck")
@@ -140,7 +140,7 @@ class TTUnavailableHandlerTest {
                     || hasTruckAssigned("TT01"),
                     "TT01 should be assigned");
 
-            // Act: truck becomes unavailable before TT_DRIVE_UNDER_QC is activated
+            // Act: truck becomes unavailable before TT_HANDOVER_FROM_QC is activated
             List<SideEffect> effects = engine.processEvent(unavailableTruck("TT01"));
 
             // Assert: TruckUnassigned side effects should be produced
@@ -168,34 +168,65 @@ class TTUnavailableHandlerTest {
                     e instanceof TruckAssigned ta && "TT02".equals(ta.cheShortName()));
             assertTrue(hasTT02Assigned, "TT02 should be assigned as replacement");
         }
-    }
-
-    @Nested
-    @DisplayName("After TT under QC activated")
-    class AfterTTUnderQC {
 
         @Test
-        @DisplayName("Should complete remaining actions with TT_UNAVAILABLE reason")
-        void completeRemainingActions() {
-            // Arrange: truck assigned, advance through actions to TT_DRIVE_UNDER_QC active
+        @DisplayName("Should still reset when TT_DRIVE_UNDER_QC is active")
+        void resetWhenDriveUnderQCActive() {
+            // Arrange: advance to TT_DRIVE_UNDER_QC active
             engine.processEvent(workingTruck("TT01"));
+            engine.processEvent(workingTruck("TT02"));
             ScheduleCreated schedule = scheduleWithTTWorkflow(1L, 0);
             engine.processEvent(schedule);
             engine.processEvent(new TimeEvent(now));
-
-            // Complete TT_DRIVE_TO_QC_PULL (first active action)
-            completeFirstActiveAction(1L);
-            // Complete TT_DRIVE_TO_QC_STANDBY (now active after previous completion)
-            completeFirstActiveAction(1L);
+            completeFirstActiveAction(1L); // TT_DRIVE_TO_QC_PULL
+            completeFirstActiveAction(1L); // TT_DRIVE_TO_QC_STANDBY
             // Now TT_DRIVE_UNDER_QC should be active
 
-            // Verify TT_DRIVE_UNDER_QC is active
             UUID underQCId = findActionByType(schedule, ActionType.TT_DRIVE_UNDER_QC);
             assertEquals(ActionStatus.ACTIVE,
                     scheduleRunner.getActionStatus(1L, underQCId),
                     "TT_DRIVE_UNDER_QC should be ACTIVE");
 
-            // Act: truck becomes unavailable while TT_DRIVE_UNDER_QC is active
+            // Act: truck becomes unavailable while driving under QC
+            List<SideEffect> effects = engine.processEvent(unavailableTruck("TT01"));
+
+            // Assert: should reset (not cancel) — TT02 should be assigned
+            assertTrue(effects.stream().anyMatch(e -> e instanceof TruckUnassigned tu
+                    && "TT01".equals(tu.cheShortName())),
+                    "Should produce TruckUnassigned");
+            assertTrue(effects.stream().anyMatch(e ->
+                    e instanceof TruckAssigned ta && "TT02".equals(ta.cheShortName())),
+                    "TT02 should be assigned as replacement");
+            assertFalse(effects.stream().anyMatch(e ->
+                    e instanceof ActionCompleted ac && ac.reason() != null),
+                    "Should NOT produce force-completed actions");
+        }
+    }
+
+    @Nested
+    @DisplayName("After TT handover to QC activated")
+    class AfterTTHandoverToQC {
+
+        @Test
+        @DisplayName("Should complete remaining actions with TT_UNAVAILABLE reason")
+        void completeRemainingActions() {
+            // Arrange: truck assigned, advance through actions to TT_HANDOVER_FROM_QC active
+            engine.processEvent(workingTruck("TT01"));
+            ScheduleCreated schedule = scheduleWithTTWorkflow(1L, 0);
+            engine.processEvent(schedule);
+            engine.processEvent(new TimeEvent(now));
+
+            completeFirstActiveAction(1L); // TT_DRIVE_TO_QC_PULL
+            completeFirstActiveAction(1L); // TT_DRIVE_TO_QC_STANDBY
+            completeFirstActiveAction(1L); // TT_DRIVE_UNDER_QC
+            // Now TT_HANDOVER_FROM_QC should be active
+
+            UUID handoverId = findActionByType(schedule, ActionType.TT_HANDOVER_FROM_QC);
+            assertEquals(ActionStatus.ACTIVE,
+                    scheduleRunner.getActionStatus(1L, handoverId),
+                    "TT_HANDOVER_FROM_QC should be ACTIVE");
+
+            // Act: truck becomes unavailable while TT_HANDOVER_FROM_QC is active
             List<SideEffect> effects = engine.processEvent(unavailableTruck("TT01"));
 
             // Assert: remaining actions should be completed with reason
@@ -212,17 +243,20 @@ class TTUnavailableHandlerTest {
         @Test
         @DisplayName("Should complete actions for twin container too")
         void completeTwinContainerActions() {
-            // Arrange: truck assigned to twin schedule
+            // Arrange: truck assigned to twin schedule, advance to TT_HANDOVER_FROM_QC
             engine.processEvent(workingTruck("TT01"));
             ScheduleCreated schedule = twinScheduleWithTTWorkflow(1L);
             engine.processEvent(schedule);
             engine.processEvent(new TimeEvent(now));
 
-            // Both containers' first TT actions should be activated simultaneously.
-            // Complete only the first active action (one of the TT_DRIVE_TO_QC_PULL actions)
-            completeFirstActiveAction(1L);
-            completeFirstActiveAction(1L);
-            // One container's TT_DRIVE_UNDER_QC should now be active
+            // Both containers' first TT actions activated simultaneously.
+            // Complete through to TT_HANDOVER_FROM_QC for one container.
+            completeFirstActiveAction(1L); // container 0: TT_DRIVE_TO_QC_PULL
+            completeFirstActiveAction(1L); // container 1: TT_DRIVE_TO_QC_PULL
+            completeFirstActiveAction(1L); // container 0: TT_DRIVE_TO_QC_STANDBY
+            completeFirstActiveAction(1L); // container 1: TT_DRIVE_TO_QC_STANDBY
+            completeFirstActiveAction(1L); // container 0: TT_DRIVE_UNDER_QC
+            // Now container 0's TT_HANDOVER_FROM_QC should be active
 
             // Act: truck becomes unavailable
             List<SideEffect> effects = engine.processEvent(unavailableTruck("TT01"));
@@ -242,13 +276,14 @@ class TTUnavailableHandlerTest {
         @Test
         @DisplayName("Should set completion reason on the Action record")
         void completionReasonOnAction() {
-            // Arrange
+            // Arrange: advance to TT_HANDOVER_FROM_QC active
             engine.processEvent(workingTruck("TT01"));
             ScheduleCreated schedule = scheduleWithTTWorkflow(1L, 0);
             engine.processEvent(schedule);
             engine.processEvent(new TimeEvent(now));
-            completeFirstActiveAction(1L);
-            completeFirstActiveAction(1L);
+            completeFirstActiveAction(1L); // TT_DRIVE_TO_QC_PULL
+            completeFirstActiveAction(1L); // TT_DRIVE_TO_QC_STANDBY
+            completeFirstActiveAction(1L); // TT_DRIVE_UNDER_QC
 
             // Act
             engine.processEvent(unavailableTruck("TT01"));

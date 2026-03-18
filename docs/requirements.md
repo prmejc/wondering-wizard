@@ -1428,8 +1428,8 @@ On the schedule viewer, actions completed with a reason are displayed with a gra
 - `TruckUnassigned` side effect is emitted when a truck is removed from actions
 
 **Expected Results:**
-- Before TT under QC: truck unassigned from all TT actions, new truck allocated if available
-- After TT under QC: all remaining actions for container + twin completed with TT_UNAVAILABLE reason
+- Before TT handover from QC: truck unassigned from all TT actions, new truck allocated if available (covers drive-to-QC-pull, drive-to-QC-standby, drive-under-QC)
+- After TT handover from QC: all remaining actions for container + twin completed with TT_UNAVAILABLE reason
 - Canceled containers' work instructions are excluded from reschedule decisions:
   - QC Discharged for a canceled WI is ignored (no reschedule)
   - The non-canceled twin's QC Discharged does not trigger a reschedule (canceled WI excluded from expected-next calculation)
