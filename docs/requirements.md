@@ -1228,3 +1228,70 @@ Add a "Nuke" button to the Work Queues editor page that completely deletes a wor
 - `src/main/java/com/wonderingwizard/processors/GraphScheduleBuilder.java` (modified — added `skipWhenGatesSatisfied` to `ActionTemplate`, added conditional buffer to all discharge templates)
 - `src/main/java/com/wonderingwizard/processors/ScheduleRunnerProcessor.java` (modified — skip event gate check for `skipWhenGatesSatisfied` actions, auto-complete when gates pre-satisfied)
 - `src/test/java/com/wonderingwizard/processors/ScheduleRunnerProcessorTest.java` (modified — 2 new tests for skip behavior)
+
+### F-20: Auto-Satisfy Event Gates After Reschedule
+
+**Status:** Implemented
+
+**Description:**
+When a reschedule occurs because QC discharged containers arrive in a different order than planned (e.g., WI3+WI4 arrive instead of expected WI1+WI2), the event gate state must be carried forward correctly. Previously, gates were re-armed during state transfer but never satisfied because the discharge events had already been processed against the old schedule (where the WIs didn't match).
+
+After rescheduling, the new schedule's actions carry the updated WorkInstructionEvents (with `eventType = QC_DISCHARGED_CONTAINER` already set). The system now checks armed gates against the WIs' existing event types and auto-satisfies gates whose required events have already been received.
+
+**Behavior:**
+- **Scenario:** 4 WIs in 2 twin pairs. TAKT100 expects WI1+WI2 discharge events. Instead WI3+WI4 discharge events arrive.
+- WorkQueueProcessor detects the mismatch, swaps estimated move times, and triggers a reschedule
+- New schedule places WI3+WI4 in TAKT100 position (their actions carry `eventType = QC_DISCHARGED_CONTAINER`)
+- `transferEventGateState` transfers armed gates and then auto-satisfies them by inspecting the WI event types
+- `skipWhenGatesSatisfied` actions (e.g., `TT_DRIVE_TO_BUFFER`) auto-complete immediately after reschedule
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Discharge WI3+WI4 instead of expected WI1+WI2 | Reschedule triggered, gates auto-satisfied in new schedule |
+| 2 | Buffer action in rescheduled TAKT101 | Auto-completes (gates pre-satisfied), next action activates |
+| 3 | All 393 tests pass | No regressions |
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/processors/ScheduleRunnerProcessor.java` (modified — auto-satisfy armed gates from WI eventType during state transfer)
+- `src/test/java/com/wonderingwizard/processors/ScheduleRunnerProcessorTest.java` (modified — new test for twin reorder reschedule gate satisfaction)
+
+### F-21: Schedule Viewer Sound Notifications
+
+**Status:** Implemented
+
+**Description:**
+The schedule viewer plays musical sounds to provide auditory feedback on schedule progress and delays. Uses JavaScript Web Audio API tone generation with no external libraries.
+
+**Action Completion Sounds (G Major):**
+Each action completion plays a note from the G major scale. The octave is determined by device type and the note by action index within the same container+device:
+- **QC actions** → Octave 1 (196 Hz base)
+- **RTG actions** → Octave 2 (392 Hz base)
+- **TT actions** → Octave 3 (784 Hz base)
+- First action for a container plays G, second plays A, third plays B, etc.
+
+**Delay Check Sounds (every 30 seconds):**
+- **No delay** → G major triad (G-B-D) — positive chord
+- **0–2 min delay** → G minor terca (G-Bb)
+- **2–4 min delay** → G minor quarta (G-Bb-C)
+- **4–6 min delay** → G minor kvinta (G-Bb-D)
+- **6–8 min delay** → G minor sexta (G-Bb-D-Eb)
+- **8–10 min delay** → G minor septima (G-Bb-D-F)
+- **>10 min delay** → G minor septakord (G-Bb-D-F, longer duration)
+
+**Mute on Page Open:**
+No sounds play for the first 5 seconds after the page loads to avoid startling the user.
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Open page | No sound for 5 seconds |
+| 2 | Complete a QC action | Low-octave G major note plays |
+| 3 | Complete a TT action | High-octave G major note plays |
+| 4 | Wait 30s with no delay | G major triad plays |
+| 5 | Wait 30s with 3 min delay | G minor quarta chord plays |
+
+**Implementation Files:**
+- `src/main/resources/index.html` (modified — added `_sound` module with Web Audio API tone generation, integrated into ScheduleView refresh cycle and 30s delay check interval)

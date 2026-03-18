@@ -73,6 +73,133 @@ async function apiCall(path, body) {
 window._schedulePage = 0;
 window._schedulePageSize = 5;
 
+// --- Sound System (F-21) ---
+const _sound = (() => {
+  let ctx = null;
+  const pageOpenTime = Date.now();
+  const MUTE_MS = 5000;
+
+  // G major scale frequencies by octave (G, A, B, C, D, E, F#)
+  const G_MAJOR = {
+    1: [196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99],
+    2: [392.00, 440.00, 493.88, 523.25, 587.33, 659.25, 739.99],
+    3: [783.99, 880.00, 987.77, 1046.50, 1174.66, 1318.51, 1479.98],
+    4: [1567.98, 1760.00, 1975.53, 2093.00, 2349.32, 2637.02, 2959.96],
+    5: [3135.96, 3520.00, 3951.07, 4186.01, 4698.63, 5274.04, 5919.91]
+  };
+
+  // G minor intervals (from G in each octave)
+  // terca=Bb, quarta=C, kvinta=D, sexta=Eb, septima=F
+  const G_MINOR_INTERVALS = {
+    1: { g: 196.00, terca: 233.08, quarta: 261.63, kvinta: 293.66, sexta: 311.13, septima: 349.23 },
+    2: { g: 392.00, terca: 466.16, quarta: 523.25, kvinta: 587.33, sexta: 622.25, septima: 698.46 }
+  };
+
+  function getCtx() {
+    if (!ctx) ctx = new AudioContext();
+    return ctx;
+  }
+
+  function isMuted() {
+    return Date.now() - pageOpenTime < MUTE_MS;
+  }
+
+  function playTone(freq, duration, startTime) {
+    const ac = getCtx();
+    const osc = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.12, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+    osc.connect(gain);
+    gain.connect(ac.destination);
+    osc.start(startTime);
+    osc.stop(startTime + duration);
+  }
+
+  function playChord(freqs, duration, startTime) {
+    const ac = getCtx();
+    const t = startTime != null ? startTime : ac.currentTime;
+    for (const f of freqs) {
+      playTone(f, duration, t);
+    }
+  }
+
+  // All G major notes across octaves for continuous ascending
+  const G_MAJOR_ALL = [].concat(G_MAJOR[1], G_MAJOR[2], G_MAJOR[3], G_MAJOR[4], G_MAJOR[5]);
+
+  // Action completion sound: starts at base octave by device, climbs into higher octaves
+  // deviceType: QC=octave1, RTG=octave2, TT=octave3
+  // actionIndex: 0=G, 1=A, 2=B, ... continues across octaves
+  function playActionCompleted(deviceType, actionIndex) {
+    if (isMuted()) return;
+    const baseOctave = deviceType === 'QC' ? 1 : deviceType === 'RTG' ? 2 : 3;
+    const baseOffset = (baseOctave - 1) * 7; // index into G_MAJOR_ALL
+    const idx = Math.min(baseOffset + actionIndex, G_MAJOR_ALL.length - 1);
+    const ac = getCtx();
+    playTone(G_MAJOR_ALL[idx], 0.4, ac.currentTime);
+  }
+
+  // Delay check sound every 30s
+  // Short beep for delay alerts — rising pitch with severity
+  function playBeep(freq, startTime) {
+    const ac = getCtx();
+    const osc = ac.createOscillator();
+    const osc2 = ac.createOscillator();
+    const gain = ac.createGain();
+    osc.type = 'triangle';
+    osc2.type = 'triangle';
+    osc.frequency.value = freq;
+    osc2.frequency.value = freq + 3; // slight detune for edge
+    gain.gain.setValueAtTime(0.14, startTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.12);
+    osc.connect(gain);
+    osc2.connect(gain);
+    gain.connect(ac.destination);
+    osc.start(startTime);
+    osc2.start(startTime);
+    osc.stop(startTime + 0.12);
+    osc2.stop(startTime + 0.12);
+  }
+
+  // Delay beeps every 15s: 1 beep per 4 min of delay, max 5
+  // Pitch rises: 440, 554, 659, 784, 988 Hz
+  function playDelaySound(totalDelaySeconds) {
+    if (isMuted()) return;
+    if (totalDelaySeconds <= 0) {
+      playChord([G_MAJOR[1][0], G_MAJOR[1][2], G_MAJOR[1][4]], 0.6);
+      return;
+    }
+    const ac = getCtx();
+    const now = ac.currentTime;
+    const beeps = Math.min(Math.ceil(totalDelaySeconds / 240), 5);
+    const freqs = [440, 554, 659, 784, 988];
+    const freq = freqs[beeps - 1];
+    for (let i = 0; i < beeps; i++) {
+      playBeep(freq, now + i * 0.18);
+    }
+  }
+
+  return { playActionCompleted, playDelaySound, isMuted };
+})();
+
+// Track completed action IDs to detect new completions
+window._prevCompletedActionIds = new Set();
+
+// Periodic delay sound check (every 15s)
+setInterval(() => {
+  const state = window._lastState;
+  if (!state || _sound.isMuted()) return;
+  const schedules = state.schedules || [];
+  let maxDelay = 0;
+  for (const s of schedules) {
+    const d = s.totalDelaySeconds || 0;
+    if (d > maxDelay) maxDelay = d;
+  }
+  _sound.playDelaySound(maxDelay);
+}, 15000);
+
 async function refreshState() {
   const state = await apiCall('/api/state?schedulePage=' + window._schedulePage + '&schedulePageSize=' + window._schedulePageSize);
   window._lastState = state;
@@ -457,6 +584,34 @@ class ScheduleView extends HTMLElement {
     });
   }
   refresh(state) {
+    // Detect newly completed actions and play sounds
+    const newCompleted = new Set();
+    for (const s of (state.schedules || [])) {
+      // Build a map of containerIndex → ordered action list per device for this schedule
+      const containerDeviceActions = {};
+      for (const takt of (s.takts || [])) {
+        for (const action of (takt.actions || [])) {
+          const key = action.containerIndex + ':' + action.deviceType;
+          if (!containerDeviceActions[key]) containerDeviceActions[key] = [];
+          containerDeviceActions[key].push(action);
+        }
+      }
+      for (const takt of (s.takts || [])) {
+        for (const action of (takt.actions || [])) {
+          if (action.status === 'COMPLETED') {
+            newCompleted.add(action.id);
+            if (!window._prevCompletedActionIds.has(action.id)) {
+              const key = action.containerIndex + ':' + action.deviceType;
+              const actions = containerDeviceActions[key] || [];
+              const actionIdx = actions.findIndex(a => a.id === action.id);
+              _sound.playActionCompleted(action.deviceType, Math.max(0, actionIdx));
+            }
+          }
+        }
+      }
+    }
+    window._prevCompletedActionIds = newCompleted;
+
     const container = this.querySelector('#schedule-content');
     const schedules = state.schedules || [];
     const totalSchedules = state.totalSchedules || schedules.length;

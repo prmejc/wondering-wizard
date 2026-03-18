@@ -289,6 +289,10 @@ Actions can be marked with `skipWhenGatesSatisfied` to create conditional behavi
 
 This is used for the conditional `TT_DRIVE_TO_BUFFER` action in discharge templates: the TT drives to buffer only when `QC_DISCHARGED_CONTAINER` events haven't arrived yet. If discharge is already complete, the buffer step is skipped and the TT proceeds directly to RTG.
 
+#### Event Gate Auto-Satisfaction on Reschedule
+
+When a reschedule occurs (e.g., WIs discharged out of order), `transferEventGateState` transfers armed and satisfied gate state from the old schedule to the new one by matching actions via `(actionType, containerIndex, deviceIndex)`. After transferring, it auto-satisfies armed gates whose WorkInstructionEvents already carry the required `eventType`. This handles the case where discharge events were processed against the old schedule (where the WIs didn't match the gates) but the rescheduled actions now reference WIs that have already been discharged.
+
 ## HTTP Demo Server (F-7)
 
 The `DemoServer` class provides an embedded HTTP server using JDK `com.sun.net.httpserver.HttpServer` with zero external dependencies. It wraps an `EventPropagatingEngine` and exposes a REST API.
@@ -312,6 +316,10 @@ A single `index.html` file using Web Components (extending `HTMLElement`) with v
 - `<schedule-view>` — Takt/action visualization with color-coded status
 - `<timeline-panel>` — Clickable event history for time travel
 - `<side-effects-log>` — Color-coded side effects log
+- **Sound system** (`_sound` module) — Web Audio API tone generation for auditory feedback:
+  - Action completions play G major notes (octave by device type: QC=1, RTG=2, TT=3; note by action index within container+device)
+  - Every 30s, a delay check plays G major triad (on time) or G minor intervals (delay severity mapped to terca/quarta/kvinta/sexta/septima/septakord)
+  - 5-second mute on page open to avoid startling
 
 ### Work Instructions UI (F-15)
 
