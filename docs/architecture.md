@@ -386,6 +386,16 @@ The `kafka` package provides a generic framework for consuming messages from Kaf
 - `org.apache.avro:avro` — Avro record types
 - `io.confluent:kafka-avro-serializer` — Schema Registry–aware Avro deserializer
 
+## Version API and Release Notes (F-23)
+
+The `DemoServer` provides a `/api/version` endpoint that reads `release-notes.html` from the classpath and parses the first `<h2>v...</h2>` tag to extract the latest version. The `/release-notes` endpoint serves the HTML page directly.
+
+### Key Concepts
+
+- **Version Parsing**: Uses regex `<h2>v([^<]+)</h2>` to extract the first version from release-notes.html
+- **Release Notes Structure**: Each release is a `<section>` with `id="v{version}"` and an `<h2>v{version}</h2>` heading
+- **Frontend Integration**: All GUI pages fetch `/api/version` on load and display "FES v{version}" in the header as a clickable link to `/release-notes`
+
 ## Event Log Export/Import (F-12)
 
 The `EventLogProcessor` records every event passing through the engine. Combined with export/import API endpoints, this enables saving and restoring system state.

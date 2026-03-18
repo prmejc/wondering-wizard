@@ -1356,6 +1356,52 @@ mvn test -Dtest=TTStateProcessorTest,TTAllocationTest
 - `src/main/java/com/wonderingwizard/engine/SideEffect.java` (modified — added TTStateUpdated, TruckAssigned to permits)
 - `src/main/java/com/wonderingwizard/processors/ScheduleRunnerProcessor.java` (modified — TT allocation on action activation, re-evaluates active takts on TimeEvent)
 - `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — registered processor and strategy, added endpoints, TT_ALLOCATION condition view)
+
+### F-23: Version API and Release Notes
+
+**Status:** Implemented
+
+**Description:**
+Replace all "Wondering Wizard" branding in the GUI with "FES v{version}" where the version is dynamically fetched from a backend API. The backend reads `release-notes.html` to extract the latest version number. Clicking the version in the header navigates to the release notes page.
+
+**Requested Behavior:**
+- `GET /api/version` returns `{"version":"4.0.0"}` parsed from `release-notes.html`
+- `GET /release-notes` serves the release notes HTML page
+- Each release has its own `<section>` with an `<h2>` tag containing the version
+- The first `<h2>v...</h2>` found is treated as the latest version
+- All HTML page titles use "FES" instead of "Wondering Wizard"
+- The header in `index.html` shows "FES v4.0.0" as a clickable link to `/release-notes`
+
+**Expected Results:**
+- `GET /api/version` returns JSON with version `4.0.0`
+- `GET /release-notes` returns the release notes HTML page with status 200
+- Non-GET requests to `/api/version` return 405
+- All GUI pages show "FES" branding instead of "Wondering Wizard"
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | `GET /api/version` | Returns `{"version":"4.0.0"}` |
+| 2 | `GET /release-notes` | Returns release notes HTML page |
+| 3 | Open main page `/` | Header shows "FES v4.0.0" as clickable link |
+| 4 | Click version link | Navigates to `/release-notes` |
+| 5 | `POST /api/version` | Returns 405 Method Not Allowed |
+
+**Test Execution:**
+```bash
+mvn test -Dtest=DemoServerTest
+```
+
+**Implementation Files:**
+- `src/main/resources/release-notes.html` (new — release notes page with v4.0.0 section)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — added `/api/version` and `/release-notes` endpoints)
+- `src/main/resources/index.html` (modified — replaced "Wondering Wizard" with dynamic "FES v{version}" link)
+
+- `src/main/resources/workqueues.html` (modified — updated title)
+- `src/main/resources/workinstructions.html` (modified — updated title)
+- `src/main/resources/trucks.html` (modified — updated title)
+- `src/main/resources/editor.html` (modified — updated title)
 - `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — added TTStateUpdated, TruckAssigned, cheShortName serialization)
 - `src/main/java/com/wonderingwizard/server/EventDeserializer.java` (modified — added ContainerHandlingEquipmentEvent deserialization)
 - `src/main/resources/trucks.html` (new — Trucks web UI with SSE live updates)

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FES - Release Notes</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --surface2: #334155;
+    --text: #e2e8f0;
+    --text-muted: #94a3b8;
+    --border: #475569;
+    --active: #3b82f6;
+    --completed: #22c55e;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+  .header {
+    display: flex; align-items: center; gap: 16px; margin-bottom: 32px;
+    border-bottom: 1px solid var(--border); padding-bottom: 16px;
+  }
+  h1 { font-size: 24px; }
+  .nav-link {
+    margin-left: auto; color: var(--active); text-decoration: none; font-size: 13px;
+  }
+  .nav-link:hover { text-decoration: underline; }
+  .release {
+    background: var(--surface); border-radius: 8px; padding: 24px;
+    margin-bottom: 24px; border: 1px solid var(--border);
+  }
+  .release h2 {
+    font-size: 20px; color: var(--text); margin-bottom: 4px;
+    text-transform: none; letter-spacing: normal;
+  }
+  .release .date {
+    font-size: 13px; color: var(--text-muted); margin-bottom: 16px;
+  }
+  .release h3 {
+    font-size: 14px; color: var(--active); margin: 16px 0 8px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .release ul {
+    list-style: none; padding: 0;
+  }
+  .release li {
+    padding: 4px 0 4px 16px; font-size: 14px; position: relative;
+  }
+  .release li::before {
+    content: '\2022'; color: var(--text-muted); position: absolute; left: 0;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>FES - Release Notes</h1>
+  <a class="nav-link" id="nav-home" href="/">Back to Schedule Viewer</a>
+</div>
+
+<script>
+  const API = window.location.pathname.replace(/\/release-notes\/?$/, '');
+  document.getElementById('nav-home').href = API || '/';
+</script>
+
+<section class="release" id="v4.0.1">
+  <h2>v4.0.1</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>Version API endpoint (<code>/api/version</code>) that parses latest version from release notes</li>
+    <li>Release notes page (<code>/release-notes</code>) with per-release sections</li>
+    <li>Dynamic "FES v{version}" branding in all GUI pages, replacing "Wondering Wizard"</li>
+    <li>Clickable version link in header navigates to release notes</li>
+  </ul>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li>All GUI pages now work correctly behind a reverse proxy (relative path resolution)</li>
+  </ul>
+
+  <h3>Removed</h3>
+  <ul>
+    <li>Removed <code>proposal2.html</code> and its <code>/proposal2</code> route</li>
+  </ul>
+</section>
+
+<section class="release" id="v4.0.0">
+  <h2>v4.0.0</h2>
+  <div class="date">2026-03-18</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>Event-driven scheduling engine with takt-based workflow</li>
+    <li>Real-time schedule visualization with live SSE updates</li>
+    <li>Work queue management with activate/deactivate support</li>
+    <li>Work instruction lifecycle processing</li>
+    <li>Digital map integration for terminal operations</li>
+    <li>Pathfinder for equipment routing</li>
+    <li>TT (terminal tractor) state tracking and assignment</li>
+    <li>Schedule editor with export/import capabilities</li>
+    <li>Time alarm processor for scheduled event triggers</li>
+    <li>Delay processor for schedule delay tracking</li>
+    <li>Kafka integration for event sourcing and side effect publishing</li>
+    <li>Container handling equipment event processing</li>
+    <li>Snapshot and step-back support for schedule debugging</li>
+    <li>Release notes with version API</li>
+  </ul>
+</section>
+
+</body>
+</html>

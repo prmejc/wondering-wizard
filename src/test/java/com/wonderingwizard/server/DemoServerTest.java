@@ -363,5 +363,42 @@ class DemoServerTest {
             assertTrue(body.contains("Work Queues"));
             assertTrue(body.contains("WorkQueueMessage"));
         }
+        @Test
+        @DisplayName("Should return version from release-notes.html via /api/version")
+        void returnsVersion() throws Exception {
+            int port = getPort();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(
+                    "http://localhost:" + port + "/api/version").toURL().openConnection();
+            conn.setRequestMethod("GET");
+            assertEquals(200, conn.getResponseCode());
+            assertEquals("application/json; charset=UTF-8", conn.getHeaderField("Content-Type"));
+            String body = new String(conn.getInputStream().readAllBytes());
+            assertTrue(body.contains("\"version\""));
+            assertTrue(body.contains("4.0.1"));
+        }
+
+        @Test
+        @DisplayName("Should serve release notes page at /release-notes")
+        void servesReleaseNotesPage() throws Exception {
+            int port = getPort();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(
+                    "http://localhost:" + port + "/release-notes").toURL().openConnection();
+            conn.setRequestMethod("GET");
+            assertEquals(200, conn.getResponseCode());
+            assertEquals("text/html; charset=UTF-8", conn.getHeaderField("Content-Type"));
+            String body = new String(conn.getInputStream().readAllBytes());
+            assertTrue(body.contains("Release Notes"));
+            assertTrue(body.contains("v4.0.0"));
+        }
+
+        @Test
+        @DisplayName("Should reject non-GET requests to /api/version")
+        void rejectsNonGetVersion() throws Exception {
+            int port = getPort();
+            HttpURLConnection conn = (HttpURLConnection) URI.create(
+                    "http://localhost:" + port + "/api/version").toURL().openConnection();
+            conn.setRequestMethod("POST");
+            assertEquals(405, conn.getResponseCode());
+        }
     }
 }

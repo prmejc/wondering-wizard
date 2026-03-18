@@ -62,6 +62,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -275,10 +277,12 @@ public class DemoServer {
         httpServer.createContext("/pathfinder", this::handlePathfinder);
         httpServer.createContext("/trucks", this::handleTrucks);
         httpServer.createContext("/api/container-handling-equipment", this::handleContainerHandlingEquipment);
-        httpServer.createContext("/proposal2", this::handleProposal2);
+
         httpServer.createContext("/api/pathfind", this::handlePathfind);
         httpServer.createContext("/api/digitalmap", this::handleDigitalMap);
         httpServer.createContext("/api/standby", this::handleStandby);
+        httpServer.createContext("/api/version", this::handleVersion);
+        httpServer.createContext("/release-notes", this::handleReleaseNotes);
         httpServer.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
         httpServer.start();
         sseManager.startKeepalive();
@@ -1198,15 +1202,35 @@ public class DemoServer {
         }
     }
 
-    private void handleProposal2(HttpExchange exchange) throws IOException {
+    private static final Pattern VERSION_PATTERN = Pattern.compile("<h2>v([^<]+)</h2>");
+
+    private void handleVersion(HttpExchange exchange) throws IOException {
         if (!"GET".equals(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
             return;
         }
 
-        try (InputStream is = getClass().getResourceAsStream("/proposal2.html")) {
+        try (InputStream is = getClass().getResourceAsStream("/release-notes.html")) {
             if (is == null) {
-                sendResponse(exchange, 404, "Proposal 2 page not found");
+                sendJsonResponse(exchange, 404, "{\"error\":\"Release notes not found\"}");
+                return;
+            }
+            String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            Matcher matcher = VERSION_PATTERN.matcher(content);
+            String version = matcher.find() ? matcher.group(1) : "unknown";
+            sendJsonResponse(exchange, 200, "{\"version\":\"" + escapeJson(version) + "\"}");
+        }
+    }
+
+    private void handleReleaseNotes(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try (InputStream is = getClass().getResourceAsStream("/release-notes.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "Release notes not found");
                 return;
             }
             byte[] html = is.readAllBytes();

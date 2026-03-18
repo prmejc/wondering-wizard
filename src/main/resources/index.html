@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Wondering Wizard - Schedule Viewer</title>
+<title>FES - Schedule Viewer</title>
 <style>
   :root {
     --rtg-color: #3b82f6;
@@ -245,13 +245,19 @@ function connectSSE() {
 }
 connectSSE();
 
+fetch(API + '/api/version').then(r => r.json()).then(data => {
+  document.querySelectorAll('#app-title').forEach(el => { el.textContent = 'FES v' + data.version; });
+  document.querySelectorAll('#app-title').forEach(el => { el.href = API + '/release-notes'; });
+  document.title = 'FES v' + data.version + ' - Schedule Viewer';
+}).catch(() => {});
+
 // --- Header Component ---
 class ScheduleHeader extends HTMLElement {
   connectedCallback() {
     this.style.cssText = 'grid-area:header;background:var(--surface);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)';
     this.innerHTML = `
       <div style="display:flex;align-items:center;gap:16px">
-        <strong style="font-size:18px">Wondering Wizard</strong>
+        <a href="#" style="font-size:18px;font-weight:bold;color:var(--text);text-decoration:none" id="app-title">FES</a>
         <span style="color:var(--text-muted);font-size:13px">Schedule Viewer</span>
         <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted)">
           <span id="live-dot" style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block"></span>
