@@ -30,6 +30,7 @@ public class Metrics {
 
     private final LongCounter kafkaMessagesTotal;
     private final DoubleHistogram kafkaProcessingDuration;
+    private final DoubleHistogram kafkaQueueWait;
     private final DoubleHistogram engineProcessingDuration;
     private final PrometheusHttpServer prometheusServer;
 
@@ -57,6 +58,9 @@ public class Metrics {
                         InstrumentSelector.builder().setName("fes_kafka_processing_duration_ms").build(),
                         msBucketView)
                 .registerView(
+                        InstrumentSelector.builder().setName("fes_kafka_queue_wait_ms").build(),
+                        msBucketView)
+                .registerView(
                         InstrumentSelector.builder().setName("fes_engine_processing_duration_ms").build(),
                         msBucketView)
                 .build();
@@ -72,7 +76,11 @@ public class Metrics {
                 .build();
 
         kafkaProcessingDuration = meter.histogramBuilder("fes_kafka_processing_duration_ms")
-                .setDescription("Time to process a single Kafka message (map + engine) in milliseconds")
+                .setDescription("End-to-end time from Kafka poll to processing complete (includes queue wait)")
+                .build();
+
+        kafkaQueueWait = meter.histogramBuilder("fes_kafka_queue_wait_ms")
+                .setDescription("Time spent waiting in the event queue before processing starts")
                 .build();
 
         engineProcessingDuration = meter.histogramBuilder("fes_engine_processing_duration_ms")
@@ -82,6 +90,7 @@ public class Metrics {
         // Record initial zero-value so metrics appear in Prometheus immediately
         // (OTEL histograms are invisible until the first recording)
         kafkaProcessingDuration.record(0, Attributes.of(TOPIC, "warmup"));
+        kafkaQueueWait.record(0, Attributes.of(TOPIC, "warmup"));
         engineProcessingDuration.record(0, Attributes.of(EVENT_TYPE, "warmup"));
 
         // Register JVM runtime metrics (heap, CPU, GC, threads)
@@ -92,11 +101,17 @@ public class Metrics {
         logger.info("OTEL metrics initialized, Prometheus endpoint on port " + prometheusPort);
     }
 
-    /** Record a consumed Kafka message with processing duration in nanoseconds. */
-    public void recordKafkaMessage(String topic, long durationNanos) {
+    /** Record a consumed Kafka message with total end-to-end duration in nanoseconds. */
+    public void recordKafkaMessage(String topic, long totalDurationNanos, long queueWaitNanos) {
         Attributes attrs = Attributes.of(TOPIC, topic);
         kafkaMessagesTotal.add(1, attrs);
-        kafkaProcessingDuration.record(durationNanos / 1_000_000.0, attrs);
+        kafkaProcessingDuration.record(totalDurationNanos / 1_000_000.0, attrs);
+        kafkaQueueWait.record(queueWaitNanos / 1_000_000.0, attrs);
+    }
+
+    /** Record a consumed Kafka message (backward-compatible, no queue wait split). */
+    public void recordKafkaMessage(String topic, long durationNanos) {
+        recordKafkaMessage(topic, durationNanos, 0);
     }
 
     /** Record engine event processing duration in nanoseconds. */

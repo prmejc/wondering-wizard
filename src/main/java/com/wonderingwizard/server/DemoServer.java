@@ -115,6 +115,10 @@ public class DemoServer {
     private final TTStateProcessor ttStateProcessor;
     private final com.wonderingwizard.processors.QCStateProcessor qcStateProcessor;
     private final List<Step> steps = new ArrayList<>();
+    private final Map<Long, WorkQueueMessage> wqMessageCache = new HashMap<>();
+    /** Cached schedule view builders, rebuilt incrementally from new steps only. */
+    private final Map<Long, ScheduleViewBuilder> scheduleViewCache = new LinkedHashMap<>();
+    private int scheduleViewCacheIndex = 0;
     private final Instant initialTime = Instant.EPOCH;
     private Instant currentTime = initialTime;
     private DigitalMapProcessor digitalMapProcessor;
@@ -124,7 +128,7 @@ public class DemoServer {
     private com.wonderingwizard.metrics.Metrics metrics;
     private final com.wonderingwizard.kafka.DeadLetterQueue deadLetterQueue = new com.wonderingwizard.kafka.DeadLetterQueue();
     private final SseConnectionManager sseManager = new SseConnectionManager();
-    private static final long BROADCAST_DEBOUNCE_MS = 100;
+    private static final long BROADCAST_DEBOUNCE_MS = 300;
     private volatile boolean broadcastPending;
     private volatile boolean broadcastLoopRunning;
     private final LinkedBlockingQueue<EngineCommand<?>> eventQueue = new LinkedBlockingQueue<>();
@@ -556,6 +560,10 @@ public class DemoServer {
         if (event instanceof SystemTimeSet sts) {
             currentTime = sts.timestamp();
         }
+        // Cache WorkQueueMessage for fast schedule view building
+        if (event instanceof WorkQueueMessage wqMsg) {
+            wqMessageCache.put(wqMsg.workQueueId(), wqMsg);
+        }
 
         List<SideEffect> sideEffects = engine.processEvent(event);
 
@@ -595,6 +603,9 @@ public class DemoServer {
         // Restore initial snapshot
         engine.stepBack();
         steps.clear();
+        wqMessageCache.clear();
+        scheduleViewCache.clear();
+        scheduleViewCacheIndex = 0;
         currentTime = initialTime;
         snapshotStepIndex = 0;
         // Re-take snapshot at step 0 for future resets
@@ -666,15 +677,21 @@ public class DemoServer {
             // Restore the snapshot
             engine.stepBack();
 
-            // Clear all steps after snapshot
+            // Clear all steps after snapshot and invalidate caches
             while (steps.size() > snapshotStepIndex) {
                 steps.remove(steps.size() - 1);
             }
+            scheduleViewCache.clear();
+            scheduleViewCacheIndex = 0;
+            wqMessageCache.clear();
 
             // Replay events from snapshot up to target (without creating new snapshots)
             for (Step step : stepsToReplay) {
                 if (step.event() instanceof SystemTimeSet sts) {
                     currentTime = sts.timestamp();
+                }
+                if (step.event() instanceof WorkQueueMessage wqMsg) {
+                    wqMessageCache.put(wqMsg.workQueueId(), wqMsg);
                 }
                 List<SideEffect> sideEffects = engine.processEvent(step.event());
                 steps.add(new Step(steps.size() + 1, step.description(), step.event(), sideEffects));
@@ -768,19 +785,12 @@ public class DemoServer {
     }
 
     private List<ScheduleView> buildScheduleViews() {
-        // Build schedule structure from ScheduleCreated side effects,
-        // then query ScheduleRunnerProcessor for authoritative action/takt states
-        Map<Long, ScheduleViewBuilder> builders = new LinkedHashMap<>();
+        // Incrementally process only new steps since last call
+        Map<Long, ScheduleViewBuilder> builders = scheduleViewCache;
+        Map<Long, WorkQueueMessage> wqMessages = wqMessageCache;
 
-        // Collect WorkQueueMessage fields by workQueueId (latest wins)
-        Map<Long, WorkQueueMessage> wqMessages = new HashMap<>();
-        for (Step step : steps) {
-            if (step.event() instanceof WorkQueueMessage wqMsg) {
-                wqMessages.put(wqMsg.workQueueId(), wqMsg);
-            }
-        }
-
-        for (Step step : steps) {
+        for (int i = scheduleViewCacheIndex; i < steps.size(); i++) {
+            Step step = steps.get(i);
             for (SideEffect se : step.sideEffects()) {
                 switch (se) {
                     case ScheduleCreated created -> {
@@ -795,53 +805,7 @@ public class DemoServer {
                         }
                         builder.hasTTAllocation = scheduleRunnerProcessor != null
                                 && scheduleRunnerProcessor.hasTTAllocationStrategy();
-                        for (Takt takt : created.takts()) {
-                            List<ActionView> actionViews = new ArrayList<>();
-                            for (Action originalAction : takt.actions()) {
-                                // Get authoritative action (may have truck assignment)
-                                Action action = scheduleRunnerProcessor != null
-                                        ? scheduleRunnerProcessor.getAction(wqId, originalAction.id())
-                                        : originalAction;
-                                if (action == null) action = originalAction;
-                                List<String> cIds = action.workInstructions().stream()
-                                    .map(wi -> wi.containerId() != null ? wi.containerId() : "")
-                                    .filter(id -> !id.isEmpty())
-                                    .toList();
-                                // Get action status from processor's authoritative state
-                                ActionState actionState = scheduleRunnerProcessor != null
-                                        ? mapActionStatus(scheduleRunnerProcessor.getActionStatus(wqId, action.id()))
-                                        : ActionState.PENDING;
-                                String reason = action.completionReason() != null
-                                        ? action.completionReason().displayName() : null;
-                                actionViews.add(new ActionView(
-                                        action.id(), action.deviceType(), action.description(),
-                                        actionState, action.dependsOn(), action.containerIndex(),
-                                        action.durationSeconds(), action.deviceIndex(), List.of(), cIds,
-                                        action.cheShortName(), reason));
-                            }
-                            // Get takt status from processor's authoritative state
-                            TaktState taktState = scheduleRunnerProcessor != null
-                                    ? mapTaktState(scheduleRunnerProcessor.getTaktState(wqId, takt.name()))
-                                    : TaktState.WAITING;
-                            Instant actualStart = scheduleRunnerProcessor != null
-                                    ? scheduleRunnerProcessor.getActualStartTime(wqId, takt.name())
-                                    : null;
-                            builder.takts.add(new TaktView(takt.name(), taktState,
-                                    takt.plannedStartTime(), takt.estimatedStartTime(), actualStart,
-                                    null, takt.durationSeconds(), 0, 0, actionViews, List.of()));
-                        }
                         builder.storeTakts(created.takts());
-                        // Populate satisfied event gates from processor
-                        if (scheduleRunnerProcessor != null) {
-                            for (Takt takt : created.takts()) {
-                                for (Action action : takt.actions()) {
-                                    Set<String> gates = scheduleRunnerProcessor.getSatisfiedEventGates(wqId, action.id());
-                                    if (!gates.isEmpty()) {
-                                        builder.satisfiedEventGates.put(action.id(), new HashSet<>(gates));
-                                    }
-                                }
-                            }
-                        }
                         builders.put(wqId, builder);
                     }
                     case ScheduleAborted aborted ->
@@ -855,7 +819,6 @@ public class DemoServer {
                     default -> { /* Action/takt state is queried from processor directly */ }
                 }
             }
-            // Track override events (they are events, not side effects)
             if (step.event() instanceof OverrideConditionEvent override) {
                 ScheduleViewBuilder builder = builders.get(override.workQueueId());
                 if (builder != null) {
@@ -866,6 +829,57 @@ public class DemoServer {
                 ScheduleViewBuilder builder = builders.get(override.workQueueId());
                 if (builder != null) {
                     builder.addActionOverride(override.actionId(), override.conditionId());
+                }
+            }
+        }
+        scheduleViewCacheIndex = steps.size();
+
+        // Rebuild takt/action views from authoritative processor state (always fresh)
+        for (ScheduleViewBuilder builder : builders.values()) {
+            long wqId = builder.workQueueId;
+            builder.takts.clear();
+            for (Takt takt : builder.originalTakts) {
+                List<ActionView> actionViews = new ArrayList<>();
+                for (Action originalAction : takt.actions()) {
+                    Action action = scheduleRunnerProcessor != null
+                            ? scheduleRunnerProcessor.getAction(wqId, originalAction.id())
+                            : originalAction;
+                    if (action == null) action = originalAction;
+                    List<String> cIds = action.workInstructions().stream()
+                        .map(wi -> wi.containerId() != null ? wi.containerId() : "")
+                        .filter(id -> !id.isEmpty())
+                        .toList();
+                    ActionState actionState = scheduleRunnerProcessor != null
+                            ? mapActionStatus(scheduleRunnerProcessor.getActionStatus(wqId, action.id()))
+                            : ActionState.PENDING;
+                    String reason = action.completionReason() != null
+                            ? action.completionReason().displayName() : null;
+                    actionViews.add(new ActionView(
+                            action.id(), action.deviceType(), action.description(),
+                            actionState, action.dependsOn(), action.containerIndex(),
+                            action.durationSeconds(), action.deviceIndex(), List.of(), cIds,
+                            action.cheShortName(), reason));
+                }
+                TaktState taktState = scheduleRunnerProcessor != null
+                        ? mapTaktState(scheduleRunnerProcessor.getTaktState(wqId, takt.name()))
+                        : TaktState.WAITING;
+                Instant actualStart = scheduleRunnerProcessor != null
+                        ? scheduleRunnerProcessor.getActualStartTime(wqId, takt.name())
+                        : null;
+                builder.takts.add(new TaktView(takt.name(), taktState,
+                        takt.plannedStartTime(), takt.estimatedStartTime(), actualStart,
+                        null, takt.durationSeconds(), 0, 0, actionViews, List.of()));
+            }
+            // Refresh satisfied event gates
+            builder.satisfiedEventGates.clear();
+            if (scheduleRunnerProcessor != null) {
+                for (Takt takt : builder.originalTakts) {
+                    for (Action action : takt.actions()) {
+                        Set<String> gates = scheduleRunnerProcessor.getSatisfiedEventGates(wqId, action.id());
+                        if (!gates.isEmpty()) {
+                            builder.satisfiedEventGates.put(action.id(), new HashSet<>(gates));
+                        }
+                    }
                 }
             }
         }
@@ -2077,10 +2091,16 @@ public class DemoServer {
                 while (steps.size() > snapshotStepIndex) {
                     steps.remove(steps.size() - 1);
                 }
+                scheduleViewCache.clear();
+                scheduleViewCacheIndex = 0;
+                wqMessageCache.clear();
 
                 for (Step step : stepsToReplay) {
                     if (step.event() instanceof SystemTimeSet sts) {
                         currentTime = sts.timestamp();
+                    }
+                    if (step.event() instanceof WorkQueueMessage wqMsg) {
+                        wqMessageCache.put(wqMsg.workQueueId(), wqMsg);
                     }
                     List<SideEffect> sideEffects = engine.processEvent(step.event());
                     steps.add(new Step(steps.size() + 1, step.description(), step.event(), sideEffects));

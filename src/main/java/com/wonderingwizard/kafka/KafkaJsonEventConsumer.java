@@ -164,11 +164,13 @@ public class KafkaJsonEventConsumer<E extends Event> {
         try {
             long startNs = System.nanoTime();
             E event = mapper.map(json);
+            long afterMapNs = System.nanoTime();
             logger.fine("Mapped Kafka JSON message from topic " + consumerConfig.topic()
                     + " [partition=" + partition + ", offset=" + offset + "] to event: " + event);
             engine.processEvent(event);
+            long endNs = System.nanoTime();
             if (metrics != null) {
-                metrics.recordKafkaMessage(consumerConfig.topic(), System.nanoTime() - startNs);
+                metrics.recordKafkaMessage(consumerConfig.topic(), endNs - startNs, endNs - afterMapNs);
             }
         } catch (Exception e) {
             logger.log(Level.WARNING,

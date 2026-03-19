@@ -169,11 +169,15 @@ public class KafkaEventConsumer<E extends Event> {
         try {
             long startNs = System.nanoTime();
             E event = mapper.map(record);
+            long afterMapNs = System.nanoTime();
             logger.fine("Mapped Kafka message from topic " + consumerConfig.topic()
                     + " [partition=" + partition + ", offset=" + offset + "] to event: " + event);
             engine.processEvent(event);
+            long endNs = System.nanoTime();
             if (metrics != null) {
-                metrics.recordKafkaMessage(consumerConfig.topic(), System.nanoTime() - startNs);
+                long totalNs = endNs - startNs;
+                long queueWaitNs = endNs - afterMapNs; // submitAndWait = queue wait + engine processing
+                metrics.recordKafkaMessage(consumerConfig.topic(), totalNs, queueWaitNs);
             }
         } catch (Exception e) {
             logger.log(Level.WARNING,

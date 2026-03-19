@@ -72,6 +72,25 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.21">
+  <h2>v4.0.21</h2>
+  <div class="date">2026-03-19</div>
+
+  <h3>Performance</h3>
+  <ul>
+    <li>Incremental schedule view building &mdash; <code>buildScheduleViews()</code> was O(total_steps) on every SSE broadcast, now O(new_steps) with cached schedule metadata</li>
+    <li>WQ message cache &mdash; eliminated full step scan for WorkQueueMessage lookup</li>
+    <li>SSE broadcast debounce increased from 100ms to 300ms &mdash; reduces event loop contention from state serialization</li>
+  </ul>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>Split Kafka processing metrics &mdash; new <code>fes_kafka_queue_wait_ms</code> histogram tracks time in <code>submitAndWait</code> separately from end-to-end <code>fes_kafka_processing_duration_ms</code></li>
+    <li>Grafana processing duration panel now shows three lines: End-to-End, Queue Wait, and Engine Only (all p99)</li>
+    <li>Grafana throughput panels changed from <code>rate()</code> to <code>increase()</code> with bar chart &mdash; shows actual message counts per interval instead of diluted per-second averages</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.20">
   <h2>v4.0.20</h2>
   <div class="date">2026-03-19</div>

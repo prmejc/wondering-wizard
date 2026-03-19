@@ -118,6 +118,8 @@ class CheLogicalPositionE2ETest {
         // Poll API until TT01's position shows FINAL
         System.out.println("Polling API for " + TRUCK_NAME + " position = " + FINAL_NODE_NAME + "...");
 
+        Thread.sleep(5000 * 3);
+
         String currentNodeName = null;
         int pollCount = 0;
         while (true) {

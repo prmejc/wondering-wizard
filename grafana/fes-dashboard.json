@@ -6,16 +6,16 @@
   "links": [],
   "panels": [
     {
-      "title": "Messages / sec (All Topics)",
-      "description": "Total Kafka message throughput across all consumers",
+      "title": "Messages Processed (All Topics)",
+      "description": "Messages processed per scrape interval — shows actual throughput bursts",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 6, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "fixedColor": "#73BF69", "mode": "fixed" },
-          "custom": { "fillOpacity": 20, "lineWidth": 2 },
-          "unit": "ops"
+          "custom": { "fillOpacity": 20, "lineWidth": 2, "drawStyle": "bars" },
+          "unit": "short"
         }
       },
       "options": {
@@ -24,32 +24,32 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(fes_kafka_messages_total[1m]))",
-          "legendFormat": "msg/s",
+          "expr": "sum(increase(fes_kafka_messages_total[30s]))",
+          "legendFormat": "messages",
           "refId": "A"
         }
       ]
     },
     {
-      "title": "Messages / sec (by Topic)",
-      "description": "Per-topic message rate — shows which topics are busiest",
+      "title": "Messages Processed (by Topic)",
+      "description": "Per-topic message count per interval — shows which topics are busiest",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 10, "x": 6, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
-          "custom": { "fillOpacity": 10, "lineWidth": 2 },
-          "unit": "ops"
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "drawStyle": "bars" },
+          "unit": "short"
         }
       },
       "options": {
-        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] },
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["sum", "max"] },
         "tooltip": { "mode": "multi" }
       },
       "targets": [
         {
-          "expr": "sum by (topic) (rate(fes_kafka_messages_total[1m]))",
+          "expr": "sum by (topic) (increase(fes_kafka_messages_total[30s]))",
           "legendFormat": "{{topic}}",
           "refId": "A"
         }
@@ -86,15 +86,15 @@
       ]
     },
     {
-      "title": "Processing Duration p50 / p90 / p99 (All Topics)",
-      "description": "Overall Kafka message processing latency percentiles",
+      "title": "Processing Duration p99 — End-to-End vs Queue Wait vs Engine",
+      "description": "Where time is spent: total (map+queue+engine), queue wait (submitAndWait), engine processing only",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 8, "x": 0, "y": 8 },
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "fieldConfig": {
         "defaults": {
           "color": { "mode": "palette-classic" },
-          "custom": { "fillOpacity": 5, "lineWidth": 2 },
+          "custom": { "fillOpacity": 10, "lineWidth": 2 },
           "unit": "ms"
         }
       },
@@ -104,18 +104,18 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, sum(rate(fes_kafka_processing_duration_ms_bucket[5m])) by (le))",
-          "legendFormat": "p50",
+          "expr": "histogram_quantile(0.99, sum(rate(fes_kafka_processing_duration_ms_bucket[5m])) by (le))",
+          "legendFormat": "End-to-End (p99)",
           "refId": "A"
         },
         {
-          "expr": "histogram_quantile(0.90, sum(rate(fes_kafka_processing_duration_ms_bucket[5m])) by (le))",
-          "legendFormat": "p90",
+          "expr": "histogram_quantile(0.99, sum(rate(fes_kafka_queue_wait_ms_bucket[5m])) by (le))",
+          "legendFormat": "Queue Wait (p99)",
           "refId": "B"
         },
         {
-          "expr": "histogram_quantile(0.99, sum(rate(fes_kafka_processing_duration_ms_bucket[5m])) by (le))",
-          "legendFormat": "p99",
+          "expr": "histogram_quantile(0.99, sum(rate(fes_engine_processing_duration_ms_bucket[5m])) by (le))",
+          "legendFormat": "Engine Only (p99)",
           "refId": "C"
         }
       ]
