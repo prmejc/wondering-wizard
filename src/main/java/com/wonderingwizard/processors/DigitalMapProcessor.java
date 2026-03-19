@@ -188,7 +188,7 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
     private static final Pattern NODE_PATTERN = Pattern.compile(
             "<node\\s+([^>]*)/?>");
     private static final Pattern NODE_WITH_TAGS_PATTERN = Pattern.compile(
-            "<node\\s+id=\"(\\d+)\"[^>]*>(.*?)</node>", Pattern.DOTALL);
+            "<node\\s+id=\"(\\d+)\"[^>/]*>(.*?)</node>", Pattern.DOTALL);
     private static final Pattern WAY_PATTERN = Pattern.compile(
             "<way\\s+id=\"\\d+\"[^>]*>(.*?)</way>", Pattern.DOTALL);
     private static final Pattern TAG_PATTERN = Pattern.compile(

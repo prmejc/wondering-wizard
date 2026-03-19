@@ -268,6 +268,7 @@ public class GraphScheduleBuilder {
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE, RTG, RTG_DRIVE_SECONDS)
                         .withFirstInTakt()
+                        .withIndependentAcrossContainers()
                         .withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDependsOn(QC, QC_PLACE)
                         .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER),
@@ -313,6 +314,7 @@ public class GraphScheduleBuilder {
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE, 1, RTG, RTG_DRIVE_SECONDS)
                         .withFirstInTakt()
+                        .withIndependentAcrossContainers()
                         .withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDeviceIndex(1)
                         .withDependsOn(QC, QC_PLACE)
@@ -322,6 +324,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, driveToUnderRtg + rtgPlaceDuration).withDeviceIndex(1),
                 ActionTemplate.of(RTG_DRIVE, 2, RTG, RTG_DRIVE_SECONDS)
                         .withFirstInTakt()
+                        .withIndependentAcrossContainers()
                         .withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDeviceIndex(2).withDependsOn(QC, QC_PLACE)
                         .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER),
@@ -364,13 +367,14 @@ public class GraphScheduleBuilder {
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE, 1, RTG, RTG_DRIVE_SECONDS)
                         .withFirstInTakt()
+                        .withIndependentAcrossContainers()
                         .withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDependsOn(QC, QC_PLACE)
                         .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER),
                 ActionTemplate.of(RTG_WAIT_FOR_TRUCK, 1, RTG, 0),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 1, RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, driveToUnderRtg + rtgPlaceDuration),
-                ActionTemplate.of(RTG_DRIVE, 2, RTG, RTG_DRIVE_SECONDS).withDependsOn(QC, QC_PLACE),
+                ActionTemplate.of(RTG_DRIVE, 2, RTG, RTG_DRIVE_SECONDS).withIndependentAcrossContainers().withDependsOn(QC, QC_PLACE),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 2, RTG, driveToUnderRtg + rtgPlaceDuration)
         );
@@ -409,8 +413,9 @@ public class GraphScheduleBuilder {
 
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE, 1, RTG, RTG_DRIVE_SECONDS)
-                        .withFirstInTakt().
-                        withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
+                        .withFirstInTakt()
+                        .withIndependentAcrossContainers()
+                        .withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDeviceIndex(1)
                         .withDependsOn(QC, QC_PLACE)
                         .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 1)
@@ -420,6 +425,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, driveToUnderRtg + rtgPlaceDuration).withDeviceIndex(1),
                 ActionTemplate.of(RTG_DRIVE, 2, RTG, RTG_DRIVE_SECONDS)
                         .withFirstInTakt()
+                        .withIndependentAcrossContainers()
                         .withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDeviceIndex(2)
                         .withDependsOn(QC, QC_PLACE)
@@ -460,6 +466,7 @@ public class GraphScheduleBuilder {
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE, 1, RTG, RTG_DRIVE_SECONDS)
                         .withFirstInTakt()
+                        .withIndependentAcrossContainers()
                         .withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDependsOn(QC, QC_PLACE)
                         .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 1)
@@ -468,6 +475,7 @@ public class GraphScheduleBuilder {
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 1, RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, driveToUnderRtg + rtgPlaceDuration),
                 ActionTemplate.of(RTG_DRIVE, 2, RTG, RTG_DRIVE_SECONDS)
+                        .withIndependentAcrossContainers()
                         .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 1)
                         .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 2),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, rtgPlaceDuration),
@@ -522,6 +530,7 @@ public class GraphScheduleBuilder {
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE,  RTG, RTG_DRIVE_SECONDS)
                         .withFirstInTakt()
+                        .withIndependentAcrossContainers()
                         .withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDependsOn(QC, QC_PLACE)
                         .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 1)
@@ -559,6 +568,7 @@ public class GraphScheduleBuilder {
                 // ── RTG chain (backward from sync point) ──
                 ActionTemplate.of(RTG_DRIVE,  RTG, RTG_DRIVE_SECONDS)
                         .withFirstInTakt()
+                        .withIndependentAcrossContainers()
                         .withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDependsOn(QC, QC_PLACE)
                         .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER),
@@ -591,7 +601,7 @@ public class GraphScheduleBuilder {
                         .withSkipWhenGatesSatisfied(),
 
                 // ── RTG chain (backward from sync point) ──
-                ActionTemplate.of(RTG_DRIVE, RTG, 1),
+                ActionTemplate.of(RTG_DRIVE, RTG, 1).withIndependentAcrossContainers(),
                 ActionTemplate.of(RTG_FETCH, RTG,
                         (wi.estimatedRtgCycleTimeSeconds() - rtgPlaceDuration)),
                 ActionTemplate.of(RTG_HANDOVER_TO_TT, RTG, driveToUnderRtg + rtgPlaceDuration)

@@ -881,34 +881,42 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             }
         }
 
-        // Auto-satisfy armed gates whose WIs already carry the required event type.
+        // Auto-satisfy gates whose WIs already carry the required event type.
         // This covers the case where a WI event was processed before the reschedule:
         // the event updated the WI's eventType, but the old schedule's gates didn't match
         // (different WI assignment). After rescheduling, the new actions carry the updated WIs.
+        // We arm AND satisfy in one pass — if the WI already has the event, the gate is done.
         for (ActionInfo newInfo : newState.actionLookup.values()) {
             Action newAction = newInfo.action();
             if (newAction.eventGates().isEmpty()) continue;
             UUID newActionId = newAction.id();
-            Set<String> armed = newState.armedEventGates.getOrDefault(newActionId, Set.of());
-            if (armed.isEmpty()) continue;
 
             for (EventGateCondition gate : newAction.eventGates()) {
-                if (!armed.contains(gate.id())) continue;
                 Set<String> satisfied = newState.satisfiedEventGates.getOrDefault(newActionId, Set.of());
                 if (satisfied.contains(gate.id())) continue;
 
                 boolean eventAlreadyReceived;
+                var wis = newAction.workInstructions();
                 if (gate.containerSuffix() > 0) {
-                    var wis = newAction.workInstructions();
                     int idx = gate.containerSuffix() - 1;
-                    eventAlreadyReceived = idx < wis.size()
-                            && gate.requiredEventType().equals(wis.get(idx).eventType());
+                    if (idx < wis.size()) {
+                        // Check the specific WI by suffix index
+                        eventAlreadyReceived = gate.requiredEventType().equals(wis.get(idx).eventType());
+                    } else {
+                        // Suffix index exceeds WI count (e.g., drive2 with only 1 WI but twin gates).
+                        // Satisfy if ALL WIs on this action already have the required event type.
+                        eventAlreadyReceived = !wis.isEmpty() && wis.stream()
+                                .allMatch(wi -> gate.requiredEventType().equals(wi.eventType()));
+                    }
                 } else {
-                    eventAlreadyReceived = newAction.workInstructions().stream()
+                    eventAlreadyReceived = wis.stream()
                             .anyMatch(wi -> gate.requiredEventType().equals(wi.eventType()));
                 }
 
                 if (eventAlreadyReceived) {
+                    newState.armedEventGates
+                            .computeIfAbsent(newActionId, k -> new HashSet<>())
+                            .add(gate.id());
                     newState.satisfiedEventGates
                             .computeIfAbsent(newActionId, k -> new HashSet<>())
                             .add(gate.id());
@@ -1018,9 +1026,15 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                         if (gate.containerSuffix() > 0) {
                             var wis = gatedInfo.action().workInstructions();
                             int idx = gate.containerSuffix() - 1;
-                            if (idx >= wis.size() || wis.get(idx).workInstructionId() != event.workInstructionId()) {
-                                continue;
+                            if (idx < wis.size()) {
+                                // Check the specific WI by suffix index
+                                if (wis.get(idx).workInstructionId() != event.workInstructionId()) {
+                                    continue;
+                                }
                             }
+                            // If idx >= wis.size() (e.g., drive2 with 1 WI but twin gates),
+                            // the wiMatches check above already confirmed this event's WI
+                            // belongs to this action — satisfy the gate.
                         }
                         state.satisfiedEventGates
                                 .computeIfAbsent(gatedActionId, k -> new HashSet<>())
@@ -1384,8 +1398,10 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
                 // Auto-complete: if skipWhenGatesSatisfied and all gates are already satisfied,
                 // skip this action (mark completed without activating).
+                // Extra safety: verify all dependencies are truly COMPLETED, not just activatable.
                 if (action.skipWhenGatesSatisfied()
-                        && state.areEventGatesSatisfied(actionId, action, overrides)) {
+                        && state.areEventGatesSatisfied(actionId, action, overrides)
+                        && state.areDependenciesCompleted(action.dependsOn())) {
                     state.setActionStatus(actionId, ActionStatus.COMPLETED);
                     sideEffects.add(new ActionCompleted(
                             actionId, workQueueId, actionInfo.taktName(),
