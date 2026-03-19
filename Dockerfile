@@ -31,4 +31,4 @@ COPY --from=build /app/target/event-processing-engine-1.0-SNAPSHOT.jar app.jar
 COPY --from=build /app/target/libs/ libs/
 
 # Run the application with JPMS module reads for unnamed modules (Kafka, Avro, etc.)
-ENTRYPOINT ["java", "--add-reads", "com.wonderingwizard=ALL-UNNAMED", "-cp", "app.jar:libs/*", "com.wonderingwizard.Main"]
+ENTRYPOINT ["java", "--add-reads", "com.wonderingwizard=ALL-UNNAMED", "--add-reads", "io.opentelemetry.exporter.prometheus=ALL-UNNAMED", "--add-reads", "io.opentelemetry.sdk=ALL-UNNAMED", "-cp", "app.jar:libs/*", "com.wonderingwizard.Main"]

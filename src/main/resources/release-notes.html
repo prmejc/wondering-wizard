@@ -72,6 +72,36 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.16">
+  <h2>v4.0.16</h2>
+  <div class="date">2026-03-19</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>Quay Crane GUI &mdash; redesigned as card-based layout with sub-rows for Availability, Readiness, FlowPosition, and Crane Delays, each with its own Send button</li>
+    <li>CraneAvailabilityStatus consumer (<code>craneavailabilitystatus</code> topic) &mdash; tracks READY/NOT_READY per QC with color-coded status</li>
+    <li>CraneReadiness consumer (<code>cranereadiness</code> topic) &mdash; tracks QC resume events with workQueueId and timestamp</li>
+    <li>CraneDelayActivities consumer (<code>craneDelayActivities</code> topic) &mdash; stores last 3 delay events per crane, newest first, with active/stopped detection</li>
+    <li>Delay status badge in QC card header &mdash; red <strong>DELAY ACTIVE</strong> or green <strong>NO DELAY</strong> based on the most recent event</li>
+    <li>Dead Letter Queue (DLQ) &mdash; failed Kafka messages (deserialization errors, processing errors) are captured and skipped so consumption continues; <code>/dlq</code> viewer with auto-refresh and clear button</li>
+    <li>Resume Time field displays epoch milliseconds with info icon tooltip for human-readable date/time</li>
+  </ul>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Fixed server hang caused by Kafka consumers running on virtual threads &mdash; <code>synchronized</code> blocks in the Kafka client pinned carrier threads, starving the event loop; consumers now use platform threads</li>
+  </ul>
+
+  <h3>API Endpoints</h3>
+  <ul>
+    <li><code>POST /api/crane-availability-status</code> &mdash; send availability status event</li>
+    <li><code>POST /api/crane-readiness</code> &mdash; send crane readiness event</li>
+    <li><code>POST /api/crane-delay-activity</code> &mdash; send crane delay activity event</li>
+    <li><code>GET /api/dlq</code> &mdash; retrieve dead letter queue entries</li>
+    <li><code>DELETE /api/dlq</code> &mdash; clear dead letter queue</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.15">
   <h2>v4.0.15</h2>
   <div class="date">2026-03-18</div>

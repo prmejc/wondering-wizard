@@ -23,17 +23,24 @@ public class KafkaConsumerManager {
     private final KafkaConfiguration kafkaConfig;
     private final Engine engine;
     private final Metrics metrics;
+    private final DeadLetterQueue deadLetterQueue;
     private final List<KafkaEventConsumer<?>> consumers = new ArrayList<>();
     private final List<KafkaJsonEventConsumer<?>> jsonConsumers = new ArrayList<>();
 
     public KafkaConsumerManager(KafkaConfiguration kafkaConfig, Engine engine) {
-        this(kafkaConfig, engine, null);
+        this(kafkaConfig, engine, null, null);
     }
 
     public KafkaConsumerManager(KafkaConfiguration kafkaConfig, Engine engine, Metrics metrics) {
+        this(kafkaConfig, engine, metrics, null);
+    }
+
+    public KafkaConsumerManager(KafkaConfiguration kafkaConfig, Engine engine, Metrics metrics,
+                                DeadLetterQueue deadLetterQueue) {
         this.kafkaConfig = kafkaConfig;
         this.engine = engine;
         this.metrics = metrics;
+        this.deadLetterQueue = deadLetterQueue;
     }
 
     /**
@@ -48,7 +55,7 @@ public class KafkaConsumerManager {
             ConsumerConfiguration consumerConfig,
             EventMapper<E> mapper
     ) {
-        var consumer = new KafkaEventConsumer<>(kafkaConfig, consumerConfig, mapper, engine, metrics);
+        var consumer = new KafkaEventConsumer<>(kafkaConfig, consumerConfig, mapper, engine, metrics, deadLetterQueue);
         consumers.add(consumer);
         logger.info("Registered Kafka consumer for topic: " + consumerConfig.topic());
         return this;
@@ -66,7 +73,7 @@ public class KafkaConsumerManager {
             ConsumerConfiguration consumerConfig,
             JsonEventMapper<E> mapper
     ) {
-        var consumer = new KafkaJsonEventConsumer<>(kafkaConfig, consumerConfig, mapper, engine, metrics);
+        var consumer = new KafkaJsonEventConsumer<>(kafkaConfig, consumerConfig, mapper, engine, metrics, deadLetterQueue);
         jsonConsumers.add(consumer);
         logger.info("Registered Kafka JSON consumer for topic: " + consumerConfig.topic());
         return this;

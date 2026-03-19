@@ -26,6 +26,11 @@ import com.wonderingwizard.kafka.KafkaConsumerManager;
 import com.wonderingwizard.kafka.KafkaSideEffectPublisher;
 import com.wonderingwizard.events.CheLogicalPositionEvent;
 import com.wonderingwizard.kafka.CheLogicalPositionEventMapper;
+import com.wonderingwizard.kafka.CraneAvailabilityStatusEventMapper;
+import com.wonderingwizard.kafka.CraneDelayActivityEventMapper;
+import com.wonderingwizard.kafka.CraneReadinessEventMapper;
+import com.wonderingwizard.kafka.QuayCraneMappingEventMapper;
+import com.wonderingwizard.kafka.TerminalLayoutEventMapper;
 import com.wonderingwizard.kafka.ContainerHandlingEquipmentEventMapper;
 import com.wonderingwizard.kafka.WorkInstructionEventMapper;
 import com.wonderingwizard.kafka.WorkQueueEventMapper;
@@ -105,6 +110,7 @@ public class DemoServer {
     private final Settings settings;
     private final ScheduleRunnerProcessor scheduleRunnerProcessor;
     private final TTStateProcessor ttStateProcessor;
+    private final com.wonderingwizard.processors.QCStateProcessor qcStateProcessor;
     private final List<Step> steps = new ArrayList<>();
     private final Instant initialTime = Instant.EPOCH;
     private Instant currentTime = initialTime;
@@ -113,6 +119,7 @@ public class DemoServer {
     private KafkaConsumerManager kafkaConsumerManager;
     private KafkaSideEffectPublisher sideEffectPublisher;
     private com.wonderingwizard.metrics.Metrics metrics;
+    private final com.wonderingwizard.kafka.DeadLetterQueue deadLetterQueue = new com.wonderingwizard.kafka.DeadLetterQueue();
     private final SseConnectionManager sseManager = new SseConnectionManager();
     private static final long BROADCAST_DEBOUNCE_MS = 100;
     private volatile boolean broadcastPending;
@@ -143,7 +150,9 @@ public class DemoServer {
 
     /** Schedule view for the API state response. */
     public record ScheduleView(long workQueueId, boolean active, Instant estimatedMoveTime,
-                                long totalDelaySeconds, List<TaktView> takts) {}
+                                long totalDelaySeconds, List<TaktView> takts,
+                                String workQueueSequence, String pointOfWorkName,
+                                String bollardPosition, String workQueueManaged) {}
 
     /** Condition evaluation result for the API. */
     public record ConditionView(String id, String type, boolean satisfied, boolean overridden, String explanation) {}
@@ -245,6 +254,8 @@ public class DemoServer {
         engine.register(workQueueProcessor);
         this.ttStateProcessor = new TTStateProcessor();
         engine.register(ttStateProcessor);
+        this.qcStateProcessor = new com.wonderingwizard.processors.QCStateProcessor();
+        engine.register(qcStateProcessor);
         this.scheduleRunnerProcessor = new ScheduleRunnerProcessor();
         scheduleRunnerProcessor.registerTTAllocationStrategy(ttStateProcessor);
         scheduleRunnerProcessor.registerSubProcessor(new TTUnavailableHandler());
@@ -265,6 +276,7 @@ public class DemoServer {
         this.baseEngine = null;
         this.scheduleRunnerProcessor = null;
         this.ttStateProcessor = null;
+        this.qcStateProcessor = null;
     }
 
     /**
@@ -294,13 +306,20 @@ public class DemoServer {
         httpServer.createContext("/workqueues", this::handleWorkQueues);
         httpServer.createContext("/pathfinder", this::handlePathfinder);
         httpServer.createContext("/trucks", this::handleTrucks);
+        httpServer.createContext("/quaycranes", this::handleQuayCranes);
         httpServer.createContext("/api/container-handling-equipment", this::handleContainerHandlingEquipment);
+        httpServer.createContext("/api/quay-crane-mapping", this::handleQuayCraneMapping);
+        httpServer.createContext("/api/crane-availability-status", this::handleCraneAvailabilityStatus);
+        httpServer.createContext("/api/crane-readiness", this::handleCraneReadiness);
+        httpServer.createContext("/api/crane-delay-activity", this::handleCraneDelayActivity);
         httpServer.createContext("/api/che-logical-position", this::handleCheLogicalPosition);
 
         httpServer.createContext("/api/pathfind", this::handlePathfind);
         httpServer.createContext("/api/digitalmap", this::handleDigitalMap);
         httpServer.createContext("/api/standby", this::handleStandby);
         httpServer.createContext("/api/version", this::handleVersion);
+        httpServer.createContext("/api/dlq", this::handleDlqApi);
+        httpServer.createContext("/dlq", this::handleDlqPage);
         httpServer.createContext("/release-notes", this::handleReleaseNotes);
         httpServer.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor());
         httpServer.start();
@@ -377,7 +396,7 @@ public class DemoServer {
             }
         };
 
-        kafkaConsumerManager = new KafkaConsumerManager(settings.kafkaConfiguration(), stepRecordingEngine, metrics);
+        kafkaConsumerManager = new KafkaConsumerManager(settings.kafkaConfiguration(), stepRecordingEngine, metrics, deadLetterQueue);
         kafkaConsumerManager.register(
                 settings.workQueueConsumerConfiguration(),
                 new WorkQueueEventMapper()
@@ -393,6 +412,26 @@ public class DemoServer {
         kafkaConsumerManager.register(
                 settings.cheLogicalPositionConsumerConfiguration(),
                 new CheLogicalPositionEventMapper()
+        );
+        kafkaConsumerManager.register(
+                settings.terminalLayoutConsumerConfiguration(),
+                new TerminalLayoutEventMapper()
+        );
+        kafkaConsumerManager.register(
+                settings.quayCraneMappingConsumerConfiguration(),
+                new QuayCraneMappingEventMapper()
+        );
+        kafkaConsumerManager.register(
+                settings.craneReadinessConsumerConfiguration(),
+                new CraneReadinessEventMapper()
+        );
+        kafkaConsumerManager.register(
+                settings.craneAvailabilityStatusConsumerConfiguration(),
+                new CraneAvailabilityStatusEventMapper()
+        );
+        kafkaConsumerManager.register(
+                settings.craneDelayActivitiesConsumerConfiguration(),
+                new CraneDelayActivityEventMapper()
         );
         AssetEventMapper assetEventMapper = new AssetEventMapper();
         kafkaConsumerManager.registerJson(
@@ -670,6 +709,13 @@ public class DemoServer {
             state.put("trucks", ttStateProcessor.getTruckState());
             state.put("truckPositions", ttStateProcessor.getTruckPositions());
         }
+        // Include QC (quay crane) state
+        if (qcStateProcessor != null) {
+            state.put("quayCranes", qcStateProcessor.getQCState());
+            state.put("craneReadiness", qcStateProcessor.getCraneReadiness());
+            state.put("craneAvailability", qcStateProcessor.getCraneAvailability());
+            state.put("craneDelays", qcStateProcessor.getCraneDelays());
+        }
 
         return state;
     }
@@ -689,12 +735,27 @@ public class DemoServer {
         // then query ScheduleRunnerProcessor for authoritative action/takt states
         Map<Long, ScheduleViewBuilder> builders = new LinkedHashMap<>();
 
+        // Collect WorkQueueMessage fields by workQueueId (latest wins)
+        Map<Long, WorkQueueMessage> wqMessages = new HashMap<>();
+        for (Step step : steps) {
+            if (step.event() instanceof WorkQueueMessage wqMsg) {
+                wqMessages.put(wqMsg.workQueueId(), wqMsg);
+            }
+        }
+
         for (Step step : steps) {
             for (SideEffect se : step.sideEffects()) {
                 switch (se) {
                     case ScheduleCreated created -> {
                         long wqId = created.workQueueId();
                         ScheduleViewBuilder builder = new ScheduleViewBuilder(wqId, true, created.estimatedMoveTime());
+                        WorkQueueMessage wqMsg = wqMessages.get(wqId);
+                        if (wqMsg != null) {
+                            builder.workQueueSequence = wqMsg.workQueueSequence();
+                            builder.pointOfWorkName = wqMsg.pointOfWorkName();
+                            builder.bollardPosition = wqMsg.bollardPosition();
+                            builder.workQueueManaged = wqMsg.workQueueManaged();
+                        }
                         builder.hasTTAllocation = scheduleRunnerProcessor != null
                                 && scheduleRunnerProcessor.hasTTAllocationStrategy();
                         for (Takt takt : created.takts()) {
@@ -814,6 +875,11 @@ public class DemoServer {
         /** Whether a TT allocation strategy is registered. */
         boolean hasTTAllocation = false;
 
+        String workQueueSequence;
+        String pointOfWorkName;
+        String bollardPosition;
+        String workQueueManaged;
+
         ScheduleViewBuilder(long workQueueId, boolean active, Instant estimatedMoveTime) {
             this.workQueueId = workQueueId;
             this.active = active;
@@ -931,7 +997,8 @@ public class DemoServer {
                         updatedActions, conditionViews));
             }
             return new ScheduleView(workQueueId, active, estimatedMoveTime,
-                    totalDelaySeconds, updatedTakts);
+                    totalDelaySeconds, updatedTakts,
+                    workQueueSequence, pointOfWorkName, bollardPosition, workQueueManaged);
         }
 
         private List<ConditionView> buildActionConditionViews(
@@ -1157,6 +1224,155 @@ public class DemoServer {
         }
     }
 
+    private void handleQuayCranes(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try (InputStream is = getClass().getResourceAsStream("/quaycranes.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "Quay cranes page not found");
+                return;
+            }
+            byte[] html = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, html.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html);
+            }
+        }
+    }
+
+    private void handleQuayCraneMapping(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            String qcName = requireField(body, "quayCraneShortName");
+            var event = new com.wonderingwizard.events.QuayCraneMappingEvent(
+                    qcName,
+                    body.getOrDefault("vesselName", null),
+                    body.getOrDefault("craneMode", null),
+                    body.getOrDefault("lane", null),
+                    body.getOrDefault("standbyPositionName", null),
+                    body.getOrDefault("standbyNodeName", null),
+                    body.getOrDefault("standbyTrafficDirection", null),
+                    body.getOrDefault("loadPinningPositionName", null),
+                    body.getOrDefault("dischargePinningPositionName", null),
+                    body.getOrDefault("terminalCode", ""),
+                    System.currentTimeMillis());
+            StepResult result = processStep("QC: " + qcName, event);
+
+            sendJsonResponse(exchange, 200, JsonSerializer.serialize(
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handleCraneAvailabilityStatus(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            String cheId = requireField(body, "cheId");
+            var event = new com.wonderingwizard.events.CraneAvailabilityStatusEvent(
+                    body.getOrDefault("terminalCode", ""),
+                    cheId,
+                    body.getOrDefault("cheType", "STS"),
+                    com.wonderingwizard.events.CraneAvailabilityStatus.fromCode(
+                            body.getOrDefault("cheStatus", "NOT_READY")),
+                    System.currentTimeMillis());
+            StepResult result = processStep("CraneAvailability: " + cheId, event);
+
+            sendJsonResponse(exchange, 200, JsonSerializer.serialize(
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handleCraneReadiness(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            String qcShortName = requireField(body, "qcShortName");
+            long workQueueId = Long.parseLong(body.getOrDefault("workQueueId", "0"));
+            String qcResumeTimestampStr = body.get("qcResumeTimestamp");
+            java.time.Instant qcResumeTimestamp = (qcResumeTimestampStr != null && !qcResumeTimestampStr.isBlank())
+                    ? java.time.Instant.parse(qcResumeTimestampStr) : java.time.Instant.now();
+            var event = new com.wonderingwizard.events.CraneReadinessEvent(
+                    qcShortName,
+                    workQueueId,
+                    qcResumeTimestamp,
+                    body.getOrDefault("updatedBy", null),
+                    body.getOrDefault("eventId", UUID.randomUUID().toString()));
+            StepResult result = processStep("CraneReadiness: " + qcShortName, event);
+
+            sendJsonResponse(exchange, 200, JsonSerializer.serialize(
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handleCraneDelayActivity(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            String cheShortName = requireField(body, "cheShortName");
+            var event = new com.wonderingwizard.events.CraneDelayActivityEvent(
+                    body.getOrDefault("eventType", "Crane Delay Occured"),
+                    body.getOrDefault("opType", "I"),
+                    body.getOrDefault("cdhTerminalCode", ""),
+                    parseLongOrNull(body.get("messageSequenceNumber")),
+                    parseLongOrNull(body.get("vesselVisitCraneDelayId")),
+                    body.getOrDefault("vesselVisitId", null),
+                    parseInstantOrNull(body.get("delayStartTime")),
+                    parseInstantOrNull(body.get("delayStopTime")),
+                    cheShortName,
+                    body.getOrDefault("delayRemarks", null),
+                    body.getOrDefault("delayType", null),
+                    body.getOrDefault("delayTypeDescription", null),
+                    body.getOrDefault("positionEnum", null),
+                    body.getOrDefault("delayStatus", null),
+                    body.getOrDefault("delayTypeAction", null),
+                    body.getOrDefault("delayTypeCategory", null),
+                    System.currentTimeMillis());
+            StepResult result = processStep("CraneDelay: " + cheShortName, event);
+
+            sendJsonResponse(exchange, 200, JsonSerializer.serialize(
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private static Long parseLongOrNull(String value) {
+        if (value == null || value.isBlank() || "null".equals(value)) return null;
+        return Long.parseLong(value);
+    }
+
+    private static Instant parseInstantOrNull(String value) {
+        if (value == null || value.isBlank() || "null".equals(value)) return null;
+        return Instant.parse(value);
+    }
+
     private void handleContainerHandlingEquipment(HttpExchange exchange) throws IOException {
         if (!"POST".equals(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
@@ -1286,6 +1502,52 @@ public class DemoServer {
             Matcher matcher = VERSION_PATTERN.matcher(content);
             String version = matcher.find() ? matcher.group(1) : "unknown";
             sendJsonResponse(exchange, 200, "{\"version\":\"" + escapeJson(version) + "\"}");
+        }
+    }
+
+    private void handleDlqApi(HttpExchange exchange) throws IOException {
+        if ("GET".equals(exchange.getRequestMethod())) {
+            var entries = deadLetterQueue.getEntries();
+            StringBuilder sb = new StringBuilder();
+            sb.append("{\"count\":").append(entries.size()).append(",\"entries\":[");
+            for (int i = 0; i < entries.size(); i++) {
+                var e = entries.get(i);
+                if (i > 0) sb.append(',');
+                sb.append("{\"topic\":\"").append(escapeJson(e.topic()))
+                  .append("\",\"partition\":").append(e.partition())
+                  .append(",\"offset\":").append(e.offset())
+                  .append(",\"timestamp\":\"").append(e.timestamp())
+                  .append("\",\"errorMessage\":\"").append(escapeJson(e.errorMessage()))
+                  .append("\",\"exceptionClass\":\"").append(escapeJson(e.exceptionClass()))
+                  .append("\"}");
+            }
+            sb.append("]}");
+            sendJsonResponse(exchange, 200, sb.toString());
+        } else if ("DELETE".equals(exchange.getRequestMethod())) {
+            deadLetterQueue.clear();
+            sendJsonResponse(exchange, 200, "{\"cleared\":true}");
+        } else {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+        }
+    }
+
+    private void handleDlqPage(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try (InputStream is = getClass().getResourceAsStream("/dlq.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "DLQ page not found");
+                return;
+            }
+            byte[] html = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, html.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html);
+            }
         }
     }
 
@@ -1551,7 +1813,13 @@ public class DemoServer {
                     ? com.wonderingwizard.events.LoadMode.valueOf(loadModeStr)
                     : null;
 
-            WorkQueueMessage event = new WorkQueueMessage(workQueueId, status, qcMudaSeconds, loadMode);
+            String workQueueSequence = body.get("workQueueSequence");
+            String pointOfWorkName = body.get("pointOfWorkName");
+            String bollardPosition = body.get("bollardPosition");
+            String workQueueManaged = body.get("workQueueManaged");
+
+            WorkQueueMessage event = new WorkQueueMessage(workQueueId, status, qcMudaSeconds, loadMode,
+                    workQueueSequence, pointOfWorkName, bollardPosition, workQueueManaged);
             StepResult result = processStep("WorkQueue " + statusStr + ": " + workQueueId, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(

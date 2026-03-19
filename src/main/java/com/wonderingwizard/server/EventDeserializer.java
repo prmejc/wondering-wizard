@@ -5,6 +5,10 @@ import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.CheJobStepState;
 import com.wonderingwizard.events.CheStatus;
 import com.wonderingwizard.events.ContainerHandlingEquipmentEvent;
+import com.wonderingwizard.events.CraneAvailabilityStatus;
+import com.wonderingwizard.events.CraneAvailabilityStatusEvent;
+import com.wonderingwizard.events.CraneDelayActivityEvent;
+import com.wonderingwizard.events.CraneReadinessEvent;
 import com.wonderingwizard.events.DigitalMapEvent;
 import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.NukeWorkQueueEvent;
@@ -94,6 +98,40 @@ public final class EventDeserializer {
             case "NukeWorkQueueEvent" -> new NukeWorkQueueEvent(
                     Long.parseLong(requireField(fields, "workQueueId")));
 
+            case "CraneDelayActivityEvent" -> new CraneDelayActivityEvent(
+                    fields.getOrDefault("eventType", null),
+                    fields.getOrDefault("opType", null),
+                    fields.getOrDefault("cdhTerminalCode", null),
+                    parseLongNullable(fields.get("messageSequenceNumber")),
+                    parseLongNullable(fields.get("vesselVisitCraneDelayId")),
+                    fields.getOrDefault("vesselVisitId", null),
+                    parseInstantNullable(fields.get("delayStartTime")),
+                    parseInstantNullable(fields.get("delayStopTime")),
+                    requireField(fields, "cheShortName"),
+                    fields.getOrDefault("delayRemarks", null),
+                    fields.getOrDefault("delayType", null),
+                    fields.getOrDefault("delayTypeDescription", null),
+                    fields.getOrDefault("positionEnum", null),
+                    fields.getOrDefault("delayStatus", null),
+                    fields.getOrDefault("delayTypeAction", null),
+                    fields.getOrDefault("delayTypeCategory", null),
+                    parseLongNullable(fields.get("sourceTsMs")));
+
+            case "CraneAvailabilityStatusEvent" -> new CraneAvailabilityStatusEvent(
+                    fields.getOrDefault("terminalCode", ""),
+                    requireField(fields, "cheId"),
+                    fields.getOrDefault("cheType", ""),
+                    CraneAvailabilityStatus.fromCode(fields.getOrDefault("cheStatus", "NOT_READY")),
+                    Long.parseLong(fields.getOrDefault("sourceTsMs", "0")));
+
+            case "CraneReadinessEvent" -> new CraneReadinessEvent(
+                    requireField(fields, "qcShortName"),
+                    Long.parseLong(requireField(fields, "workQueueId")),
+                    fields.get("qcResumeTimestamp") != null && !fields.get("qcResumeTimestamp").equals("null")
+                            ? Instant.parse(fields.get("qcResumeTimestamp")) : null,
+                    fields.get("updatedBy"),
+                    fields.getOrDefault("eventId", ""));
+
             case "ContainerHandlingEquipmentEvent" -> new ContainerHandlingEquipmentEvent(
                     fields.getOrDefault("eventType", ""),
                     fields.get("cheId") != null && !fields.get("cheId").equals("null")
@@ -117,6 +155,16 @@ public final class EventDeserializer {
 
             default -> throw new IllegalArgumentException("Unknown event type: " + type);
         };
+    }
+
+    private static Long parseLongNullable(String value) {
+        if (value == null || value.isBlank() || "null".equals(value)) return null;
+        return Long.parseLong(value);
+    }
+
+    private static Instant parseInstantNullable(String value) {
+        if (value == null || value.isBlank() || "null".equals(value)) return null;
+        return Instant.parse(value);
     }
 
     private static String requireField(Map<String, String> fields, String name) {

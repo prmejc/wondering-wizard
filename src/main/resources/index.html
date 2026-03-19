@@ -286,6 +286,8 @@ class ScheduleHeader extends HTMLElement {
         <button class="secondary" onclick="window.open(API+'/workqueues','_blank')" title="View work queues">&#9776; Work Queues</button>
         <button class="secondary" onclick="window.open(API+'/pathfinder','_blank')" title="Open pathfinder">&#9737; Pathfinder</button>
         <button class="secondary" onclick="window.open(API+'/trucks','_blank')" title="View trucks">&#128666; Trucks</button>
+        <button class="secondary" onclick="window.open(API+'/quaycranes','_blank')" title="View quay cranes">&#9875; Quay Cranes</button>
+        <button class="secondary" onclick="window.open(API+'/dlq','_blank')" title="Dead letter queue">&#9888; DLQ</button>
         <input id="import-file" type="file" accept=".json" style="display:none">
       </div>`;
     this.setAttribute('data-refresh', '');
@@ -494,6 +496,22 @@ class EventPanel extends HTMLElement {
           <option value="LOAD">LOAD</option>
         </select>
       </div>
+      <div class="form-group">
+        <label>Sequence</label>
+        <input id="wq-sequence" type="text" value="100">
+      </div>
+      <div class="form-group">
+        <label>Point of Work</label>
+        <input id="wq-point-of-work" type="text" value="QCZ1">
+      </div>
+      <div class="form-group">
+        <label>Bollard Position</label>
+        <input id="wq-bollard" type="text" value="B52">
+      </div>
+      <div class="form-group">
+        <label>Managed</label>
+        <input id="wq-managed" type="text" value="FES4">
+      </div>
       <button onclick="this.closest('event-panel').sendWQ()" style="margin-top:8px;width:100%">Send Work Queue</button>`;
     this.querySelector('#wi-emt').addEventListener('input', () => { this._emtDirty = true; });
     const updateCompanion = () => {
@@ -554,7 +572,11 @@ class EventPanel extends HTMLElement {
       workQueueId: this.querySelector('#wq-id').value,
       status: this.querySelector('#wq-status').value,
       qcMudaSeconds: this.querySelector('#wq-muda').value,
-      loadMode: this.querySelector('#wq-load-mode').value
+      loadMode: this.querySelector('#wq-load-mode').value,
+      workQueueSequence: this.querySelector('#wq-sequence').value,
+      pointOfWorkName: this.querySelector('#wq-point-of-work').value,
+      bollardPosition: this.querySelector('#wq-bollard').value,
+      workQueueManaged: this.querySelector('#wq-managed').value
     });
     refreshState();
   }

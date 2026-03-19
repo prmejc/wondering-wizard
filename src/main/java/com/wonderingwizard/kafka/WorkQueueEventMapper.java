@@ -72,10 +72,17 @@ public class WorkQueueEventMapper implements EventMapper<WorkQueueMessage> {
 
         LoadMode loadMode = mapLoadMode(kafkaMessage.loadMode());
 
-        logger.fine("Mapped WorkQueue Kafka message: workQueueId=" + workQueueId
-                + ", status=" + status + ", qcMudaSeconds=" + qcMudaSeconds + ", loadMode=" + loadMode);
+        String workQueueSequence = kafkaMessage.workQueueSequence();
+        String pointOfWorkName = kafkaMessage.pointOfWorkName();
+        String bollardPosition = kafkaMessage.bollardPosition();
+        String workQueueManaged = kafkaMessage.workQueueManaged();
 
-        return new WorkQueueMessage(workQueueId, status, qcMudaSeconds, loadMode);
+        logger.fine("Mapped WorkQueue Kafka message: workQueueId=" + workQueueId
+                + ", status=" + status + ", qcMudaSeconds=" + qcMudaSeconds + ", loadMode=" + loadMode
+                + ", pointOfWork=" + pointOfWorkName);
+
+        return new WorkQueueMessage(workQueueId, status, qcMudaSeconds, loadMode,
+                workQueueSequence, pointOfWorkName, bollardPosition, workQueueManaged);
     }
 
     private WorkQueueStatus mapStatus(String kafkaStatus) {

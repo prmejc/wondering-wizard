@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FES - Dead Letter Queue</title>
+<style>
+  :root {
+    --bg: #e2e8f0;
+    --surface: #f8fafc;
+    --surface2: #f1f5f9;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #cbd5e1;
+    --active: #ea580c;
+    --danger: #dc2626;
+    --completed: #059669;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .header {
+    display: flex; align-items: center; gap: 16px; margin-bottom: 16px;
+  }
+  h1 { font-size: 20px; }
+  .count-badge {
+    background: var(--danger); color: white; border-radius: 12px;
+    padding: 2px 10px; font-size: 13px; font-weight: 600;
+  }
+  .count-badge.empty { background: var(--completed); }
+  .nav-links { margin-left: auto; display: flex; gap: 12px; }
+  .nav-links a {
+    color: var(--active); text-decoration: none; font-size: 13px;
+  }
+  .nav-links a:hover { text-decoration: underline; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 16px; align-items: center; }
+  .toolbar .info { font-size: 13px; color: var(--text-muted); }
+  .table-wrap { overflow-x: auto; }
+  table {
+    width: 100%; border-collapse: collapse; font-size: 13px;
+  }
+  th {
+    background: var(--surface2); padding: 8px 10px; text-align: left;
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+    color: var(--text-muted); position: sticky; top: 0; white-space: nowrap;
+  }
+  td {
+    padding: 6px 10px; border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  td.mono { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+  td.error { color: var(--danger); max-width: 500px; word-break: break-word; }
+  tbody tr:hover td { background: var(--surface2); }
+  button {
+    background: var(--active); color: white; border: none; padding: 8px 16px;
+    border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  button:hover { opacity: 0.9; }
+  button.danger { background: var(--danger); }
+  .empty-state {
+    text-align: center; padding: 60px 20px; color: var(--text-muted);
+  }
+  .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Dead Letter Queue</h1>
+  <span class="count-badge" id="count-badge">0</span>
+  <div class="nav-links" id="nav-links"></div>
+</div>
+
+<div class="toolbar">
+  <button onclick="loadDLQ()">Refresh</button>
+  <button class="danger" onclick="clearDLQ()">Clear All</button>
+  <span class="info" id="auto-refresh-label">Auto-refresh: 5s</span>
+</div>
+
+<div id="content">
+  <div class="empty-state">
+    <div class="icon">&#9989;</div>
+    <div>No dead letter entries. All messages processed successfully.</div>
+  </div>
+</div>
+
+<script>
+const API = window.location.pathname.replace(/\/dlq\/?$/, '');
+document.getElementById('nav-links').innerHTML =
+  '<a href="' + (API || '/') + '">Schedule Viewer</a>' +
+  '<a href="' + API + '/trucks">Trucks</a>' +
+  '<a href="' + API + '/quaycranes">Quay Cranes</a>' +
+  '<a href="' + API + '/workqueues">Work Queues</a>';
+
+async function loadDLQ() {
+  try {
+    const res = await fetch(API + '/api/dlq');
+    const data = await res.json();
+    renderDLQ(data);
+  } catch (err) {
+    document.getElementById('content').innerHTML =
+      '<div class="empty-state">Failed to load DLQ: ' + err.message + '</div>';
+  }
+}
+
+async function clearDLQ() {
+  if (!confirm('Clear all dead letter entries?')) return;
+  await fetch(API + '/api/dlq', { method: 'DELETE' });
+  loadDLQ();
+}
+
+function renderDLQ(data) {
+  const badge = document.getElementById('count-badge');
+  badge.textContent = data.count;
+  badge.className = 'count-badge' + (data.count === 0 ? ' empty' : '');
+
+  if (data.entries.length === 0) {
+    document.getElementById('content').innerHTML =
+      '<div class="empty-state"><div class="icon">&#9989;</div>' +
+      '<div>No dead letter entries. All messages processed successfully.</div></div>';
+    return;
+  }
+
+  let html = '<div class="table-wrap"><table><thead><tr>' +
+    '<th>#</th><th>Timestamp</th><th>Topic</th><th>Partition</th>' +
+    '<th>Offset</th><th>Exception</th><th>Error Message</th>' +
+    '</tr></thead><tbody>';
+
+  for (let i = data.entries.length - 1; i >= 0; i--) {
+    const e = data.entries[i];
+    const shortTopic = e.topic.split('.').pop() || e.topic;
+    const ts = e.timestamp ? new Date(e.timestamp).toLocaleTimeString() : '';
+    html += '<tr>' +
+      '<td>' + (i + 1) + '</td>' +
+      '<td class="mono">' + ts + '</td>' +
+      '<td title="' + esc(e.topic) + '">' + esc(shortTopic) + '</td>' +
+      '<td>' + e.partition + '</td>' +
+      '<td class="mono">' + e.offset + '</td>' +
+      '<td class="mono">' + esc(e.exceptionClass) + '</td>' +
+      '<td class="error">' + esc(e.errorMessage) + '</td>' +
+      '</tr>';
+  }
+
+  html += '</tbody></table></div>';
+  document.getElementById('content').innerHTML = html;
+}
+
+function esc(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+loadDLQ();
+setInterval(loadDLQ, 5000);
+</script>
+</body>
+</html>

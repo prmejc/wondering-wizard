@@ -1,0 +1,552 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FES - Quay Cranes</title>
+<style>
+  :root {
+    --bg: #e2e8f0;
+    --surface: #f8fafc;
+    --surface2: #f1f5f9;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #cbd5e1;
+    --active: #ea580c;
+    --danger: #dc2626;
+    --completed: #059669;
+    --success-bg: rgba(5, 150, 105, 0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px;
+  }
+  .header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+  h1 { font-size: 20px; }
+  .live-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+  .live-dot.connected { background: var(--completed); }
+  .nav-links { margin-left: auto; display: flex; gap: 12px; }
+  .nav-links a { color: var(--active); text-decoration: none; font-size: 13px; }
+  .nav-links a:hover { text-decoration: underline; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 16px; }
+  button {
+    background: var(--active); color: white; border: none; padding: 8px 16px;
+    border-radius: 4px; cursor: pointer; font-size: 13px; font-weight: 500;
+  }
+  button:hover { opacity: 0.9; }
+  button.secondary { background: var(--surface2); color: var(--text); }
+  button.send-btn { padding: 3px 10px; font-size: 11px; }
+  .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+
+  .qc-card {
+    background: var(--surface); border-radius: 8px; margin-bottom: 12px;
+    border: 1px solid var(--border); overflow: hidden;
+  }
+  .qc-header {
+    display: flex; align-items: center; gap: 12px; padding: 10px 16px;
+    background: var(--surface2); border-bottom: 1px solid var(--border);
+    font-weight: 600; font-size: 15px;
+  }
+  .qc-header .status-dot {
+    width: 10px; height: 10px; border-radius: 50%; background: var(--text-muted);
+  }
+  .qc-header .status-dot.ready { background: var(--completed); }
+  .qc-header .status-dot.not-ready { background: var(--danger); }
+  .sub-row {
+    display: flex; align-items: center; gap: 8px; padding: 6px 16px;
+    border-bottom: 1px solid var(--border); font-size: 13px;
+  }
+  .sub-row:last-child { border-bottom: none; }
+  .sub-row-label {
+    min-width: 100px; font-weight: 600; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .sub-row-fields { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; align-items: center; }
+  .field-group { display: flex; align-items: center; gap: 3px; }
+  .field-group label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.3px;
+    color: var(--text-muted); white-space: nowrap;
+  }
+  .field-group input, .field-group select {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 3px 6px; border-radius: 3px; font-size: 13px; font-family: inherit;
+    width: auto; min-width: 60px;
+  }
+  .field-group input:focus, .field-group select:focus { outline: none; border-color: var(--active); }
+  .field-group input.narrow { width: 80px; }
+  .field-group input.medium { width: 120px; }
+  .field-group input.wide { width: 160px; }
+  .field-group select { min-width: 90px; }
+  .delay-badge {
+    font-size: 10px; font-weight: 700; letter-spacing: 0.5px;
+    padding: 2px 8px; border-radius: 10px; margin-left: 8px;
+  }
+  .delay-badge.active { background: var(--danger); color: white; }
+  .delay-badge.clear { background: var(--completed); color: white; }
+  .sub-row .send-btn { flex-shrink: 0; }
+  .sub-row.send-success { background: var(--success-bg); transition: background 0.3s; }
+  .info-icon {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 18px; height: 18px; border-radius: 50%; background: var(--border);
+    color: var(--text); font-size: 11px; font-weight: 700; font-style: italic;
+    font-family: Georgia, serif; cursor: pointer; flex-shrink: 0; user-select: none;
+  }
+  .info-icon:hover { background: var(--active); color: white; }
+  .ts-tooltip {
+    position: absolute; background: var(--text); color: white; padding: 4px 10px;
+    border-radius: 4px; font-size: 12px; white-space: nowrap; z-index: 100;
+    pointer-events: none; transform: translateY(-110%);
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Quay Cranes (QC)</h1>
+  <div class="live-indicator">
+    <div class="live-dot" id="live-dot"></div>
+    <span id="live-label">Disconnected</span>
+  </div>
+  <div class="nav-links" id="nav-links"></div>
+</div>
+
+<div class="toolbar">
+  <button id="add-qc-btn">Add Quay Crane</button>
+</div>
+
+<div id="content">
+  <div class="empty-state">No quay cranes registered. Click "Add Quay Crane" or wait for Kafka data.</div>
+</div>
+
+<script>
+const API = window.location.pathname.replace(/\/quaycranes\/?$/, '');
+document.getElementById('nav-links').innerHTML =
+  '<a href="' + (API || '/') + '">Schedule Viewer</a>' +
+  '<a href="' + API + '/trucks">Trucks</a>' +
+  '<a href="' + API + '/workinstructions">Work Instructions</a>' +
+  '<a href="' + API + '/workqueues">Work Queues</a>' +
+  '<a href="' + API + '/pathfinder">Pathfinder</a>';
+
+// State
+let qcNames = [];
+let serverState = { quayCranes: {}, craneReadiness: {}, craneAvailability: {}, craneDelays: {} };
+let localEdits = {}; // localEdits[qcName][subRow][fieldKey] = value
+
+async function apiCall(path, body) {
+  const opts = body
+    ? { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) }
+    : {};
+  const res = await fetch(path, opts);
+  return res.json();
+}
+
+function refresh(state) {
+  serverState = {
+    quayCranes: state.quayCranes || {},
+    craneReadiness: state.craneReadiness || {},
+    craneAvailability: state.craneAvailability || {},
+    craneDelays: state.craneDelays || {}
+  };
+  const names = new Set(qcNames);
+  for (const n of Object.keys(serverState.quayCranes)) names.add(n);
+  qcNames = [...names].sort();
+  render();
+}
+
+function getFieldVal(qcName, subRow, key) {
+  if (localEdits[qcName] && localEdits[qcName][subRow] && localEdits[qcName][subRow][key] !== undefined) {
+    return localEdits[qcName][subRow][key];
+  }
+  return getServerVal(qcName, subRow, key);
+}
+
+function getServerVal(qcName, subRow, key) {
+  if (subRow === 'flowposition') {
+    const fp = serverState.quayCranes[qcName];
+    if (!fp) return '';
+    return fp[key] != null ? String(fp[key]) : '';
+  }
+  if (subRow === 'readiness') {
+    const cr = serverState.craneReadiness[qcName];
+    if (!cr) return '';
+    if (key === 'qcResumeTimestamp') {
+      const v = cr[key];
+      if (!v) return '';
+      const ms = Date.parse(v);
+      return isNaN(ms) ? String(v) : String(ms);
+    }
+    return cr[key] != null ? String(cr[key]) : '';
+  }
+  if (subRow === 'availability') {
+    const ca = serverState.craneAvailability[qcName];
+    if (key === 'cheStatus') return ca || '';
+    // For other availability fields, get from the full event if available
+    // We only store the status string in craneAvailability, so defaults apply
+    if (key === 'cheId') return qcName;
+    if (key === 'terminalCode') {
+      const fp = serverState.quayCranes[qcName];
+      return fp ? (fp.terminalCode || '') : '';
+    }
+    if (key === 'cheType') return 'STS';
+    return '';
+  }
+  return '';
+}
+
+function setLocal(qcName, subRow, key, val) {
+  if (!localEdits[qcName]) localEdits[qcName] = {};
+  if (!localEdits[qcName][subRow]) localEdits[qcName][subRow] = {};
+  localEdits[qcName][subRow][key] = val;
+}
+
+function clearLocal(qcName, subRow) {
+  if (localEdits[qcName]) delete localEdits[qcName][subRow];
+}
+
+function render() {
+  const content = document.getElementById('content');
+  if (qcNames.length === 0) {
+    content.innerHTML = '<div class="empty-state">No quay cranes registered. Click "Add Quay Crane" or wait for Kafka data.</div>';
+    return;
+  }
+
+  let html = '';
+  for (const name of qcNames) {
+    html += buildCard(name);
+  }
+  content.innerHTML = html;
+  bindAll();
+}
+
+function buildCard(qcName) {
+  const cheStatus = getFieldVal(qcName, 'availability', 'cheStatus');
+  const dotClass = cheStatus === 'READY' ? 'ready' : (cheStatus === 'NOT_READY' ? 'not-ready' : '');
+  const vessel = getFieldVal(qcName, 'flowposition', 'vesselName');
+  const mode = getFieldVal(qcName, 'flowposition', 'craneMode');
+  const subtitle = [vessel, mode].filter(Boolean).join(' / ');
+
+  const delays = serverState.craneDelays[qcName] || [];
+  const hasActiveDelay = delays.length > 0 && !isDelayStopped(delays[delays.length - 1]);
+
+  let html = '<div class="qc-card" data-qc="' + qcName + '">';
+  html += '<div class="qc-header"><span class="status-dot ' + dotClass + '"></span>' + qcName;
+  if (subtitle) html += ' <span style="font-weight:400;font-size:13px;color:var(--text-muted)">' + esc(subtitle) + '</span>';
+  if (delays.length > 0) {
+    if (hasActiveDelay) {
+      html += ' <span class="delay-badge active">DELAY ACTIVE</span>';
+    } else {
+      html += ' <span class="delay-badge clear">NO DELAY</span>';
+    }
+  }
+  html += '</div>';
+
+  // Availability sub-row
+  html += '<div class="sub-row" data-qc="' + qcName + '" data-subrow="availability">';
+  html += '<span class="sub-row-label">Availability</span>';
+  html += '<div class="sub-row-fields">';
+  html += fieldInput(qcName, 'availability', 'cheId', 'CHE ID', 'narrow');
+  html += fieldSelect(qcName, 'availability', 'cheStatus', 'Status', ['READY', 'NOT_READY']);
+  html += fieldInput(qcName, 'availability', 'cheType', 'CHE Type', 'narrow');
+  html += fieldInput(qcName, 'availability', 'terminalCode', 'Terminal', 'narrow');
+  html += '</div>';
+  html += '<button class="send-btn" data-send-sub="availability" data-qc="' + qcName + '">Send</button>';
+  html += '</div>';
+
+  // Readiness sub-row
+  html += '<div class="sub-row" data-qc="' + qcName + '" data-subrow="readiness">';
+  html += '<span class="sub-row-label">Readiness</span>';
+  html += '<div class="sub-row-fields">';
+  html += fieldInput(qcName, 'readiness', 'qcShortName', 'QC Name', 'narrow');
+  html += fieldInput(qcName, 'readiness', 'workQueueId', 'Work Queue', 'narrow');
+  html += fieldTimestampMs(qcName, 'readiness', 'qcResumeTimestamp', 'Resume Time (ms)');
+  html += fieldInput(qcName, 'readiness', 'updatedBy', 'Updated By', 'medium');
+  html += fieldInput(qcName, 'readiness', 'eventId', 'Event ID', 'medium');
+  html += '</div>';
+  html += '<button class="send-btn" data-send-sub="readiness" data-qc="' + qcName + '">Send</button>';
+  html += '</div>';
+
+  // FlowPosition sub-row
+  html += '<div class="sub-row" data-qc="' + qcName + '" data-subrow="flowposition">';
+  html += '<span class="sub-row-label">FlowPosition</span>';
+  html += '<div class="sub-row-fields">';
+  html += fieldInput(qcName, 'flowposition', 'quayCraneShortName', 'QC Name', 'narrow');
+  html += fieldInput(qcName, 'flowposition', 'vesselName', 'Vessel', 'medium');
+  html += fieldInput(qcName, 'flowposition', 'craneMode', 'Mode', 'narrow');
+  html += fieldInput(qcName, 'flowposition', 'lane', 'Lane', 'narrow');
+  html += fieldInput(qcName, 'flowposition', 'standbyPositionName', 'Standby Pos', 'narrow');
+  html += fieldInput(qcName, 'flowposition', 'standbyNodeName', 'Standby Node', 'narrow');
+  html += fieldSelect(qcName, 'flowposition', 'standbyTrafficDirection', 'Traffic Dir', ['N', 'S', 'E', 'W']);
+  html += fieldInput(qcName, 'flowposition', 'loadPinningPositionName', 'Load Pin', 'narrow');
+  html += fieldInput(qcName, 'flowposition', 'dischargePinningPositionName', 'Disch Pin', 'narrow');
+  html += fieldInput(qcName, 'flowposition', 'terminalCode', 'Terminal', 'narrow');
+  html += '</div>';
+  html += '<button class="send-btn" data-send-sub="flowposition" data-qc="' + qcName + '">Send</button>';
+  html += '</div>';
+
+  // Delay activity sub-rows (from server, up to 3, newest first)
+  for (let i = delays.length - 1; i >= 0; i--) {
+    html += buildDelaySubRow(qcName, delays[i], i, i === delays.length - 1);
+  }
+
+  // New delay sub-row (for sending)
+  html += '<div class="sub-row" data-qc="' + qcName + '" data-subrow="newdelay">';
+  html += '<span class="sub-row-label">+ New Delay</span>';
+  html += '<div class="sub-row-fields">';
+  html += fieldSelect(qcName, 'newdelay', 'eventType', 'Event', ['Crane Delay Occured', 'Crane Delay Stopped']);
+  html += fieldInput(qcName, 'newdelay', 'cheShortName', 'CHE', 'narrow');
+  html += fieldInput(qcName, 'newdelay', 'delayType', 'Type', 'narrow');
+  html += fieldInput(qcName, 'newdelay', 'delayTypeDescription', 'Description', 'medium');
+  html += fieldSelect(qcName, 'newdelay', 'delayStatus', 'Status', ['CLERK_STARTED', 'CLERK_STOPPED', 'SYSTEM_STARTED', 'SYSTEM_STOPPED']);
+  html += fieldSelect(qcName, 'newdelay', 'delayTypeAction', 'Action', ['CONTAINER_MOVE_STOPPED', 'CONTAINER_MOVE_ACTIVE', 'CONTAINER_MOVE_CONTINUES']);
+  html += fieldSelect(qcName, 'newdelay', 'delayTypeCategory', 'Category', ['ABNORMAL', 'NORMAL', 'WEATHER']);
+  html += fieldInput(qcName, 'newdelay', 'delayRemarks', 'Remarks', 'medium');
+  html += fieldInput(qcName, 'newdelay', 'vesselVisitId', 'Vessel Visit', 'narrow');
+  html += fieldSelect(qcName, 'newdelay', 'positionEnum', 'Position', ['FIXED_START', 'FIXED_END', 'VARIABLE']);
+  html += '</div>';
+  html += '<button class="send-btn" data-send-sub="newdelay" data-qc="' + qcName + '">Send</button>';
+  html += '</div>';
+
+  html += '</div>';
+  return html;
+}
+
+function isDelayStopped(delay) {
+  const status = (delay.delayStatus || '').toUpperCase();
+  const action = (delay.delayTypeAction || '').toUpperCase();
+  const eventType = (delay.eventType || '').toUpperCase();
+  return status.includes('STOPPED')
+      || action === 'CONTAINER_MOVE_ACTIVE'
+      || eventType.includes('STOPPED');
+}
+
+function buildDelaySubRow(qcName, delay, index, isLatest) {
+  const stopped = isDelayStopped(delay);
+  const label = (isLatest ? '\u25CF ' : '') + 'Delay #' + (index + 1);
+  let html = '<div class="sub-row" style="background:' + (stopped ? 'var(--surface2)' : 'rgba(234,88,12,0.06)') + '">';
+  html += '<span class="sub-row-label" style="color:' + (stopped ? 'var(--text-muted)' : 'var(--active)') + '">' + label + '</span>';
+  html += '<div class="sub-row-fields">';
+  html += delayField('Event', delay.eventType);
+  html += delayField('Type', delay.delayType);
+  html += delayField('Desc', delay.delayTypeDescription);
+  html += delayField('Status', delay.delayStatus);
+  html += delayField('Action', delay.delayTypeAction);
+  html += delayField('Category', delay.delayTypeCategory);
+  html += delayField('Remarks', delay.delayRemarks);
+  html += delayField('Start', fmtTs(delay.delayStartTime));
+  html += delayField('Stop', fmtTs(delay.delayStopTime));
+  html += delayField('Vessel', delay.vesselVisitId);
+  html += delayField('Position', delay.positionEnum);
+  html += '</div></div>';
+  return html;
+}
+
+function delayField(label, value) {
+  const v = value != null ? String(value) : '';
+  return '<div class="field-group"><label>' + label + '</label>' +
+    '<span style="font-size:12px;padding:0 4px">' + esc(v || '-') + '</span></div>';
+}
+
+function fmtTs(isoStr) {
+  if (!isoStr) return '';
+  try { return new Date(isoStr).toLocaleTimeString(); } catch(e) { return isoStr; }
+}
+
+function fieldTimestampMs(qcName, subRow, key, label) {
+  const val = getFieldVal(qcName, subRow, key);
+  return '<div class="field-group"><label>' + label + '</label>' +
+    '<input type="text" class="medium" data-qc="' + qcName +
+    '" data-subrow="' + subRow + '" data-field="' + key + '" value="' + esc(val) + '">' +
+    '<span class="info-icon" data-ts-info="' + qcName + '" title="Show date/time">i</span></div>';
+}
+
+function fieldInput(qcName, subRow, key, label, sizeClass) {
+  const val = getFieldVal(qcName, subRow, key);
+  return '<div class="field-group"><label>' + label + '</label>' +
+    '<input type="text" class="' + sizeClass + '" data-qc="' + qcName +
+    '" data-subrow="' + subRow + '" data-field="' + key + '" value="' + esc(val) + '"></div>';
+}
+
+function fieldSelect(qcName, subRow, key, label, options) {
+  const val = getFieldVal(qcName, subRow, key);
+  let opts = '<option value=""></option>';
+  for (const o of options) {
+    opts += '<option value="' + o + '"' + (val === o ? ' selected' : '') + '>' + o + '</option>';
+  }
+  return '<div class="field-group"><label>' + label + '</label>' +
+    '<select data-qc="' + qcName + '" data-subrow="' + subRow + '" data-field="' + key + '">' +
+    opts + '</select></div>';
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function bindAll() {
+  // Field change handlers
+  document.querySelectorAll('[data-field]').forEach(el => {
+    el.addEventListener('input', () => {
+      setLocal(el.dataset.qc, el.dataset.subrow, el.dataset.field, el.value);
+    });
+    el.addEventListener('change', () => {
+      setLocal(el.dataset.qc, el.dataset.subrow, el.dataset.field, el.value);
+    });
+  });
+
+  // Timestamp info icons
+  document.querySelectorAll('[data-ts-info]').forEach(icon => {
+    icon.addEventListener('click', (e) => {
+      document.querySelectorAll('.ts-tooltip').forEach(t => t.remove());
+      const qcName = icon.dataset.tsInfo;
+      const input = icon.parentElement.querySelector('[data-field="qcResumeTimestamp"]');
+      const ms = parseInt(input ? input.value : '', 10);
+      const text = isNaN(ms) || !ms ? 'No timestamp' : new Date(ms).toLocaleString();
+      const tip = document.createElement('div');
+      tip.className = 'ts-tooltip';
+      tip.textContent = text;
+      icon.style.position = 'relative';
+      icon.appendChild(tip);
+      setTimeout(() => tip.remove(), 3000);
+    });
+  });
+
+  // Send buttons
+  document.querySelectorAll('[data-send-sub]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const qcName = btn.dataset.qc;
+      const subRow = btn.dataset.sendSub;
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        await sendSubRow(qcName, subRow);
+        clearLocal(qcName, subRow);
+        const row = btn.closest('.sub-row');
+        row.classList.add('send-success');
+        setTimeout(() => row.classList.remove('send-success'), 1500);
+      } catch (err) {
+        alert('Failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Send';
+      }
+    });
+  });
+}
+
+async function sendSubRow(qcName, subRow) {
+  if (subRow === 'availability') {
+    await apiCall(API + '/api/crane-availability-status', {
+      cheId: getFieldVal(qcName, 'availability', 'cheId') || qcName,
+      cheStatus: getFieldVal(qcName, 'availability', 'cheStatus') || 'NOT_READY',
+      cheType: getFieldVal(qcName, 'availability', 'cheType') || 'STS',
+      terminalCode: getFieldVal(qcName, 'availability', 'terminalCode') || ''
+    });
+  } else if (subRow === 'readiness') {
+    const msVal = getFieldVal(qcName, 'readiness', 'qcResumeTimestamp');
+    const ms = parseInt(msVal, 10);
+    const isoTs = (!isNaN(ms) && ms > 0) ? new Date(ms).toISOString() : '';
+    await apiCall(API + '/api/crane-readiness', {
+      qcShortName: getFieldVal(qcName, 'readiness', 'qcShortName') || qcName,
+      workQueueId: getFieldVal(qcName, 'readiness', 'workQueueId') || '0',
+      qcResumeTimestamp: isoTs,
+      updatedBy: getFieldVal(qcName, 'readiness', 'updatedBy') || '',
+      eventId: getFieldVal(qcName, 'readiness', 'eventId') || ''
+    });
+  } else if (subRow === 'flowposition') {
+    await apiCall(API + '/api/quay-crane-mapping', {
+      quayCraneShortName: getFieldVal(qcName, 'flowposition', 'quayCraneShortName') || qcName,
+      vesselName: getFieldVal(qcName, 'flowposition', 'vesselName') || '',
+      craneMode: getFieldVal(qcName, 'flowposition', 'craneMode') || '',
+      lane: getFieldVal(qcName, 'flowposition', 'lane') || '',
+      standbyPositionName: getFieldVal(qcName, 'flowposition', 'standbyPositionName') || '',
+      standbyNodeName: getFieldVal(qcName, 'flowposition', 'standbyNodeName') || '',
+      standbyTrafficDirection: getFieldVal(qcName, 'flowposition', 'standbyTrafficDirection') || '',
+      loadPinningPositionName: getFieldVal(qcName, 'flowposition', 'loadPinningPositionName') || '',
+      dischargePinningPositionName: getFieldVal(qcName, 'flowposition', 'dischargePinningPositionName') || '',
+      terminalCode: getFieldVal(qcName, 'flowposition', 'terminalCode') || ''
+    });
+  } else if (subRow === 'newdelay') {
+    const now = new Date().toISOString();
+    await apiCall(API + '/api/crane-delay-activity', {
+      cheShortName: getFieldVal(qcName, 'newdelay', 'cheShortName') || qcName,
+      eventType: getFieldVal(qcName, 'newdelay', 'eventType') || 'Crane Delay Occured',
+      opType: 'I',
+      cdhTerminalCode: getFieldVal(qcName, 'flowposition', 'terminalCode') || '',
+      delayType: getFieldVal(qcName, 'newdelay', 'delayType') || '',
+      delayTypeDescription: getFieldVal(qcName, 'newdelay', 'delayTypeDescription') || '',
+      delayStatus: getFieldVal(qcName, 'newdelay', 'delayStatus') || 'CLERK_STARTED',
+      delayTypeAction: getFieldVal(qcName, 'newdelay', 'delayTypeAction') || 'CONTAINER_MOVE_STOPPED',
+      delayTypeCategory: getFieldVal(qcName, 'newdelay', 'delayTypeCategory') || 'ABNORMAL',
+      delayRemarks: getFieldVal(qcName, 'newdelay', 'delayRemarks') || '',
+      vesselVisitId: getFieldVal(qcName, 'newdelay', 'vesselVisitId') || '',
+      positionEnum: getFieldVal(qcName, 'newdelay', 'positionEnum') || 'FIXED_START',
+      delayStartTime: now
+    });
+  }
+}
+
+// Defaults for new QCs
+function addQC(name) {
+  if (qcNames.includes(name)) return;
+  qcNames.push(name);
+  qcNames.sort();
+  // Set defaults
+  setLocal(name, 'availability', 'cheId', name);
+  setLocal(name, 'availability', 'cheStatus', 'NOT_READY');
+  setLocal(name, 'availability', 'cheType', 'STS');
+  setLocal(name, 'readiness', 'qcShortName', name);
+  setLocal(name, 'readiness', 'workQueueId', '0');
+  setLocal(name, 'flowposition', 'quayCraneShortName', name);
+  setLocal(name, 'newdelay', 'cheShortName', name);
+  setLocal(name, 'newdelay', 'eventType', 'Crane Delay Occured');
+  setLocal(name, 'newdelay', 'delayStatus', 'CLERK_STARTED');
+  setLocal(name, 'newdelay', 'delayTypeAction', 'CONTAINER_MOVE_STOPPED');
+  setLocal(name, 'newdelay', 'delayTypeCategory', 'ABNORMAL');
+  setLocal(name, 'newdelay', 'positionEnum', 'FIXED_START');
+  render();
+}
+
+document.getElementById('add-qc-btn').addEventListener('click', () => {
+  const n = qcNames.length + 1;
+  const suggested = 'QC' + String(n).padStart(2, '0');
+  const name = prompt('Enter quay crane short name:', suggested);
+  if (!name || name.trim() === '') return;
+  const trimmed = name.trim();
+  if (qcNames.includes(trimmed)) { alert(trimmed + ' already exists.'); return; }
+  addQC(trimmed);
+});
+
+// --- SSE ---
+function connectSSE() {
+  const es = new EventSource(API + '/api/events');
+  es.onopen = () => {
+    document.getElementById('live-dot').classList.add('connected');
+    document.getElementById('live-label').textContent = 'Live';
+  };
+  es.addEventListener('state', (e) => {
+    try { refresh(JSON.parse(e.data)); } catch (err) {}
+  });
+  es.onerror = () => {
+    document.getElementById('live-dot').classList.remove('connected');
+    document.getElementById('live-label').textContent = 'Reconnecting...';
+  };
+}
+
+async function init() {
+  try {
+    const state = await apiCall(API + '/api/state');
+    refresh(state);
+  } catch (err) {}
+  connectSSE();
+}
+
+init();
+</script>
+</body>
+</html>

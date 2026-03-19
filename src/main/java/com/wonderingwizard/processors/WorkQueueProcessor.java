@@ -55,6 +55,7 @@ import static com.wonderingwizard.domain.takt.DeviceType.TT;
  */
 public class WorkQueueProcessor implements EventProcessor {
 
+    private static final Logger logger = Logger.getLogger(WorkQueueProcessor.class.getName());
     private static final int DRIVE_TIME_MIN_SECONDS = 30;
     private static final int DRIVE_TIME_MAX_SECONDS = 300;
     private static final int QC_DRIVE_TIME_OFFSET_RANGE = 30;
@@ -63,6 +64,7 @@ public class WorkQueueProcessor implements EventProcessor {
     private final Map<Long, List<WorkInstructionEvent>> workInstructions = new HashMap<>();
     private final Map<Long, Integer> qcMudaByQueue = new HashMap<>();
     private final Map<Long, LoadMode> loadModeByQueue = new HashMap<>();
+    private final Map<Long, String> pointOfWorkByQueue = new HashMap<>();
     /** Work instruction IDs whose actions were force-completed (e.g., TT_UNAVAILABLE). */
     private final Map<Long, Set<Long>> canceledWorkInstructionIds = new HashMap<>();
     private final IntSupplier driveTimeSupplier;
@@ -357,12 +359,19 @@ public class WorkQueueProcessor implements EventProcessor {
                 .createTakts(allInstructions, estimatedMoveTime, qcMuda, loadMode,
                         workQueueId, pipelineSteps);
 
+        String pointOfWork = pointOfWorkByQueue.get(workQueueId);
+        if (pointOfWork != null && !pointOfWork.isBlank()) {
+            takts = assignQCDevice(takts, pointOfWork);
+        }
+
         var sortedTakts = takts.stream()
                 .sorted((a, b) -> a.sequence() - b.sequence())
                 .toList();
 
         return List.of(new ScheduleCreated(workQueueId, sortedTakts, estimatedMoveTime));
     }
+
+    private static final String MANAGED_BY_FES = "FES4";
 
     private List<SideEffect> handleWorkQueueMessage(WorkQueueMessage message) {
         long workQueueId = message.workQueueId();
@@ -371,12 +380,27 @@ public class WorkQueueProcessor implements EventProcessor {
         if (message.loadMode() != null) {
             loadModeByQueue.put(workQueueId, message.loadMode());
         }
+        if (message.pointOfWorkName() != null) {
+            pointOfWorkByQueue.put(workQueueId, message.pointOfWorkName());
+        }
 
-        return switch (status) {
-            case ACTIVE -> handleActiveStatus(workQueueId);
-            case INACTIVE -> handleInactiveStatus(workQueueId);
-            case null -> List.of();
-        };
+        boolean managedByFes = MANAGED_BY_FES.equals(message.workQueueManaged());
+
+        if (status == WorkQueueStatus.ACTIVE && managedByFes) {
+            return handleActiveStatus(workQueueId);
+        }
+
+        // INACTIVE or not managed by FES → delete schedule if it exists
+        if (status == WorkQueueStatus.INACTIVE || !managedByFes) {
+            if (!managedByFes && activeSchedules.containsKey(workQueueId)) {
+                logger.info("Aborting schedule for WorkQueue " + workQueueId
+                        + ": workQueueManaged=" + message.workQueueManaged()
+                        + " (no longer " + MANAGED_BY_FES + ")");
+            }
+            return handleInactiveStatus(workQueueId);
+        }
+
+        return List.of();
     }
 
     private List<SideEffect> handleActiveStatus(long workQueueId) {
@@ -397,11 +421,17 @@ public class WorkQueueProcessor implements EventProcessor {
 
         int qcMuda = qcMudaByQueue.getOrDefault(workQueueId, 0);
         LoadMode loadMode = loadModeByQueue.getOrDefault(workQueueId, LoadMode.DSCH);
+        String pointOfWork = pointOfWorkByQueue.get(workQueueId);
         List<Takt> takts = useGraphScheduleBuilder
                 ? new GraphScheduleBuilder(driveTimeSupplier, qcDriveTimeOffsetSupplier)
                         .createTakts(instructions, estimatedMoveTime, qcMuda, loadMode,
                                 workQueueId, pipelineSteps)
                 : createTaktsFromWorkInstructionsPrimvs(instructions, estimatedMoveTime, qcMuda);
+
+        // Assign QC device name from pointOfWorkName
+        if (pointOfWork != null && !pointOfWork.isBlank()) {
+            takts = assignQCDevice(takts, pointOfWork);
+        }
 
         return List.of(new ScheduleCreated(workQueueId, takts.stream().sorted( (a, b) -> a.sequence() - b.sequence()).toList(), estimatedMoveTime));
     }
@@ -652,6 +682,32 @@ public class WorkQueueProcessor implements EventProcessor {
         // Abort the schedule (work instructions remain stored)
         activeSchedules.remove(workQueueId);
         return List.of(new ScheduleAborted(workQueueId));
+    }
+
+    /**
+     * Assigns the QC device name (from pointOfWorkName) to all QC actions in the takts.
+     */
+    private static List<Takt> assignQCDevice(List<Takt> takts, String qcDeviceName) {
+        List<Takt> updated = new ArrayList<>();
+        for (Takt takt : takts) {
+            boolean hasQcAction = takt.actions().stream()
+                    .anyMatch(a -> a.deviceType() == DeviceType.QC);
+            if (!hasQcAction) {
+                updated.add(takt);
+                continue;
+            }
+            List<Action> updatedActions = new ArrayList<>();
+            for (Action action : takt.actions()) {
+                if (action.deviceType() == DeviceType.QC) {
+                    updatedActions.add(action.withTruckAssignment(null, qcDeviceName));
+                } else {
+                    updatedActions.add(action);
+                }
+            }
+            updated.add(new Takt(takt.sequence(), updatedActions,
+                    takt.plannedStartTime(), takt.estimatedStartTime(), takt.durationSeconds()));
+        }
+        return updated;
     }
 
     private List<SideEffect> handleNukeWorkQueue(long workQueueId) {

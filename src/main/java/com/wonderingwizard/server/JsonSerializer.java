@@ -7,6 +7,10 @@ import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.CheLogicalPositionEvent;
+import com.wonderingwizard.events.CraneAvailabilityStatusEvent;
+import com.wonderingwizard.events.CraneDelayActivityEvent;
+import com.wonderingwizard.events.CraneReadinessEvent;
+import com.wonderingwizard.events.QuayCraneMappingEvent;
 import com.wonderingwizard.events.ContainerHandlingEquipmentEvent;
 import com.wonderingwizard.events.DigitalMapEvent;
 import com.wonderingwizard.events.NukeWorkQueueEvent;
@@ -24,6 +28,7 @@ import com.wonderingwizard.sideeffects.AlarmTriggered;
 import com.wonderingwizard.sideeffects.DelayUpdated;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
+import com.wonderingwizard.sideeffects.QCStateUpdated;
 import com.wonderingwizard.sideeffects.TTStateUpdated;
 import com.wonderingwizard.sideeffects.TaktActivated;
 import com.wonderingwizard.sideeffects.TaktCompleted;
@@ -174,6 +179,10 @@ public final class JsonSerializer {
                 writeField(sb, "status", e.status(), false);
                 writeField(sb, "qcMudaSeconds", e.qcMudaSeconds(), false);
                 writeField(sb, "loadMode", e.loadMode(), false);
+                writeField(sb, "workQueueSequence", e.workQueueSequence(), false);
+                writeField(sb, "pointOfWorkName", e.pointOfWorkName(), false);
+                writeField(sb, "bollardPosition", e.bollardPosition(), false);
+                writeField(sb, "workQueueManaged", e.workQueueManaged(), false);
                 sb.append('}');
             }
             case WorkInstructionEvent e -> {
@@ -306,6 +315,64 @@ public final class JsonSerializer {
                 writeField(sb, "timestampMs", e.timestampMs(), false);
                 sb.append('}');
             }
+            case CraneDelayActivityEvent e -> {
+                sb.append('{');
+                writeField(sb, "type", "CraneDelayActivityEvent", true);
+                writeField(sb, "eventType", e.eventType(), false);
+                writeField(sb, "opType", e.opType(), false);
+                writeField(sb, "cdhTerminalCode", e.cdhTerminalCode(), false);
+                writeField(sb, "messageSequenceNumber", e.messageSequenceNumber(), false);
+                writeField(sb, "vesselVisitCraneDelayId", e.vesselVisitCraneDelayId(), false);
+                writeField(sb, "vesselVisitId", e.vesselVisitId(), false);
+                writeField(sb, "delayStartTime", e.delayStartTime(), false);
+                writeField(sb, "delayStopTime", e.delayStopTime(), false);
+                writeField(sb, "cheShortName", e.cheShortName(), false);
+                writeField(sb, "delayRemarks", e.delayRemarks(), false);
+                writeField(sb, "delayType", e.delayType(), false);
+                writeField(sb, "delayTypeDescription", e.delayTypeDescription(), false);
+                writeField(sb, "positionEnum", e.positionEnum(), false);
+                writeField(sb, "delayStatus", e.delayStatus(), false);
+                writeField(sb, "delayTypeAction", e.delayTypeAction(), false);
+                writeField(sb, "delayTypeCategory", e.delayTypeCategory(), false);
+                writeField(sb, "sourceTsMs", e.sourceTsMs(), false);
+                sb.append('}');
+            }
+            case CraneAvailabilityStatusEvent e -> {
+                sb.append('{');
+                writeField(sb, "type", "CraneAvailabilityStatusEvent", true);
+                writeField(sb, "terminalCode", e.terminalCode(), false);
+                writeField(sb, "cheId", e.cheId(), false);
+                writeField(sb, "cheType", e.cheType(), false);
+                writeField(sb, "cheStatus", e.cheStatus().code(), false);
+                writeField(sb, "sourceTsMs", e.sourceTsMs(), false);
+                sb.append('}');
+            }
+            case CraneReadinessEvent e -> {
+                sb.append('{');
+                writeField(sb, "type", "CraneReadinessEvent", true);
+                writeField(sb, "qcShortName", e.qcShortName(), false);
+                writeField(sb, "workQueueId", e.workQueueId(), false);
+                writeField(sb, "qcResumeTimestamp", e.qcResumeTimestamp(), false);
+                writeField(sb, "updatedBy", e.updatedBy(), false);
+                writeField(sb, "eventId", e.eventId(), false);
+                sb.append('}');
+            }
+            case QuayCraneMappingEvent e -> {
+                sb.append('{');
+                writeField(sb, "type", "QuayCraneMappingEvent", true);
+                writeField(sb, "quayCraneShortName", e.quayCraneShortName(), false);
+                writeField(sb, "vesselName", e.vesselName(), false);
+                writeField(sb, "craneMode", e.craneMode(), false);
+                writeField(sb, "lane", e.lane(), false);
+                writeField(sb, "standbyPositionName", e.standbyPositionName(), false);
+                writeField(sb, "standbyNodeName", e.standbyNodeName(), false);
+                writeField(sb, "standbyTrafficDirection", e.standbyTrafficDirection(), false);
+                writeField(sb, "loadPinningPositionName", e.loadPinningPositionName(), false);
+                writeField(sb, "dischargePinningPositionName", e.dischargePinningPositionName(), false);
+                writeField(sb, "terminalCode", e.terminalCode(), false);
+                writeField(sb, "timestampMs", e.timestampMs(), false);
+                sb.append('}');
+            }
             default -> writeString(sb, event.toString());
         }
     }
@@ -411,6 +478,12 @@ public final class JsonSerializer {
                 if (evt.cheJobStepState() != null) writeField(sb, "cheJobStepState", evt.cheJobStepState().code(), false);
                 sb.append('}');
             }
+            case QCStateUpdated e -> {
+                sb.append('{');
+                writeField(sb, "type", "QCStateUpdated", true);
+                writeField(sb, "quayCraneShortName", e.quayCraneShortName(), false);
+                sb.append('}');
+            }
             case TruckAssigned e -> {
                 sb.append('{');
                 writeField(sb, "type", "TruckAssigned", true);
@@ -506,6 +579,10 @@ public final class JsonSerializer {
         writeField(sb, "active", view.active(), false);
         writeField(sb, "estimatedMoveTime", view.estimatedMoveTime(), false);
         writeField(sb, "totalDelaySeconds", view.totalDelaySeconds(), false);
+        writeField(sb, "workQueueSequence", view.workQueueSequence(), false);
+        writeField(sb, "pointOfWorkName", view.pointOfWorkName(), false);
+        writeField(sb, "bollardPosition", view.bollardPosition(), false);
+        writeField(sb, "workQueueManaged", view.workQueueManaged(), false);
         writeFieldKey(sb, "takts", false);
         writeValue(sb, view.takts());
         sb.append('}');

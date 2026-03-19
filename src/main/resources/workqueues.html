@@ -105,6 +105,10 @@ const WQ_FIELDS = [
   { key: 'status', label: 'Status', type: 'select', options: ['ACTIVE', 'INACTIVE'] },
   { key: 'qcMudaSeconds', label: 'QC Muda (s)', type: 'number' },
   { key: 'loadMode', label: 'Load Mode', type: 'select', options: ['LOAD', 'DSCH'] },
+  { key: 'workQueueSequence', label: 'Sequence', type: 'text' },
+  { key: 'pointOfWorkName', label: 'Point of Work', type: 'text' },
+  { key: 'bollardPosition', label: 'Bollard Pos', type: 'text' },
+  { key: 'workQueueManaged', label: 'Managed', type: 'text' },
 ];
 
 let workQueues = new Map();

@@ -4,24 +4,24 @@ Tracking implementation progress for all Kafka topics used by the system.
 
 ## Consumer Topics
 
-| # | Topic | Message Type | Implemented | Well Tested |
-|---|-------|-------------|:-----------:|:-----------:|
-| 0 | `APMT.terminalOperations.workInstruction.topic.confidential.dedicated.v1` | WorkInstruction |     Yes     |     No      |
-| 1 | `APMT.terminalOperations.workQueue.topic.confidential.dedicated.v1` | WorkQueue |     Yes     |     No      |
-| 2 | `APMT.terminalOperations.containerHandlingEquipment.topic.confidential.dedicated.v1` | ContainerHandlingEquipment |     Yes     |     Yes     |
-| 3 | `apmt.terminaloperations.digitalmap.topic.confidential.dedicated.v1` | TerminalLayout |     No      |     No      |
-| 4 | `apmt.terminaloperations.joboperation.topic.confidential.dedicated.v1` | JobOperation |     No      |     No      |
-| 5 | `apmt.terminaloperations.chetargetposition.topic.confidential.dedicated.v1` | CheTargetPositionConfirmation |     No      |     No      |
+| # | Topic                                                                                  | Message Type | Implemented | Well Tested |
+|---|----------------------------------------------------------------------------------------|-------------|:-----------:|:-----------:|
+| 0 | `APMT.terminalOperations.workInstruction.topic.confidential.dedicated.v1`              | WorkInstruction |     Yes     |     No      |
+| 1 | `APMT.terminalOperations.workQueue.topic.confidential.dedicated.v1`                    | WorkQueue |     Yes     |     No      |
+| 2 | `APMT.terminalOperations.containerHandlingEquipment.topic.confidential.dedicated.v1`   | ContainerHandlingEquipment |     Yes     |     Yes     |
+| 3 | `apmt.terminaloperations.digitalmap.topic.confidential.dedicated.v1`                   | TerminalLayout |     Yes     |     Yes     |
+| 4 | `apmt.terminaloperations.joboperation.topic.confidential.dedicated.v1`                 | JobOperation |     No      |     No      |
+| 5 | `apmt.terminaloperations.chetargetposition.topic.confidential.dedicated.v1`            | CheTargetPositionConfirmation |     No      |     No      |
 | 6 | `apmt.terminaloperations.assetevent.rubbertyredgantry.topic.confidential.dedicated.v1` | AssetEvent (RTG) |     Yes     |     No      |
-| 7 | `apmt.terminaloperations.assetevent.quaycrane.topic.confidential.dedicated.v1` | AssetEvent (QC) |     Yes     |     No      |
-| 8 | `apmt.terminaloperations.assetevent.emptyhandler.topic.confidential.dedicated.v1` | AssetEvent (EH) |     Yes     |     No      |
-| 9 | `apmt.quaysideoperations.quaycraneflowposition.topic.internal.any.v2` | QuayCraneMapping |     No      |     No      |
-| 10 | `apmt.terminaloperations.chelogicalposition.topic.confidential.dedicated.v1` | CheLogicalPosition |     Yes     |     No      |
-| 11 | `APMT.terminalOperations.craneDelayActivities.topic.confidential.dedicated.v1` | CraneDelayActivities |     No      |     No      |
-| 12 | `apmt.terminaloperations.craneavailabilitystatus.topic.confidential.dedicated.v1` | CraneAvailabilityStatus |     No      |     No      |
-| 13 | `apmt.terminaloperations.containermovestate.topic.confidential.status.v1` | ContainerMoveState |     No      |     No      |
-| 14 | `apmt.terminal-operations.flow-scheduling-standards.topic.internal.any.v1` | FlowSchedulingStandards |     No      |     No      |
-| 15 | `apmt.terminal-operations.cranereadiness.topic.internal.any.v1` | CraneReadiness |     No      |     No      |
+| 7 | `apmt.terminaloperations.assetevent.quaycrane.topic.confidential.dedicated.v1`         | AssetEvent (QC) |     Yes     |     No      |
+| 8 | `apmt.terminaloperations.assetevent.emptyhandler.topic.confidential.dedicated.v1`      | AssetEvent (EH) |     Yes     |     No      |
+| 9 | `apmt.quaysideoperations.quaycraneflowposition.topic.internal.any.v2`                  | QuayCraneMapping |     Yes     |     No      |
+| 10 | `apmt.terminaloperations.chelogicalposition.topic.confidential.dedicated.v1`           | CheLogicalPosition |     Yes     |     Yes     |
+| 11 | `APMT.terminalOperations.craneDelayActivities.topic.confidential.dedicated.v1`         | CraneDelayActivities |     Yes     |     Yes     |
+| 12 | `apmt.terminaloperations.craneavailabilitystatus.topic.confidential.dedicated.v1`      | CraneAvailabilityStatus |     Yes     |     Yes     |
+| 13 | `apmt.terminaloperations.containermovestate.topic.confidential.status.v1`              | ContainerMoveState |     No      |     No      |
+| 14 | `apmt.terminal-operations.flow-scheduling-standards.topic.internal.any.v1`             | FlowSchedulingStandards |     No      |     No      |
+| 15 | `apmt.terminal-operations.cranereadiness.topic.internal.any.v1`                        | CraneReadiness |     Yes     |     Yes     |
 
 ## Producer Topics
 
@@ -41,8 +41,8 @@ Tracking implementation progress for all Kafka topics used by the system.
 
 ## Summary
 
-| Direction | Total | Implemented | Well Tested |
-|-----------|:-----:|:-----------:|:-----------:|
-| Consumer  | 16    | 7           |      1      |
-| Producer  | 11    | 3           |      0      |
-| **Total** | **27**| **10**      |    **1**    |
+| Direction | Total | Implemented | Well Tested (SIT READY) |
+|-----------|:-----:|:-----------:|:-----------------------:|
+| Consumer  | 16    | 12          |            6            |
+| Producer  | 11    | 3           |            0            |
+| **Total** | **27**| **15**      |          **6**          |

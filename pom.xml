@@ -124,7 +124,7 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.2.2</version>
                 <configuration>
-                    <argLine>--add-reads com.wonderingwizard=ALL-UNNAMED</argLine>
+                    <argLine>--add-reads com.wonderingwizard=ALL-UNNAMED --add-reads io.opentelemetry.exporter.prometheus=ALL-UNNAMED --add-reads io.opentelemetry.sdk=ALL-UNNAMED</argLine>
                     <excludedGroups>e2e</excludedGroups>
                 </configuration>
             </plugin>
@@ -138,6 +138,10 @@
                     <jvmArgs>
                         <jvmArg>--add-reads</jvmArg>
                         <jvmArg>com.wonderingwizard=ALL-UNNAMED</jvmArg>
+                        <jvmArg>--add-reads</jvmArg>
+                        <jvmArg>io.opentelemetry.exporter.prometheus=ALL-UNNAMED</jvmArg>
+                        <jvmArg>--add-reads</jvmArg>
+                        <jvmArg>io.opentelemetry.sdk=ALL-UNNAMED</jvmArg>
                     </jvmArgs>
                 </configuration>
             </plugin>
@@ -169,7 +173,7 @@
                         <artifactId>maven-surefire-plugin</artifactId>
                         <version>3.2.2</version>
                         <configuration>
-                            <argLine>--add-reads com.wonderingwizard=ALL-UNNAMED</argLine>
+                            <argLine>--add-reads com.wonderingwizard=ALL-UNNAMED --add-reads io.opentelemetry.exporter.prometheus=ALL-UNNAMED --add-reads io.opentelemetry.sdk=ALL-UNNAMED</argLine>
                             <groups>e2e</groups>
                             <excludedGroups />
                         </configuration>

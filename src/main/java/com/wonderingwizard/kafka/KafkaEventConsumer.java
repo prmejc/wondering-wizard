@@ -9,6 +9,8 @@ import org.apache.avro.generic.GenericRecord;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.RecordDeserializationException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
 import java.time.Duration;
@@ -23,7 +25,11 @@ import java.util.logging.Logger;
  * and feeds them into the event processing engine.
  * <p>
  * Each instance consumes from a single topic using the provided {@link EventMapper}
- * to transform Avro records into engine events. Runs on a virtual thread.
+ * to transform Avro records into engine events. Runs on a platform thread
+ * because the Kafka client uses {@code synchronized} blocks that pin virtual threads.
+ * <p>
+ * Messages that fail deserialization (e.g. schema mismatch) are sent to the
+ * {@link DeadLetterQueue} and skipped so consumption can continue.
  *
  * @param <E> the type of engine event produced by this consumer
  */
@@ -37,6 +43,7 @@ public class KafkaEventConsumer<E extends Event> {
     private final EventMapper<E> mapper;
     private final Engine engine;
     private final Metrics metrics;
+    private final DeadLetterQueue deadLetterQueue;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread consumerThread;
 
@@ -46,7 +53,7 @@ public class KafkaEventConsumer<E extends Event> {
             EventMapper<E> mapper,
             Engine engine
     ) {
-        this(kafkaConfig, consumerConfig, mapper, engine, null);
+        this(kafkaConfig, consumerConfig, mapper, engine, null, null);
     }
 
     public KafkaEventConsumer(
@@ -56,19 +63,32 @@ public class KafkaEventConsumer<E extends Event> {
             Engine engine,
             Metrics metrics
     ) {
+        this(kafkaConfig, consumerConfig, mapper, engine, metrics, null);
+    }
+
+    public KafkaEventConsumer(
+            KafkaConfiguration kafkaConfig,
+            ConsumerConfiguration consumerConfig,
+            EventMapper<E> mapper,
+            Engine engine,
+            Metrics metrics,
+            DeadLetterQueue deadLetterQueue
+    ) {
         this.kafkaConfig = kafkaConfig;
         this.consumerConfig = consumerConfig;
         this.mapper = mapper;
         this.engine = engine;
         this.metrics = metrics;
+        this.deadLetterQueue = deadLetterQueue;
     }
 
     /**
-     * Start consuming messages on a virtual thread.
+     * Start consuming messages on a daemon platform thread.
      */
     public void start() {
         if (running.compareAndSet(false, true)) {
-            consumerThread = Thread.ofVirtual()
+            consumerThread = Thread.ofPlatform()
+                    .daemon()
                     .name("kafka-consumer-" + consumerConfig.topic())
                     .start(this::consumeLoop);
             logger.info("Started Kafka consumer for topic: " + consumerConfig.topic());
@@ -107,6 +127,18 @@ public class KafkaEventConsumer<E extends Event> {
                     for (var record : records) {
                         processRecord(record.value(), record.offset(), record.partition());
                     }
+                } catch (RecordDeserializationException e) {
+                    // Send to dead letter queue and seek past the bad record
+                    TopicPartition tp = e.topicPartition();
+                    long offset = e.offset();
+                    logger.log(Level.WARNING,
+                            "Deserialization error on " + tp + " at offset " + offset
+                                    + ", sending to DLQ and skipping", e);
+                    if (deadLetterQueue != null) {
+                        deadLetterQueue.add(tp.topic(), tp.partition(), offset,
+                                e.getCause() != null ? e.getCause().getMessage() : e.getMessage(), e);
+                    }
+                    consumer.seek(tp, offset + 1);
                 } catch (Exception e) {
                     if (running.get()) {
                         logger.log(Level.SEVERE,
@@ -134,6 +166,9 @@ public class KafkaEventConsumer<E extends Event> {
             logger.log(Level.WARNING,
                     "Failed to process record from topic " + consumerConfig.topic()
                             + " [partition=" + partition + ", offset=" + offset + "]", e);
+            if (deadLetterQueue != null) {
+                deadLetterQueue.add(consumerConfig.topic(), partition, offset, e.getMessage(), e);
+            }
         }
     }
 

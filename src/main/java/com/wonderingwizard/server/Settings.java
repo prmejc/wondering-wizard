@@ -157,6 +157,61 @@ public class Settings {
                 "apmt.terminaloperations.equipmentinstruction.quaycrane.topic.confidential.dedicated.v1");
     }
 
+    public ConsumerConfiguration craneDelayActivitiesConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.crane-delay-activities.topic",
+                        "APMT.terminalOperations.craneDelayActivities.topic.confidential.dedicated.v1"),
+                get("kafka.consumer.crane-delay-activities.group-id", "wondering-wizard-crane-delay"),
+                get("kafka.consumer.crane-delay-activities.avro-message-type", null),
+                null,
+                getBoolean("kafka.consumer.crane-delay-activities.read-all-at-startup", false)
+        );
+    }
+
+    public ConsumerConfiguration craneAvailabilityStatusConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.crane-availability-status.topic",
+                        "apmt.terminaloperations.craneavailabilitystatus.topic.confidential.dedicated.v1"),
+                get("kafka.consumer.crane-availability-status.group-id", "wondering-wizard-crane-availability"),
+                get("kafka.consumer.crane-availability-status.avro-message-type", null),
+                null,
+                getBoolean("kafka.consumer.crane-availability-status.read-all-at-startup", false)
+        );
+    }
+
+    public ConsumerConfiguration craneReadinessConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.crane-readiness.topic",
+                        "apmt.terminal-operations.cranereadiness.topic.internal.any.v1"),
+                get("kafka.consumer.crane-readiness.group-id", "wondering-wizard-crane-readiness"),
+                get("kafka.consumer.crane-readiness.avro-message-type", null),
+                null,
+                getBoolean("kafka.consumer.crane-readiness.read-all-at-startup", false)
+        );
+    }
+
+    public ConsumerConfiguration quayCraneMappingConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.quay-crane-mapping.topic",
+                        "apmt.quaysideoperations.quaycraneflowposition.topic.internal.any.v2"),
+                get("kafka.consumer.quay-crane-mapping.group-id", "wondering-wizard-qc-mapping"),
+                get("kafka.consumer.quay-crane-mapping.avro-message-type", null),
+                null,
+                getBoolean("kafka.consumer.quay-crane-mapping.read-all-at-startup", true)
+        );
+    }
+
+    public ConsumerConfiguration terminalLayoutConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.terminal-layout.topic",
+                        "apmt.terminaloperations.digitalmap.topic.confidential.dedicated.v1"),
+                get("kafka.consumer.terminal-layout.group-id", "wondering-wizard-digitalmap"),
+                get("kafka.consumer.terminal-layout.avro-message-type", null),
+                null,
+                getBoolean("kafka.consumer.terminal-layout.read-all-at-startup", true)
+        );
+    }
+
     public ConsumerConfiguration cheLogicalPositionConsumerConfiguration() {
         return new ConsumerConfiguration(
                 get("kafka.consumer.che-logical-position.topic",

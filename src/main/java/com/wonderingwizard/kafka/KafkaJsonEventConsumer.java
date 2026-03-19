@@ -6,6 +6,8 @@ import com.wonderingwizard.metrics.Metrics;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.errors.RecordDeserializationException;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
 import java.time.Duration;
@@ -20,7 +22,11 @@ import java.util.logging.Logger;
  * <p>
  * This is the JSON counterpart to {@link KafkaEventConsumer} (which handles Avro).
  * Uses {@link StringDeserializer} for values and a {@link JsonEventMapper} to transform
- * the raw JSON strings into engine events. Runs on a virtual thread.
+ * the raw JSON strings into engine events. Runs on a platform thread
+ * because the Kafka client uses {@code synchronized} blocks that pin virtual threads.
+ * <p>
+ * Messages that fail deserialization or processing are sent to the
+ * {@link DeadLetterQueue} and skipped so consumption can continue.
  *
  * @param <E> the type of engine event produced by this consumer
  */
@@ -34,6 +40,7 @@ public class KafkaJsonEventConsumer<E extends Event> {
     private final JsonEventMapper<E> mapper;
     private final Engine engine;
     private final Metrics metrics;
+    private final DeadLetterQueue deadLetterQueue;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private Thread consumerThread;
 
@@ -43,7 +50,7 @@ public class KafkaJsonEventConsumer<E extends Event> {
             JsonEventMapper<E> mapper,
             Engine engine
     ) {
-        this(kafkaConfig, consumerConfig, mapper, engine, null);
+        this(kafkaConfig, consumerConfig, mapper, engine, null, null);
     }
 
     public KafkaJsonEventConsumer(
@@ -53,19 +60,32 @@ public class KafkaJsonEventConsumer<E extends Event> {
             Engine engine,
             Metrics metrics
     ) {
+        this(kafkaConfig, consumerConfig, mapper, engine, metrics, null);
+    }
+
+    public KafkaJsonEventConsumer(
+            KafkaConfiguration kafkaConfig,
+            ConsumerConfiguration consumerConfig,
+            JsonEventMapper<E> mapper,
+            Engine engine,
+            Metrics metrics,
+            DeadLetterQueue deadLetterQueue
+    ) {
         this.kafkaConfig = kafkaConfig;
         this.consumerConfig = consumerConfig;
         this.mapper = mapper;
         this.engine = engine;
         this.metrics = metrics;
+        this.deadLetterQueue = deadLetterQueue;
     }
 
     /**
-     * Start consuming messages on a virtual thread.
+     * Start consuming messages on a daemon platform thread.
      */
     public void start() {
         if (running.compareAndSet(false, true)) {
-            consumerThread = Thread.ofVirtual()
+            consumerThread = Thread.ofPlatform()
+                    .daemon()
                     .name("kafka-json-consumer-" + consumerConfig.topic())
                     .start(this::consumeLoop);
             logger.info("Started Kafka JSON consumer for topic: " + consumerConfig.topic());
@@ -104,6 +124,17 @@ public class KafkaJsonEventConsumer<E extends Event> {
                     for (var record : records) {
                         processRecord(record.value(), record.offset(), record.partition());
                     }
+                } catch (RecordDeserializationException e) {
+                    TopicPartition tp = e.topicPartition();
+                    long offset = e.offset();
+                    logger.log(Level.WARNING,
+                            "Deserialization error on " + tp + " at offset " + offset
+                                    + ", sending to DLQ and skipping", e);
+                    if (deadLetterQueue != null) {
+                        deadLetterQueue.add(tp.topic(), tp.partition(), offset,
+                                e.getCause() != null ? e.getCause().getMessage() : e.getMessage(), e);
+                    }
+                    consumer.seek(tp, offset + 1);
                 } catch (Exception e) {
                     if (running.get()) {
                         logger.log(Level.SEVERE,
@@ -131,6 +162,9 @@ public class KafkaJsonEventConsumer<E extends Event> {
             logger.log(Level.WARNING,
                     "Failed to process JSON record from topic " + consumerConfig.topic()
                             + " [partition=" + partition + ", offset=" + offset + "]", e);
+            if (deadLetterQueue != null) {
+                deadLetterQueue.add(consumerConfig.topic(), partition, offset, e.getMessage(), e);
+            }
         }
     }
 
