@@ -89,6 +89,11 @@
             <artifactId>opentelemetry-exporter-prometheus</artifactId>
             <version>1.36.0-alpha</version>
         </dependency>
+        <dependency>
+            <groupId>io.opentelemetry.instrumentation</groupId>
+            <artifactId>opentelemetry-runtime-telemetry-java17</artifactId>
+            <version>2.2.0-alpha</version>
+        </dependency>
 
         <!-- Testing -->
         <dependency>

@@ -18,7 +18,7 @@ P3
 7. DONE quay cranes availability che type is STS (which is wrong, should be QC)
 8. pathfinder shows one bollard B81.5? somewhere in the see, is that really so? data or parsing issue?
 9. DONE Crane delay, the last one should be highlighted as the active message, even if it says delay stop. or maybe make the DOT green for the last delay crane
-14. total consumed message count doesnt work when triggering chelogicalposition 10k flood
+14. DONE total consumed message count doesnt work when triggering chelogicalposition 10k flood
 
 
 

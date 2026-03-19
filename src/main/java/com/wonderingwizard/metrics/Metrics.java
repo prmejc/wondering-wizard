@@ -84,6 +84,11 @@ public class Metrics {
         kafkaProcessingDuration.record(0, Attributes.of(TOPIC, "warmup"));
         engineProcessingDuration.record(0, Attributes.of(EVENT_TYPE, "warmup"));
 
+        // Register JVM runtime metrics (heap, CPU, GC, threads)
+        io.opentelemetry.instrumentation.runtimemetrics.java17.RuntimeMetrics.builder(
+                OpenTelemetrySdk.builder().setMeterProvider(meterProvider).build()
+        ).enableAllFeatures().build();
+
         logger.info("OTEL metrics initialized, Prometheus endpoint on port " + prometheusPort);
     }
 

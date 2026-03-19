@@ -72,6 +72,21 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.19">
+  <h2>v4.0.19</h2>
+  <div class="date">2026-03-19</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>JVM runtime metrics (heap memory, CPU, GC, threads) now exported on the Prometheus endpoint (<code>:9464</code>) via <code>opentelemetry-runtime-telemetry-java17</code></li>
+  </ul>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Fixed Grafana CPU &amp; Memory panel showing no data &mdash; was using Kubernetes cAdvisor metrics (<code>container_cpu_usage_seconds_total</code>) which are not emitted by the app; now uses JVM metrics (<code>jvm_cpu_recent_utilization_ratio</code>, <code>jvm_memory_used_bytes</code>)</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.18">
   <h2>v4.0.18</h2>
   <div class="date">2026-03-19</div>

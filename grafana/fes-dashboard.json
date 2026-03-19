@@ -180,13 +180,13 @@
       },
       "targets": [
         {
-          "expr": "rate(container_cpu_usage_seconds_total{pod=~\"$pod\"}[1m])",
+          "expr": "jvm_cpu_recent_utilization_ratio",
           "legendFormat": "CPU",
           "refId": "A"
         },
         {
-          "expr": "container_memory_working_set_bytes{pod=~\"$pod\"}",
-          "legendFormat": "Memory",
+          "expr": "sum(jvm_memory_used_bytes{jvm_memory_type=\"heap\"})",
+          "legendFormat": "Heap Memory",
           "refId": "B"
         }
       ]
@@ -207,19 +207,6 @@
         "query": "prometheus",
         "refresh": 1,
         "type": "datasource"
-      },
-      {
-        "current": { "selected": false, "text": "wondering-wizard.*", "value": "wondering-wizard.*" },
-        "hide": 0,
-        "includeAll": false,
-        "label": "Pod",
-        "multi": false,
-        "name": "pod",
-        "options": [],
-        "query": "label_values(container_cpu_usage_seconds_total, pod)",
-        "refresh": 2,
-        "regex": "/wondering-wizard.*/",
-        "type": "query"
       }
     ]
   },
