@@ -1,5 +1,6 @@
 package com.wonderingwizard.processors;
 
+import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.events.WorkInstructionEvent;
 
 import java.util.List;
@@ -27,8 +28,14 @@ public interface SchedulePipelineStep {
             long workQueueId,
             String bollardPosition,
             int containerIndex,
-            String previousToPosition
-    ) {}
+            String previousToPosition,
+            LoadMode loadMode
+    ) {
+        public EnrichmentContext(long workQueueId, String bollardPosition,
+                                 int containerIndex, String previousToPosition) {
+            this(workQueueId, bollardPosition, containerIndex, previousToPosition, LoadMode.DSCH);
+        }
+    }
 
     /**
      * Enriches action templates for a single container before takt fitting.

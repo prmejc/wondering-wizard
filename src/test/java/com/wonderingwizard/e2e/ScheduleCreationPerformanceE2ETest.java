@@ -36,7 +36,7 @@ class ScheduleCreationPerformanceE2ETest {
     @DisplayName("Create 1000 WIs per WQ x 10 WQs, activate all, measure schedule creation time")
     void shouldCreateSchedulesForAllWorkQueues() throws Exception {
         // Step 1: Verify server is running
-        //assertServerIsReachable();
+        assertServerIsReachable();
 
         // Step 2: Create 1000 WorkInstructions per WQ for 10 WQs (10,000 total)
         System.out.println("Creating " + WORK_QUEUES * WORK_INSTRUCTIONS_PER_QUEUE

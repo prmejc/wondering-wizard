@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FES - Equipment Locations</title>
+<style>
+  :root {
+    --bg: #e2e8f0; --surface: #f8fafc; --surface2: #f1f5f9;
+    --text: #1e293b; --text-muted: #64748b; --border: #cbd5e1;
+    --active: #ea580c; --danger: #dc2626; --completed: #059669;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; padding: 24px;
+  }
+  .header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+  h1 { font-size: 20px; }
+  .live-indicator { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
+  .live-dot.connected { background: var(--completed); }
+  .nav-links { margin-left: auto; display: flex; gap: 12px; }
+  .nav-links a { color: var(--active); text-decoration: none; font-size: 13px; }
+  .nav-links a:hover { text-decoration: underline; }
+  .section { margin-bottom: 24px; }
+  .section h2 { font-size: 16px; margin-bottom: 8px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-size: 12px; }
+  .equipment-grid { display: flex; flex-wrap: wrap; gap: 12px; }
+  .equipment-card {
+    background: var(--surface); border-radius: 8px; border: 1px solid var(--border);
+    padding: 12px 16px; min-width: 200px; flex: 0 0 auto;
+  }
+  .equipment-card h3 { font-size: 15px; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .position-row {
+    display: flex; align-items: center; gap: 8px; padding: 4px 0;
+    font-size: 13px; border-bottom: 1px solid var(--border);
+  }
+  .position-row:last-child { border-bottom: none; }
+  .position-label {
+    min-width: 70px; font-weight: 600; font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.3px; color: var(--text-muted);
+  }
+  .position-status { flex: 1; }
+  .position-status.free { color: var(--completed); font-weight: 600; }
+  .position-status.occupied { color: var(--active); font-weight: 600; }
+  .truck-info { font-size: 11px; color: var(--text-muted); }
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Equipment Locations</h1>
+  <div class="live-indicator">
+    <div class="live-dot" id="live-dot"></div>
+    <span id="live-label">Disconnected</span>
+  </div>
+  <div class="nav-links" id="nav-links"></div>
+</div>
+
+<div class="section" id="qc-section">
+  <h2>Quay Cranes</h2>
+  <div class="equipment-grid" id="qc-grid">
+    <div class="empty-state">No active QC positions</div>
+  </div>
+</div>
+
+<div class="section" id="rtg-section">
+  <h2>RTGs</h2>
+  <div class="equipment-grid" id="rtg-grid">
+    <div class="empty-state">No active RTG positions</div>
+  </div>
+</div>
+
+<script>
+const API = window.location.pathname.replace(/\/locations\/?$/, '');
+document.getElementById('nav-links').innerHTML =
+  '<a href="' + (API || '/') + '">Schedule Viewer</a>' +
+  '<a href="' + API + '/trucks">Trucks</a>' +
+  '<a href="' + API + '/quaycranes">Quay Cranes</a>';
+
+const POSITIONS = ['STANDBY', 'UNDER'];
+
+function refresh(state) {
+  const occupancy = state.locationOccupancy || [];
+
+  // Group by equipment type and name
+  const qcMap = new Map();
+  const rtgMap = new Map();
+
+  for (const occ of occupancy) {
+    const map = occ.equipmentType === 'QC' ? qcMap : rtgMap;
+    if (!map.has(occ.equipmentName)) {
+      map.set(occ.equipmentName, {});
+    }
+    map.get(occ.equipmentName)[occ.position] = occ;
+  }
+
+  // Also find equipment names from schedules (even if no occupancy yet)
+  const schedules = state.schedules || [];
+  for (const sched of schedules) {
+    for (const takt of sched.takts || []) {
+      for (const action of takt.actions || []) {
+        if (action.deviceType === 'QC' && action.cheShortName) {
+          if (!qcMap.has(action.cheShortName)) qcMap.set(action.cheShortName, {});
+        }
+      }
+    }
+  }
+
+  renderGrid('qc-grid', qcMap, 'QC');
+  renderGrid('rtg-grid', rtgMap, 'RTG');
+}
+
+function renderGrid(gridId, equipmentMap, type) {
+  const grid = document.getElementById(gridId);
+  if (equipmentMap.size === 0) {
+    grid.innerHTML = '<div class="empty-state">No active ' + type + ' positions</div>';
+    return;
+  }
+
+  let html = '';
+  const sorted = [...equipmentMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+
+  for (const [name, positions] of sorted) {
+    html += '<div class="equipment-card">';
+    html += '<h3>' + esc(name) + '</h3>';
+
+    for (const pos of POSITIONS) {
+      const occ = positions[pos];
+      html += '<div class="position-row">';
+      html += '<span class="position-label">' + pos + '</span>';
+      if (occ) {
+        html += '<span class="position-status occupied">' + esc(occ.cheShortName) + '</span>';
+        html += '<span class="truck-info">'
+          + 'WQ ' + occ.workQueueId
+          + (occ.workInstructionId ? ' | WI ' + occ.workInstructionId : '')
+          + (occ.containerId ? ' | ' + esc(occ.containerId) : '')
+          + '</span>';
+      } else {
+        html += '<span class="position-status free">FREE</span>';
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+  }
+  grid.innerHTML = html;
+}
+
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// --- SSE ---
+function connectSSE() {
+  const es = new EventSource(API + '/api/events');
+  es.onopen = () => {
+    document.getElementById('live-dot').classList.add('connected');
+    document.getElementById('live-label').textContent = 'Live';
+  };
+  es.addEventListener('state', (e) => {
+    try { refresh(JSON.parse(e.data)); } catch (err) {}
+  });
+  es.onerror = () => {
+    document.getElementById('live-dot').classList.remove('connected');
+    document.getElementById('live-label').textContent = 'Reconnecting...';
+  };
+}
+
+async function init() {
+  try {
+    const res = await fetch(API + '/api/state');
+    const state = await res.json();
+    refresh(state);
+  } catch (err) {}
+  connectSSE();
+}
+
+init();
+</script>
+</body>
+</html>

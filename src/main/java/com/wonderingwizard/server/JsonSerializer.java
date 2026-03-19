@@ -4,6 +4,7 @@ import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
+import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.CheLogicalPositionEvent;
@@ -93,6 +94,8 @@ public final class JsonSerializer {
             writeList(sb, set.stream().toList());
         } else if (obj instanceof Map<?, ?> map) {
             writeMap(sb, map);
+        } else if (obj instanceof ScheduleRunnerProcessor.LocationOccupancy occ) {
+            writeLocationOccupancy(sb, occ);
         } else if (obj instanceof DemoServer.Step step) {
             writeStep(sb, step);
         } else if (obj instanceof DemoServer.ActionState actionState) {
@@ -681,5 +684,18 @@ public final class JsonSerializer {
         if (!first) sb.append(',');
         writeString(sb, key);
         sb.append(':');
+    }
+
+    private static void writeLocationOccupancy(StringBuilder sb, ScheduleRunnerProcessor.LocationOccupancy occ) {
+        sb.append('{');
+        writeField(sb, "equipmentType", occ.equipmentType().name(), true);
+        writeField(sb, "equipmentName", occ.equipmentName(), false);
+        writeField(sb, "position", occ.position().name(), false);
+        writeField(sb, "cheShortName", occ.cheShortName(), false);
+        writeField(sb, "workQueueId", occ.workQueueId(), false);
+        writeField(sb, "actionDescription", occ.actionDescription(), false);
+        writeField(sb, "workInstructionId", occ.workInstructionId(), false);
+        writeField(sb, "containerId", occ.containerId(), false);
+        sb.append('}');
     }
 }

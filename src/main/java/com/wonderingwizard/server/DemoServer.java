@@ -328,6 +328,7 @@ public class DemoServer {
         httpServer.createContext("/api/pathfind", this::handlePathfind);
         httpServer.createContext("/api/digitalmap", this::handleDigitalMap);
         httpServer.createContext("/api/standby", this::handleStandby);
+        httpServer.createContext("/locations", this::handleLocations);
         httpServer.createContext("/api/version", this::handleVersion);
         httpServer.createContext("/api/dlq", this::handleDlqApi);
         httpServer.createContext("/dlq", this::handleDlqPage);
@@ -772,6 +773,11 @@ public class DemoServer {
             state.put("craneDelays", qcStateProcessor.getCraneDelays());
         }
 
+        // Include location occupancy (QC and RTG positions)
+        if (scheduleRunnerProcessor != null) {
+            state.put("locationOccupancy", scheduleRunnerProcessor.getLocationOccupancy());
+        }
+
         // Include Kafka consumer status
         if (kafkaConsumerManager != null) {
             state.put("kafkaStatus", kafkaConsumerManager.getStatus());
@@ -811,6 +817,8 @@ public class DemoServer {
                         }
                         builder.hasTTAllocation = scheduleRunnerProcessor != null
                                 && scheduleRunnerProcessor.hasTTAllocationStrategy();
+                        builder.occupiedPositionKeys = scheduleRunnerProcessor != null
+                                ? scheduleRunnerProcessor.getOccupiedPositionKeys() : Set.of();
                         builder.storeTakts(created.takts());
                         builders.put(wqId, builder);
                     }
@@ -876,7 +884,9 @@ public class DemoServer {
                         takt.plannedStartTime(), takt.estimatedStartTime(), actualStart,
                         null, takt.durationSeconds(), 0, 0, actionViews, List.of()));
             }
-            // Refresh satisfied event gates
+            // Refresh occupied positions and satisfied event gates
+            builder.occupiedPositionKeys = scheduleRunnerProcessor != null
+                    ? scheduleRunnerProcessor.getOccupiedPositionKeys() : Set.of();
             builder.satisfiedEventGates.clear();
             if (scheduleRunnerProcessor != null) {
                 for (Takt takt : builder.originalTakts) {
@@ -931,6 +941,7 @@ public class DemoServer {
         final Map<UUID, Set<String>> satisfiedEventGates = new HashMap<>();
         /** Whether a TT allocation strategy is registered. */
         boolean hasTTAllocation = false;
+        Set<String> occupiedPositionKeys = Set.of();
 
         String workQueueSequence;
         String pointOfWorkName;
@@ -1127,6 +1138,21 @@ public class DemoServer {
                                 : "Waiting for free TT (FES pool)"));
             }
 
+            // Location conditions (block/skip based on position occupancy)
+            if (originalAction != null) {
+                Set<String> occupied = occupiedPositionKeys;
+                var locContext = new com.wonderingwizard.domain.takt.ActionConditionContext(
+                        taktState == TaktState.ACTIVE, completedActionIds,
+                        satisfiedEventGates.getOrDefault(action.id(), Set.of()), occupied);
+                for (var cond : originalAction.locationSkipConditions()) {
+                    boolean overridden = overrides.contains(cond.id());
+                    boolean satisfied = overridden || cond.evaluate(locContext);
+                    views.add(new ConditionView(cond.id(), cond.type(),
+                            satisfied, overridden,
+                            cond.explanation(locContext)));
+                }
+            }
+
             return views;
         }
 
@@ -1197,8 +1223,17 @@ public class DemoServer {
 
         sseManager.addConnection(exchange);
 
-        // Send current state immediately so the client is up to date
-        sseManager.broadcast("state", JsonSerializer.serialize(getState()));
+        // Send current state to just the new client (not all), on a virtual thread
+        // to avoid blocking the HTTP handler if the event loop is busy
+        Thread.ofVirtual().name("sse-init").start(() -> {
+            try {
+                Map<String, Object> state = submitAndWait(() -> buildState());
+                String json = JsonSerializer.serialize(state);
+                sseManager.sendToLatest("state", json);
+            } catch (Exception e) {
+                // Client may have disconnected already — ignore
+            }
+        });
     }
 
     private void handleRoot(HttpExchange exchange) throws IOException {
@@ -1633,6 +1668,25 @@ public class DemoServer {
             sendJsonResponse(exchange, 200, "{\"cleared\":true}");
         } else {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+        }
+    }
+
+    private void handleLocations(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+        try (InputStream is = getClass().getResourceAsStream("/locations.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "Locations page not found");
+                return;
+            }
+            byte[] html = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, html.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html);
+            }
         }
     }
 

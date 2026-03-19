@@ -72,6 +72,31 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.24">
+  <h2>v4.0.24</h2>
+  <div class="date">2026-03-19</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>Equipment location occupancy tracking &mdash; computes QC and RTG standby/under occupancy from active schedule state in real-time</li>
+    <li>Location-based action conditions with two modes:
+      <ul>
+        <li><strong>BLOCK</strong> (ACTIVATE mode) &mdash; prevents TT from entering a position that is already occupied (e.g., don&rsquo;t drive to QC standby if standby is occupied)</li>
+        <li><strong>SKIP</strong> mode &mdash; auto-completes TT approach actions when the next position is free, allowing the truck to skip ahead (e.g., skip QC pull if standby is free)</li>
+      </ul>
+    </li>
+    <li>QC skip conditions apply to all load modes; RTG skip conditions apply to DSCH only</li>
+    <li>Location conditions visible in schedule viewer as <code>LOCATION_BLOCK</code> and <code>LOCATION_SKIP</code> conditions on pending TT actions, with override support</li>
+    <li>Equipment Locations page (<code>/locations</code>) &mdash; live view of QC and RTG standby/under positions showing truck name, work queue, work instruction, and container ID</li>
+    <li><code>LOCATION_SKIPPED</code> completion reason for auto-completed approach actions</li>
+  </ul>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Fixed SSE reconnect loop &mdash; new connections now send initial state only to the new client (not broadcast to all) on a virtual thread to avoid blocking the HTTP handler</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.23">
   <h2>v4.0.23</h2>
   <div class="date">2026-03-19</div>

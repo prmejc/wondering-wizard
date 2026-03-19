@@ -54,6 +54,22 @@ public class SseConnectionManager {
      * @param eventType the SSE event type (used by EventSource.addEventListener on the client)
      * @param jsonData the JSON payload to send
      */
+    /**
+     * Sends an event to a single SSE connection (the most recently added one).
+     */
+    public void sendToLatest(String eventType, String jsonData) {
+        if (connections.isEmpty()) return;
+        SseConnection connection = connections.get(connections.size() - 1);
+        byte[] message = formatSseMessage(eventType, jsonData);
+        try {
+            connection.outputStream().write(message);
+            connection.outputStream().flush();
+        } catch (IOException e) {
+            logger.fine("SSE client disconnected, removing");
+            removeConnection(connection);
+        }
+    }
+
     public void broadcast(String eventType, String jsonData) {
         if (connections.isEmpty()) {
             return;

@@ -35,7 +35,6 @@ customElements.define('my-component', MyComponent);
 ### Technology Stack
 - **Use latest Java (Java 21+)** - All backend code should be written in the latest stable Java version
 - Leverage modern Java features such as:
-  - Virtual threads
   - Pattern matching
   - Records
   - Sealed classes

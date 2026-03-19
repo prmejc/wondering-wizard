@@ -8,7 +8,8 @@ public enum CompletionReason {
     WI_ABANDONED("WI Abandoned"),
     WI_RESET("WI Reset"),
     WI_REVERTED("WI Reverted"),
-    WQ_CHANGE("WQ Change");
+    WQ_CHANGE("WQ Change"),
+    LOCATION_SKIPPED("Location Skipped");
 
     private final String displayName;
 

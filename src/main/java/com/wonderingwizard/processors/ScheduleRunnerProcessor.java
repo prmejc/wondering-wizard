@@ -2,7 +2,12 @@ package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.ActionStatus;
+import com.wonderingwizard.domain.takt.ActionConditionContext;
+import com.wonderingwizard.domain.takt.ConditionMode;
+import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.CompletionReason;
+import com.wonderingwizard.domain.takt.EquipmentPosition;
+import com.wonderingwizard.domain.takt.LocationFreeCondition;
 import com.wonderingwizard.domain.takt.ConditionContext;
 import com.wonderingwizard.domain.takt.DependencyCondition;
 import com.wonderingwizard.domain.takt.DeviceType;
@@ -136,6 +141,10 @@ public class ScheduleRunnerProcessor implements EventProcessor {
          * and all its dependencies are completed.
          */
         List<UUID> getActivatableActionsInTakt(String taktName) {
+            return getActivatableActionsInTakt(taktName, Set.of());
+        }
+
+        List<UUID> getActivatableActionsInTakt(String taktName, Set<String> occupiedPositions) {
             List<UUID> result = new ArrayList<>();
             for (ActionInfo info : actionLookup.values()) {
                 if (!info.taktName().equals(taktName)) {
@@ -158,9 +167,51 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                         && !areEventGatesSatisfied(actionId, info.action(), actionOverrides)) {
                     continue;
                 }
+                // Check ACTIVATE-mode location conditions: block if target position is occupied
+                if (isBlockedByLocation(info.action(), occupiedPositions, actionOverrides)) {
+                    continue;
+                }
+
                 result.add(actionId);
             }
             return result;
+        }
+
+        /**
+         * Checks if any ACTIVATE-mode location condition blocks this action
+         * (the target position is occupied, so the truck can't enter).
+         */
+        private boolean isBlockedByLocation(Action action, Set<String> occupiedPositions, Set<String> overrides) {
+            for (LocationFreeCondition cond : action.locationSkipConditions()) {
+                if (cond.conditionMode() != ConditionMode.ACTIVATE) continue;
+                if (overrides.contains(cond.id())) continue;
+                if (isPositionOccupied(cond, occupiedPositions)) return true;
+            }
+            return false;
+        }
+
+        /**
+         * Checks if all SKIP-mode location conditions are satisfied
+         * (the next position is free, so this action should be skipped).
+         */
+        boolean shouldSkipForLocation(Action action, Set<String> occupiedPositions, Set<String> overrides) {
+            boolean hasSkipConditions = false;
+            for (LocationFreeCondition cond : action.locationSkipConditions()) {
+                if (cond.conditionMode() != ConditionMode.SKIP) continue;
+                if (overrides.contains(cond.id())) continue;
+                hasSkipConditions = true;
+                if (isPositionOccupied(cond, occupiedPositions)) return false; // occupied → don't skip
+            }
+            return hasSkipConditions; // all free → skip
+        }
+
+        private boolean isPositionOccupied(LocationFreeCondition cond, Set<String> occupiedPositions) {
+            String suffix = ":" + cond.position().name();
+            String prefix = cond.deviceType().name() + ":";
+            for (String key : occupiedPositions) {
+                if (key.startsWith(prefix) && key.endsWith(suffix)) return true;
+            }
+            return false;
         }
 
         boolean areDependenciesCompleted(Set<UUID> dependencies) {
@@ -312,6 +363,194 @@ public class ScheduleRunnerProcessor implements EventProcessor {
      */
     public boolean hasTTAllocationStrategy() {
         return ttAllocationStrategy != null;
+    }
+
+    /**
+     * A position occupied by a truck near QC or RTG equipment.
+     *
+     * @param equipmentType QC or RTG
+     * @param equipmentName the equipment short name (e.g., "QCZ1", "RTZ01")
+     * @param position the position (STANDBY, PULL, UNDER)
+     * @param cheShortName the truck occupying this position
+     * @param workQueueId the work queue the truck is working on
+     * @param actionDescription the action description
+     */
+    public record LocationOccupancy(DeviceType equipmentType, String equipmentName,
+                                     EquipmentPosition position, String cheShortName,
+                                     long workQueueId, String actionDescription,
+                                     Long workInstructionId, String containerId) {}
+
+    /**
+     * Computes current location occupancy across all schedules.
+     * <p>
+     * Simple rules:
+     * <ul>
+     *   <li>QC standby occupied if TT_DRIVE_TO_QC_STANDBY is (ACTIVE or COMPLETED) AND TT_DRIVE_UNDER_QC is PENDING</li>
+     *   <li>QC under occupied if TT_DRIVE_UNDER_QC is (ACTIVE or COMPLETED) AND TT_DRIVE_TO_BUFFER is PENDING</li>
+     *   <li>RTG standby occupied if TT_DRIVE_TO_RTG_STANDBY is (ACTIVE or COMPLETED) AND TT_DRIVE_TO_RTG_UNDER is PENDING</li>
+     *   <li>RTG under occupied if TT_DRIVE_TO_RTG_UNDER is (ACTIVE or COMPLETED) AND TT_HANDOVER_TO_RTG is COMPLETED (truck still there) — cleared when TT_DRIVE_TO_QC_STANDBY activates</li>
+     * </ul>
+     */
+    public List<LocationOccupancy> getLocationOccupancy() {
+        List<LocationOccupancy> occupancies = new ArrayList<>();
+
+        for (Map.Entry<Long, ScheduleState> entry : scheduleStates.entrySet()) {
+            long workQueueId = entry.getKey();
+            ScheduleState state = entry.getValue();
+
+            // Group TT actions by containerIndex, multiple actions per type (twins)
+            Map<Integer, Map<ActionType, List<Action>>> ttByContainer = new LinkedHashMap<>();
+            for (ActionInfo info : state.actionLookup.values()) {
+                Action action = info.action();
+                if (action.deviceType() == DeviceType.TT && action.cheShortName() != null) {
+                    ttByContainer.computeIfAbsent(action.containerIndex(), k -> new LinkedHashMap<>())
+                            .computeIfAbsent(action.actionType(), k -> new ArrayList<>())
+                            .add(action);
+                }
+            }
+
+            for (Map<ActionType, List<Action>> actions : ttByContainer.values()) {
+                // QC standby: occupied when drive_to_standby activated AND drive_under_qc is pending
+                checkQCStandby(occupancies, workQueueId, actions);
+
+                // QC under: occupied when drive_under_qc active OR handover_from_qc active
+                //   OR (drive_under_qc completed AND handover_from_qc pending)
+                checkQCUnder(occupancies, workQueueId, actions);
+
+                // RTG standby: occupied when drive_to_rtg_standby activated AND drive_to_rtg_under is pending
+                checkRTGStandby(occupancies, workQueueId, actions);
+
+                // RTG under: occupied when drive_to_rtg_under active OR handover_to_rtg active
+                //   OR (drive_to_rtg_under completed AND handover_to_rtg pending)
+                checkRTGUnder(occupancies, workQueueId, actions);
+            }
+        }
+
+        return occupancies;
+    }
+
+    private void checkQCStandby(List<LocationOccupancy> occupancies, long workQueueId,
+                                Map<ActionType, List<Action>> actions) {
+        // QC standby occupied when: drive_to_standby (ACTIVE or COMPLETED) AND drive_under_qc PENDING
+        Action standby = findWithStatus(actions, ActionType.TT_DRIVE_TO_QC_STANDBY, workQueueId, ActionStatus.ACTIVE, ActionStatus.COMPLETED);
+        if (standby == null) return;
+        if (!allPending(actions, ActionType.TT_DRIVE_UNDER_QC, workQueueId)) return;
+        addOccupancy(occupancies, standby, workQueueId, DeviceType.QC, EquipmentPosition.STANDBY, ScheduleRunnerProcessor::resolveQCName);
+    }
+
+    private void checkQCUnder(List<LocationOccupancy> occupancies, long workQueueId,
+                               Map<ActionType, List<Action>> actions) {
+        // QC under occupied when: drive_under_qc ACTIVE OR handover_from_qc ACTIVE
+        //   OR (drive_under_qc COMPLETED AND handover_from_qc PENDING)
+        Action underActive = findWithStatus(actions, ActionType.TT_DRIVE_UNDER_QC, workQueueId, ActionStatus.ACTIVE);
+        if (underActive != null) {
+            addOccupancy(occupancies, underActive, workQueueId, DeviceType.QC, EquipmentPosition.UNDER, ScheduleRunnerProcessor::resolveQCName);
+            return;
+        }
+        Action handoverActive = findWithStatus(actions, ActionType.TT_HANDOVER_FROM_QC, workQueueId, ActionStatus.ACTIVE);
+        if (handoverActive != null) {
+            addOccupancy(occupancies, handoverActive, workQueueId, DeviceType.QC, EquipmentPosition.UNDER, ScheduleRunnerProcessor::resolveQCName);
+            return;
+        }
+        Action underCompleted = findWithStatus(actions, ActionType.TT_DRIVE_UNDER_QC, workQueueId, ActionStatus.COMPLETED);
+        if (underCompleted != null && allPending(actions, ActionType.TT_HANDOVER_FROM_QC, workQueueId)) {
+            addOccupancy(occupancies, underCompleted, workQueueId, DeviceType.QC, EquipmentPosition.UNDER, ScheduleRunnerProcessor::resolveQCName);
+        }
+    }
+
+    private void checkRTGStandby(List<LocationOccupancy> occupancies, long workQueueId,
+                                  Map<ActionType, List<Action>> actions) {
+        Action standby = findWithStatus(actions, ActionType.TT_DRIVE_TO_RTG_STANDBY, workQueueId, ActionStatus.ACTIVE, ActionStatus.COMPLETED);
+        if (standby == null) return;
+        if (!allPending(actions, ActionType.TT_DRIVE_TO_RTG_UNDER, workQueueId)) return;
+        addOccupancy(occupancies, standby, workQueueId, DeviceType.RTG, EquipmentPosition.STANDBY, ScheduleRunnerProcessor::resolveRTGName);
+    }
+
+    private void checkRTGUnder(List<LocationOccupancy> occupancies, long workQueueId,
+                                Map<ActionType, List<Action>> actions) {
+        Action underActive = findWithStatus(actions, ActionType.TT_DRIVE_TO_RTG_UNDER, workQueueId, ActionStatus.ACTIVE);
+        if (underActive != null) {
+            addOccupancy(occupancies, underActive, workQueueId, DeviceType.RTG, EquipmentPosition.UNDER, ScheduleRunnerProcessor::resolveRTGName);
+            return;
+        }
+        Action handoverActive = findWithStatus(actions, ActionType.TT_HANDOVER_TO_RTG, workQueueId, ActionStatus.ACTIVE);
+        if (handoverActive != null) {
+            addOccupancy(occupancies, handoverActive, workQueueId, DeviceType.RTG, EquipmentPosition.UNDER, ScheduleRunnerProcessor::resolveRTGName);
+            return;
+        }
+        Action underCompleted = findWithStatus(actions, ActionType.TT_DRIVE_TO_RTG_UNDER, workQueueId, ActionStatus.COMPLETED);
+        if (underCompleted != null && allPending(actions, ActionType.TT_HANDOVER_TO_RTG, workQueueId)) {
+            addOccupancy(occupancies, underCompleted, workQueueId, DeviceType.RTG, EquipmentPosition.UNDER, ScheduleRunnerProcessor::resolveRTGName);
+        }
+    }
+
+    /** Find any action of the given type that has one of the given statuses. */
+    private Action findWithStatus(Map<ActionType, List<Action>> actions, ActionType type,
+                                   long workQueueId, ActionStatus... statuses) {
+        for (Action a : actions.getOrDefault(type, List.of())) {
+            ActionStatus s = getActionStatus(workQueueId, a.id());
+            for (ActionStatus expected : statuses) {
+                if (s == expected) return a;
+            }
+        }
+        return null;
+    }
+
+    /** Check if ALL actions of the given type are PENDING. */
+    private boolean allPending(Map<ActionType, List<Action>> actions, ActionType type, long workQueueId) {
+        List<Action> list = actions.getOrDefault(type, List.of());
+        if (list.isEmpty()) return true;
+        for (Action a : list) {
+            if (getActionStatus(workQueueId, a.id()) != ActionStatus.PENDING) return false;
+        }
+        return true;
+    }
+
+    private void addOccupancy(List<LocationOccupancy> occupancies, Action action, long workQueueId,
+                               DeviceType equipmentType, EquipmentPosition position,
+                               java.util.function.Function<Action, String> nameResolver) {
+        String equipmentName = nameResolver.apply(action);
+        if (equipmentName == null || equipmentName.isBlank()) return;
+
+        Long wiId = null;
+        String containerId = null;
+        if (action.workInstructions() != null && !action.workInstructions().isEmpty()) {
+            var wi = action.workInstructions().getFirst();
+            wiId = wi.workInstructionId();
+            containerId = wi.containerId();
+        }
+        occupancies.add(new LocationOccupancy(
+                equipmentType, equipmentName, position,
+                action.cheShortName(), workQueueId, action.description(),
+                wiId, containerId));
+    }
+
+    /**
+     * Returns the set of occupied position keys for use in {@link ActionConditionContext}.
+     * Format: "QC:QCZ1:STANDBY" or "RTG:RTZ01:UNDER".
+     */
+    public Set<String> getOccupiedPositionKeys() {
+        Set<String> keys = new HashSet<>();
+        for (LocationOccupancy occ : getLocationOccupancy()) {
+            keys.add(ActionConditionContext.positionKey(occ.equipmentType(), occ.equipmentName(), occ.position()));
+        }
+        return keys;
+    }
+
+    private static String resolveQCName(Action action) {
+        if (action.workInstructions() != null && !action.workInstructions().isEmpty()) {
+            String fetchChe = action.workInstructions().getFirst().fetchChe();
+            if (fetchChe != null && !fetchChe.isBlank()) return fetchChe;
+        }
+        return null;
+    }
+
+    private static String resolveRTGName(Action action) {
+        if (action.workInstructions() != null && !action.workInstructions().isEmpty()) {
+            String putChe = action.workInstructions().getFirst().putChe();
+            if (putChe != null && !putChe.isBlank()) return putChe;
+        }
+        return null;
     }
 
     private final Map<Long, ScheduleState> scheduleStates = new HashMap<>();
@@ -1135,7 +1374,9 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         boolean progress = true;
         while (progress) {
             progress = false;
-            List<UUID> actionsToActivate = state.getActivatableActionsInTakt(taktName);
+            // Compute occupied positions fresh each iteration (may change as actions activate)
+            Set<String> occupiedPositions = getOccupiedPositionKeys();
+            List<UUID> actionsToActivate = state.getActivatableActionsInTakt(taktName, occupiedPositions);
             for (UUID actionId : actionsToActivate) {
                 ActionInfo actionInfo = state.actionLookup.get(actionId);
                 Action action = actionInfo.action();
@@ -1185,6 +1426,20 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                             state.actionLookup.put(e.getKey(), new ActionInfo(e.getValue().taktName(), propagated));
                         }
                     }
+                }
+
+                // Location skip: if the next position is free, skip this action (auto-complete)
+                // Must be after TT allocation — can't skip without a truck assigned
+                if (action.cheShortName() != null
+                        && state.shouldSkipForLocation(action, occupiedPositions, overrides)) {
+                    state.setActionStatus(actionId, ActionStatus.COMPLETED);
+                    sideEffects.add(new ActionCompleted(
+                            actionId, workQueueId, actionInfo.taktName(),
+                            action.description(), this.currentTime,
+                            CompletionReason.LOCATION_SKIPPED
+                    ));
+                    progress = true;
+                    continue;
                 }
 
                 state.setActionStatus(actionId, ActionStatus.ACTIVE);

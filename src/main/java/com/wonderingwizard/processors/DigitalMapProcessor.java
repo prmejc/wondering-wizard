@@ -3,6 +3,8 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.domain.YardLocation;
 import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.DeviceType;
+import com.wonderingwizard.domain.takt.EquipmentPosition;
+import com.wonderingwizard.events.LoadMode;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
@@ -651,7 +653,46 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
                     : FALLBACK_DURATION;
         }
 
-        return adjustTtDurations(templates, qcStandbyDuration, rtgStandbyDuration);
+        var adjusted = adjustTtDurations(templates, qcStandbyDuration, rtgStandbyDuration);
+        return addLocationSkipConditions(adjusted, context.loadMode());
+    }
+
+    /**
+     * Adds location conditions to TT actions:
+     * - Block conditions: don't enter a position if it's occupied
+     * - Skip conditions: skip ahead if the next position is free
+     * QC conditions are added for all load modes, RTG only for DSCH.
+     */
+    private List<GraphScheduleBuilder.ActionTemplate> addLocationSkipConditions(
+            List<GraphScheduleBuilder.ActionTemplate> templates, LoadMode loadMode) {
+        var result = new ArrayList<GraphScheduleBuilder.ActionTemplate>(templates.size());
+        for (var tmpl : templates) {
+            if (tmpl.deviceType() != DeviceType.TT) {
+                result.add(tmpl);
+                continue;
+            }
+            var updated = switch (tmpl.actionType()) {
+                // QC approach — all load modes
+                case TT_DRIVE_TO_QC_PULL -> tmpl
+                        .withSkipIfFree(DeviceType.QC, EquipmentPosition.STANDBY);    // skip to standby if free
+                case TT_DRIVE_TO_QC_STANDBY -> tmpl
+                        .withBlockIfOccupied(DeviceType.QC, EquipmentPosition.STANDBY) // block if standby occupied
+                        .withSkipIfFree(DeviceType.QC, EquipmentPosition.UNDER);       // skip to under if free
+                case TT_DRIVE_UNDER_QC -> tmpl
+                        .withBlockIfOccupied(DeviceType.QC, EquipmentPosition.UNDER);  // block if under occupied
+                // RTG approach — DSCH only
+                case TT_DRIVE_TO_RTG_PULL -> loadMode == LoadMode.DSCH
+                        ? tmpl.withSkipIfFree(DeviceType.RTG, EquipmentPosition.STANDBY) : tmpl;
+                case TT_DRIVE_TO_RTG_STANDBY -> loadMode == LoadMode.DSCH
+                        ? tmpl.withBlockIfOccupied(DeviceType.RTG, EquipmentPosition.STANDBY)
+                              .withSkipIfFree(DeviceType.RTG, EquipmentPosition.UNDER) : tmpl;
+                case TT_DRIVE_TO_RTG_UNDER -> loadMode == LoadMode.DSCH
+                        ? tmpl.withBlockIfOccupied(DeviceType.RTG, EquipmentPosition.UNDER) : tmpl;
+                default -> tmpl;
+            };
+            result.add(updated);
+        }
+        return result;
     }
 
     /**
