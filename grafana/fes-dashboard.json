@@ -165,9 +165,9 @@
             ]
           },
           {
-            "matcher": { "id": "byName", "options": "Memory" },
+            "matcher": { "id": "byName", "options": "Heap Memory" },
             "properties": [
-              { "id": "unit", "value": "bytes" },
+              { "id": "unit", "value": "decbytes" },
               { "id": "color", "value": { "fixedColor": "#8AB8FF", "mode": "fixed" } },
               { "id": "custom.axisPlacement", "value": "right" }
             ]
