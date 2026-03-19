@@ -72,6 +72,16 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.23">
+  <h2>v4.0.23</h2>
+  <div class="date">2026-03-19</div>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Fixed Grafana throughput panels showing no data &mdash; switched from <code>increase()[30s]</code> (requires 2 scrapes in 30s) back to <code>rate()[$__rate_interval]</code> which auto-adapts to the actual Prometheus scrape interval</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.22">
   <h2>v4.0.22</h2>
   <div class="date">2026-03-19</div>
