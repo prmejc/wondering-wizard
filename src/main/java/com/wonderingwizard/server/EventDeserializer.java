@@ -5,6 +5,7 @@ import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.CheJobStepState;
 import com.wonderingwizard.events.CheStatus;
 import com.wonderingwizard.events.ContainerHandlingEquipmentEvent;
+import com.wonderingwizard.events.ContainerMoveStateEvent;
 import com.wonderingwizard.events.CraneAvailabilityStatus;
 import com.wonderingwizard.events.CraneAvailabilityStatusEvent;
 import com.wonderingwizard.events.CraneDelayActivityEvent;
@@ -75,8 +76,11 @@ public final class EventDeserializer {
                     Boolean.parseBoolean(fields.getOrDefault("isTwinPut", "false")),
                     Boolean.parseBoolean(fields.getOrDefault("isTwinCarry", "false")),
                     Long.parseLong(fields.getOrDefault("twinCompanionWorkInstruction", "0")),
+                    fields.getOrDefault("fromPosition", ""),
                     fields.getOrDefault("toPosition", ""),
-                    fields.getOrDefault("containerId", ""));
+                    fields.getOrDefault("containerId", ""),
+                    fields.getOrDefault("moveKind", ""),
+                    fields.getOrDefault("jobPosition", "FWD"));
 
             case "ActionCompletedEvent" -> new ActionCompletedEvent(
                     UUID.fromString(requireField(fields, "actionId")),
@@ -97,6 +101,18 @@ public final class EventDeserializer {
 
             case "NukeWorkQueueEvent" -> new NukeWorkQueueEvent(
                     Long.parseLong(requireField(fields, "workQueueId")));
+
+            case "ContainerMoveStateEvent" -> new ContainerMoveStateEvent(
+                    fields.getOrDefault("containerMoveAction", "STOPPED"),
+                    fields.getOrDefault("containerMoveStateRequestStatus", "ERROR"),
+                    fields.getOrDefault("responseContainerMoveState", "TT_ASSIGNED"),
+                    requireField(fields, "carryCHEName"),
+                    Long.parseLong(requireField(fields, "workInstructionId")),
+                    fields.getOrDefault("moveKind", ""),
+                    fields.getOrDefault("containerId", ""),
+                    fields.getOrDefault("terminalCode", ""),
+                    fields.getOrDefault("errorMessage", ""),
+                    Long.parseLong(fields.getOrDefault("sourceTsMs", "0")));
 
             case "CraneDelayActivityEvent" -> new CraneDelayActivityEvent(
                     fields.getOrDefault("eventType", null),

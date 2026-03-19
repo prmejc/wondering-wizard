@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -81,31 +82,15 @@ public class WIResetHandler implements ScheduleSubProcessor {
 
     /**
      * Completes all remaining (non-completed) actions for the affected container
-     * and its twin (containers sharing the same cheShortName on TT actions).
+     * and its twin companion (identified by matching twinCompanionWorkInstruction).
      */
     private List<SideEffect> completeRemainingActions(long workQueueId, int affectedContainerIndex,
                                                        Map<UUID, Action> actions,
                                                        ScheduleContext context) {
-        // Find the cheShortName used by TT actions for the affected container
-        String cheShortName = null;
-        for (Action action : actions.values()) {
-            if (action.containerIndex() == affectedContainerIndex
-                    && action.cheShortName() != null) {
-                cheShortName = action.cheShortName();
-                break;
-            }
-        }
-
-        // Find all container indices sharing this truck (container + twin)
+        // Find the twin container index via twinCompanionWorkInstruction
         Set<Integer> containerIndices = new HashSet<>();
         containerIndices.add(affectedContainerIndex);
-        if (cheShortName != null) {
-            for (Action action : actions.values()) {
-                if (cheShortName.equals(action.cheShortName())) {
-                    containerIndices.add(action.containerIndex());
-                }
-            }
-        }
+        findTwinContainerIndex(actions, affectedContainerIndex).ifPresent(containerIndices::add);
 
         List<SideEffect> sideEffects = new ArrayList<>();
 
@@ -124,5 +109,52 @@ public class WIResetHandler implements ScheduleSubProcessor {
         logger.info("Completed " + sideEffects.size() + " actions with reason WI_RESET"
                 + " for containers " + containerIndices + " in workQueue " + workQueueId);
         return sideEffects;
+    }
+
+    /**
+     * Finds the twin container index. First tries twinCompanionWorkInstruction,
+     * then falls back to shared cheShortName on TT actions with adjacent containerIndex.
+     */
+    private Optional<Integer> findTwinContainerIndex(Map<UUID, Action> actions, int containerIndex) {
+        // Try twinCompanionWorkInstruction first
+        Set<Long> twinWiIds = new HashSet<>();
+        for (Action action : actions.values()) {
+            if (action.containerIndex() == containerIndex) {
+                for (WorkInstructionEvent wi : action.workInstructions()) {
+                    if (wi.twinCompanionWorkInstruction() != 0) {
+                        twinWiIds.add(wi.twinCompanionWorkInstruction());
+                    }
+                }
+            }
+        }
+        if (!twinWiIds.isEmpty()) {
+            for (Action action : actions.values()) {
+                if (action.containerIndex() != containerIndex) {
+                    for (WorkInstructionEvent wi : action.workInstructions()) {
+                        if (twinWiIds.contains(wi.workInstructionId())) {
+                            return Optional.of(action.containerIndex());
+                        }
+                    }
+                }
+            }
+        }
+        // Fallback: adjacent container with same cheShortName (twin in same takt)
+        String cheShortName = null;
+        for (Action action : actions.values()) {
+            if (action.containerIndex() == containerIndex && action.cheShortName() != null) {
+                cheShortName = action.cheShortName();
+                break;
+            }
+        }
+        if (cheShortName != null) {
+            for (Action action : actions.values()) {
+                if (action.containerIndex() != containerIndex
+                        && Math.abs(action.containerIndex() - containerIndex) == 1
+                        && cheShortName.equals(action.cheShortName())) {
+                    return Optional.of(action.containerIndex());
+                }
+            }
+        }
+        return Optional.empty();
     }
 }

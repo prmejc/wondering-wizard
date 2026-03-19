@@ -27,6 +27,7 @@ import com.wonderingwizard.kafka.KafkaSideEffectPublisher;
 import com.wonderingwizard.events.CheLogicalPositionEvent;
 import com.wonderingwizard.kafka.CheLogicalPositionEventMapper;
 import com.wonderingwizard.kafka.CraneAvailabilityStatusEventMapper;
+import com.wonderingwizard.kafka.ContainerMoveStateEventMapper;
 import com.wonderingwizard.kafka.CraneDelayActivityEventMapper;
 import com.wonderingwizard.kafka.CraneReadinessEventMapper;
 import com.wonderingwizard.kafka.QuayCraneMappingEventMapper;
@@ -53,6 +54,7 @@ import com.wonderingwizard.processors.EventLogProcessor;
 import com.wonderingwizard.processors.RtgWaitDurationStep;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TTStateProcessor;
+import com.wonderingwizard.processors.ContainerMoveStoppedHandler;
 import com.wonderingwizard.processors.TTUnavailableHandler;
 import com.wonderingwizard.processors.WIAbandonedHandler;
 import com.wonderingwizard.processors.WIResetHandler;
@@ -67,6 +69,7 @@ import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
 import com.wonderingwizard.sideeffects.TaktActivated;
 import com.wonderingwizard.sideeffects.TaktCompleted;
+import com.wonderingwizard.sideeffects.TruckAssigned;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -263,6 +266,7 @@ public class DemoServer {
         scheduleRunnerProcessor.registerSubProcessor(new WIResetHandler());
         scheduleRunnerProcessor.registerSubProcessor(new WIRevertHandler());
         scheduleRunnerProcessor.registerSubProcessor(new WQChangeHandler());
+        scheduleRunnerProcessor.registerSubProcessor(new ContainerMoveStoppedHandler());
         engine.register(scheduleRunnerProcessor);
         engine.register(new DelayProcessor());
         // Take initial snapshot so we can always reset to clean state
@@ -312,6 +316,8 @@ public class DemoServer {
         httpServer.createContext("/api/crane-availability-status", this::handleCraneAvailabilityStatus);
         httpServer.createContext("/api/crane-readiness", this::handleCraneReadiness);
         httpServer.createContext("/api/crane-delay-activity", this::handleCraneDelayActivity);
+        httpServer.createContext("/api/container-move-state", this::handleContainerMoveState);
+        httpServer.createContext("/containermovestate", this::handleContainerMoveStatePage);
         httpServer.createContext("/api/che-logical-position", this::handleCheLogicalPosition);
 
         httpServer.createContext("/api/pathfind", this::handlePathfind);
@@ -433,6 +439,10 @@ public class DemoServer {
                 settings.craneDelayActivitiesConsumerConfiguration(),
                 new CraneDelayActivityEventMapper()
         );
+        kafkaConsumerManager.register(
+                settings.containerMoveStateConsumerConfiguration(),
+                new ContainerMoveStateEventMapper()
+        );
         AssetEventMapper assetEventMapper = new AssetEventMapper();
         kafkaConsumerManager.registerJson(
                 settings.assetEventRtgConsumerConfiguration(),
@@ -450,11 +460,14 @@ public class DemoServer {
     }
 
     private void startSideEffectPublisher() {
+        String terminalCode = settings.terminalCode();
+        String eventSource = "FESv" + resolveVersion();
+
         sideEffectPublisher = new KafkaSideEffectPublisher(settings.kafkaConfiguration());
         sideEffectPublisher.registerMapper(
                 ActionActivated.class,
                 settings.equipmentInstructionRtgTopic(),
-                new ActionActivatedToEquipmentInstructionMapper(settings.terminalCode(),
+                new ActionActivatedToEquipmentInstructionMapper(terminalCode, eventSource,
                         Set.of(ActionType.RTG_DRIVE, ActionType.RTG_FETCH,
                                 ActionType.RTG_HANDOVER_TO_TT, ActionType.RTG_LIFT_FROM_TT,
                                 ActionType.RTG_PLACE_ON_YARD))
@@ -462,7 +475,7 @@ public class DemoServer {
         sideEffectPublisher.registerMapper(
                 ActionActivated.class,
                 settings.equipmentInstructionTtTopic(),
-                new ActionActivatedToEquipmentInstructionMapper(settings.terminalCode(),
+                new ActionActivatedToEquipmentInstructionMapper(terminalCode, eventSource,
                         Set.of(ActionType.TT_DRIVE_TO_RTG_PULL, ActionType.TT_DRIVE_TO_RTG_STANDBY,
                                 ActionType.TT_DRIVE_TO_RTG_UNDER, ActionType.TT_HANDOVER_FROM_RTG,
                                 ActionType.TT_DRIVE_TO_QC_PULL, ActionType.TT_DRIVE_TO_QC_STANDBY,
@@ -473,10 +486,29 @@ public class DemoServer {
         sideEffectPublisher.registerMapper(
                 ActionActivated.class,
                 settings.equipmentInstructionQcTopic(),
-                new ActionActivatedToEquipmentInstructionMapper(settings.terminalCode(),
+                new ActionActivatedToEquipmentInstructionMapper(terminalCode, eventSource,
                         Set.of(ActionType.QC_LIFT, ActionType.QC_PLACE))
         );
+        sideEffectPublisher.registerMapper(
+                TruckAssigned.class,
+                settings.containerMoveStateTopic(),
+                new com.wonderingwizard.kafka.TruckAssignedToContainerMoveStateMapper(terminalCode, eventSource)
+        );
         sideEffectPublisher.start();
+    }
+
+    /**
+     * Resolves the current application version from release-notes.html.
+     */
+    private String resolveVersion() {
+        try (InputStream is = getClass().getResourceAsStream("/release-notes.html")) {
+            if (is == null) return "unknown";
+            String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            Matcher matcher = VERSION_PATTERN.matcher(content);
+            return matcher.find() ? matcher.group(1) : "unknown";
+        } catch (IOException e) {
+            return "unknown";
+        }
     }
 
     /**
@@ -715,6 +747,11 @@ public class DemoServer {
             state.put("craneReadiness", qcStateProcessor.getCraneReadiness());
             state.put("craneAvailability", qcStateProcessor.getCraneAvailability());
             state.put("craneDelays", qcStateProcessor.getCraneDelays());
+        }
+
+        // Include Kafka consumer status
+        if (kafkaConsumerManager != null) {
+            state.put("kafkaStatus", kafkaConsumerManager.getStatus());
         }
 
         return state;
@@ -1286,7 +1323,7 @@ public class DemoServer {
             var event = new com.wonderingwizard.events.CraneAvailabilityStatusEvent(
                     body.getOrDefault("terminalCode", ""),
                     cheId,
-                    body.getOrDefault("cheType", "STS"),
+                    body.getOrDefault("cheType", "QC"),
                     com.wonderingwizard.events.CraneAvailabilityStatus.fromCode(
                             body.getOrDefault("cheStatus", "NOT_READY")),
                     System.currentTimeMillis());
@@ -1502,6 +1539,54 @@ public class DemoServer {
             Matcher matcher = VERSION_PATTERN.matcher(content);
             String version = matcher.find() ? matcher.group(1) : "unknown";
             sendJsonResponse(exchange, 200, "{\"version\":\"" + escapeJson(version) + "\"}");
+        }
+    }
+
+    private void handleContainerMoveState(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            var event = new com.wonderingwizard.events.ContainerMoveStateEvent(
+                    body.getOrDefault("containerMoveAction", "STOPPED"),
+                    body.getOrDefault("containerMoveStateRequestStatus", "ERROR"),
+                    body.getOrDefault("responseContainerMoveState", "TT_ASSIGNED"),
+                    requireField(body, "carryCHEName"),
+                    Long.parseLong(requireField(body, "workInstructionId")),
+                    body.getOrDefault("moveKind", ""),
+                    body.getOrDefault("containerId", ""),
+                    body.getOrDefault("terminalCode", ""),
+                    body.getOrDefault("errorMessage", ""),
+                    System.currentTimeMillis());
+            StepResult result = processStep("ContainerMoveState: " + event.carryCHEName(), event);
+
+            sendJsonResponse(exchange, 200, JsonSerializer.serialize(
+                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handleContainerMoveStatePage(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try (InputStream is = getClass().getResourceAsStream("/containermovestate.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "Container Move State page not found");
+                return;
+            }
+            byte[] html = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, html.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html);
+            }
         }
     }
 
@@ -1776,14 +1861,17 @@ public class DemoServer {
             boolean isTwinPut = Boolean.parseBoolean(body.getOrDefault("isTwinPut", "false"));
             boolean isTwinCarry = Boolean.parseBoolean(body.getOrDefault("isTwinCarry", "false"));
             long twinCompanionWorkInstruction = Long.parseLong(body.getOrDefault("twinCompanionWorkInstruction", "0"));
+            String fromPosition = body.getOrDefault("fromPosition", "");
             String toPosition = body.getOrDefault("toPosition", "");
             String containerId = body.getOrDefault("containerId", "");
+            String moveKind = body.getOrDefault("moveKind", "");
+            String jobPosition = body.getOrDefault("jobPosition", "FWD");
 
             WorkInstructionEvent event = new WorkInstructionEvent(
                     eventType, workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                     estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                     putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
-                    toPosition, containerId);
+                    fromPosition, toPosition, containerId, moveKind, jobPosition);
             StepResult result = processStep("WorkInstruction: " + workInstructionId, event);
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(

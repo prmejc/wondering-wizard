@@ -39,7 +39,10 @@ public record EventGateCondition(String id, DeviceType sourceDeviceType, ActionT
 
     @Override
     public String explanation(ActionConditionContext context) {
-        return "Waiting for event '" + requiredEventType + "'";
+        if (containerSuffix > 0) {
+            return "Waiting for '" + requiredEventType + "' (container " + containerSuffix + ")";
+        }
+        return "Waiting for '" + requiredEventType + "'";
     }
 
     @Override

@@ -19,7 +19,7 @@ public class RtgWaitDurationStep implements SchedulePipelineStep {
 
     @Override
     public List<GraphScheduleBuilder.ActionTemplate> enrichTemplates(
-            long workQueueId,
+            EnrichmentContext context,
             List<GraphScheduleBuilder.ActionTemplate> templates,
             WorkInstructionEvent workInstruction) {
 

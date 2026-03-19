@@ -42,6 +42,7 @@ public class KafkaJsonEventConsumer<E extends Event> {
     private final Metrics metrics;
     private final DeadLetterQueue deadLetterQueue;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private volatile boolean ready;
     private Thread consumerThread;
 
     public KafkaJsonEventConsumer(
@@ -110,6 +111,13 @@ public class KafkaJsonEventConsumer<E extends Event> {
         return running.get();
     }
 
+    /**
+     * Returns whether this consumer has completed its first successful poll.
+     */
+    public boolean isReady() {
+        return ready;
+    }
+
     private void consumeLoop() {
         Properties props = buildConsumerProperties();
 
@@ -121,6 +129,10 @@ public class KafkaJsonEventConsumer<E extends Event> {
             while (running.get()) {
                 try {
                     ConsumerRecords<String, String> records = consumer.poll(POLL_TIMEOUT);
+                    if (!ready) {
+                        ready = true;
+                        logger.info("JSON consumer ready for topic: " + consumerConfig.topic());
+                    }
                     for (var record : records) {
                         processRecord(record.value(), record.offset(), record.partition());
                     }

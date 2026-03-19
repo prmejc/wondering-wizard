@@ -51,6 +51,8 @@ public record WorkInstructionKafkaMessage(
         Boolean isTwinPut,
         Boolean isTwinCarry,
         Long twinCompanionWorkInstruction,
-        String toPosition
+        String fromPosition,
+        String toPosition,
+        String jobPosition
 ) {
 }

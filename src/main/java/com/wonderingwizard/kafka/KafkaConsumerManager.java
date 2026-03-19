@@ -7,6 +7,7 @@ import com.wonderingwizard.metrics.Metrics;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 
 /**
@@ -119,5 +120,35 @@ public class KafkaConsumerManager {
      */
     public List<KafkaJsonEventConsumer<?>> getJsonConsumers() {
         return Collections.unmodifiableList(jsonConsumers);
+    }
+
+    /**
+     * Returns the Kafka consumer status: total count, ready count, and per-topic status.
+     */
+    public Map<String, Object> getStatus() {
+        int total = consumers.size() + jsonConsumers.size();
+        int readyCount = 0;
+        List<Map<String, Object>> topicStatuses = new ArrayList<>();
+
+        for (var c : consumers) {
+            boolean r = c.isReady();
+            if (r) readyCount++;
+            topicStatuses.add(Map.of(
+                    "topic", c.buildConsumerProperties().getProperty("group.id", ""),
+                    "ready", r));
+        }
+        for (var c : jsonConsumers) {
+            boolean r = c.isReady();
+            if (r) readyCount++;
+            topicStatuses.add(Map.of(
+                    "topic", c.buildConsumerProperties().getProperty("group.id", ""),
+                    "ready", r));
+        }
+
+        return Map.of(
+                "total", total,
+                "ready", readyCount,
+                "allReady", readyCount == total,
+                "consumers", topicStatuses);
     }
 }

@@ -6,25 +6,24 @@ import java.time.Instant;
 
 /**
  * Event representing a work instruction that is associated with a work queue.
- * <p>
- * Work instructions are registered with the system and are included in the
- * ScheduleCreated side effect when their associated work queue is activated.
  *
- * @param eventType the Kafka event type that triggered this event (e.g. "WI MoveStage Changed")
+ * @param eventType the Kafka event type that triggered this event
  * @param workInstructionId unique identifier for the work instruction
  * @param workQueueId identifier of the work queue this instruction belongs to
- * @param fetchChe the CHE (Container Handling Equipment) identifier for fetching
- * @param workInstructionMoveStage the move stage from Kafka (e.g. "Planned", "Carry Underway", "Complete")
+ * @param fetchChe the CHE identifier for fetching (e.g. "QCZ1")
+ * @param workInstructionMoveStage the move stage (e.g. "Planned", "Complete")
  * @param estimatedMoveTime the estimated time when this work instruction should start
- * @param estimatedCycleTimeSeconds the estimated cycle time for this work instruction in seconds
- * @param estimatedRtgCycleTimeSeconds the estimated RTG cycle time in seconds (default 60)
- * @param putChe the CHE (Container Handling Equipment) identifier for putting
+ * @param estimatedCycleTimeSeconds the estimated cycle time in seconds
+ * @param estimatedRtgCycleTimeSeconds the estimated RTG cycle time in seconds
+ * @param putChe the CHE identifier for putting (e.g. "RTZ01")
  * @param isTwinFetch whether this is a twin fetch operation
  * @param isTwinPut whether this is a twin put operation
  * @param isTwinCarry whether this is a twin carry operation
  * @param twinCompanionWorkInstruction the twin companion work instruction ID
- * @param toPosition the target position for this work instruction
- * @param containerId the container identifier (e.g. MAEU1234567)
+ * @param fromPosition the source position (e.g. "V-IF3606W-661390")
+ * @param toPosition the target position (e.g. "Y-PTM-1L20E4")
+ * @param containerId the container identifier
+ * @param moveKind the move kind (e.g. "DSCH", "Load")
  */
 public record WorkInstructionEvent(
         String eventType,
@@ -40,11 +39,39 @@ public record WorkInstructionEvent(
         boolean isTwinPut,
         boolean isTwinCarry,
         long twinCompanionWorkInstruction,
+        String fromPosition,
         String toPosition,
-        String containerId
+        String containerId,
+        String moveKind,
+        String jobPosition
 ) implements Event {
 
     private static final int DEFAULT_RTG_CYCLE_TIME_SECONDS = 60;
+
+    /**
+     * Backward-compatible constructor without fromPosition, moveKind.
+     */
+    public WorkInstructionEvent(
+            String eventType,
+            long workInstructionId,
+            long workQueueId,
+            String fetchChe,
+            String workInstructionMoveStage,
+            Instant estimatedMoveTime,
+            int estimatedCycleTimeSeconds,
+            int estimatedRtgCycleTimeSeconds,
+            String putChe,
+            boolean isTwinFetch,
+            boolean isTwinPut,
+            boolean isTwinCarry,
+            long twinCompanionWorkInstruction,
+            String toPosition,
+            String containerId) {
+        this(eventType, workInstructionId, workQueueId, fetchChe, workInstructionMoveStage,
+                estimatedMoveTime, estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
+                putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
+                "", toPosition, containerId, "", "");
+    }
 
     public WorkInstructionEvent(
             long workInstructionId,
@@ -60,7 +87,7 @@ public record WorkInstructionEvent(
             boolean isTwinCarry) {
         this("", workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                 estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
-                putChe, isTwinFetch, isTwinPut, isTwinCarry, 0, "", "");
+                putChe, isTwinFetch, isTwinPut, isTwinCarry, 0, "", "", "", "", "");
     }
 
     public WorkInstructionEvent(
@@ -80,7 +107,7 @@ public record WorkInstructionEvent(
         this("", workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                 estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                 putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
-                toPosition, "");
+                "", toPosition, "", "", "");
     }
 
     public WorkInstructionEvent(
@@ -101,7 +128,7 @@ public record WorkInstructionEvent(
         this("", workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                 estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                 putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
-                toPosition, containerId);
+                "", toPosition, containerId, "", "");
     }
 
     public WorkInstructionEvent(
@@ -114,7 +141,7 @@ public record WorkInstructionEvent(
             int estimatedRtgCycleTimeSeconds) {
         this("", workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                 estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
-                "", false, false, false, 0, "", "");
+                "", false, false, false, 0, "", "", "", "", "");
     }
 
     public WorkInstructionEvent(
@@ -126,7 +153,7 @@ public record WorkInstructionEvent(
             int estimatedCycleTimeSeconds) {
         this("", workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                 estimatedCycleTimeSeconds, DEFAULT_RTG_CYCLE_TIME_SECONDS,
-                "", false, false, false, 0, "", "");
+                "", false, false, false, 0, "", "", "", "", "");
     }
 
     @Override
@@ -138,13 +165,9 @@ public record WorkInstructionEvent(
                 ", putChe=" + putChe +
                 ", workInstructionMoveStage=" + workInstructionMoveStage +
                 ", estimatedMoveTime=" + estimatedMoveTime +
-                ", estimatedCycleTimeSeconds=" + estimatedCycleTimeSeconds +
-                ", estimatedRtgCycleTimeSeconds=" + estimatedRtgCycleTimeSeconds +
-                ", isTwinFetch=" + isTwinFetch +
-                ", isTwinPut=" + isTwinPut +
-                ", isTwinCarry=" + isTwinCarry +
-                ", twinCompanionWorkInstruction=" + twinCompanionWorkInstruction +
+                ", fromPosition=" + fromPosition +
                 ", toPosition=" + toPosition +
-                ", containerId=" + containerId + "]";
+                ", containerId=" + containerId +
+                ", moveKind=" + moveKind + "]";
     }
 }

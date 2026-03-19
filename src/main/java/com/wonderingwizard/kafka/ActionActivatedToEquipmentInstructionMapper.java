@@ -22,13 +22,15 @@ import java.util.logging.Logger;
 public class ActionActivatedToEquipmentInstructionMapper implements SideEffectMapper<ActionActivated> {
 
     private static final Logger logger = Logger.getLogger(ActionActivatedToEquipmentInstructionMapper.class.getName());
-    private static final String EVENT_SOURCE = "wondering-wizard";
 
     private final String terminalCode;
+    private final String eventSource;
     private final Set<ActionType> supportedActionTypes;
 
-    public ActionActivatedToEquipmentInstructionMapper(String terminalCode, Set<ActionType> supportedActionTypes) {
+    public ActionActivatedToEquipmentInstructionMapper(String terminalCode, String eventSource,
+                                                       Set<ActionType> supportedActionTypes) {
         this.terminalCode = terminalCode;
+        this.eventSource = eventSource;
         this.supportedActionTypes = supportedActionTypes;
     }
 
@@ -71,7 +73,7 @@ public class ActionActivatedToEquipmentInstructionMapper implements SideEffectMa
                 firstWi.fetchChe(),
                 null,
                 firstWi.putChe(),
-                EVENT_SOURCE,
+                eventSource,
                 activated.activatedAt().toEpochMilli(),
                 terminalCode
         );

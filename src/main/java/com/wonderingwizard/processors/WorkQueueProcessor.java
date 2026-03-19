@@ -65,6 +65,7 @@ public class WorkQueueProcessor implements EventProcessor {
     private final Map<Long, Integer> qcMudaByQueue = new HashMap<>();
     private final Map<Long, LoadMode> loadModeByQueue = new HashMap<>();
     private final Map<Long, String> pointOfWorkByQueue = new HashMap<>();
+    private final Map<Long, String> bollardByQueue = new HashMap<>();
     /** Work instruction IDs whose actions were force-completed (e.g., TT_UNAVAILABLE). */
     private final Map<Long, Set<Long>> canceledWorkInstructionIds = new HashMap<>();
     private final IntSupplier driveTimeSupplier;
@@ -355,9 +356,10 @@ public class WorkQueueProcessor implements EventProcessor {
         int qcMuda = qcMudaByQueue.getOrDefault(workQueueId, 0);
         LoadMode loadMode = loadModeByQueue.getOrDefault(workQueueId, LoadMode.DSCH);
 
+        String bollard = bollardByQueue.get(workQueueId);
         List<Takt> takts = new GraphScheduleBuilder(driveTimeSupplier, qcDriveTimeOffsetSupplier)
                 .createTakts(allInstructions, estimatedMoveTime, qcMuda, loadMode,
-                        workQueueId, pipelineSteps);
+                        workQueueId, pipelineSteps, bollard);
 
         String pointOfWork = pointOfWorkByQueue.get(workQueueId);
         if (pointOfWork != null && !pointOfWork.isBlank()) {
@@ -382,6 +384,9 @@ public class WorkQueueProcessor implements EventProcessor {
         }
         if (message.pointOfWorkName() != null) {
             pointOfWorkByQueue.put(workQueueId, message.pointOfWorkName());
+        }
+        if (message.bollardPosition() != null) {
+            bollardByQueue.put(workQueueId, message.bollardPosition());
         }
 
         boolean managedByFes = MANAGED_BY_FES.equals(message.workQueueManaged());
@@ -422,10 +427,11 @@ public class WorkQueueProcessor implements EventProcessor {
         int qcMuda = qcMudaByQueue.getOrDefault(workQueueId, 0);
         LoadMode loadMode = loadModeByQueue.getOrDefault(workQueueId, LoadMode.DSCH);
         String pointOfWork = pointOfWorkByQueue.get(workQueueId);
+        String bollard2 = bollardByQueue.get(workQueueId);
         List<Takt> takts = useGraphScheduleBuilder
                 ? new GraphScheduleBuilder(driveTimeSupplier, qcDriveTimeOffsetSupplier)
                         .createTakts(instructions, estimatedMoveTime, qcMuda, loadMode,
-                                workQueueId, pipelineSteps)
+                                workQueueId, pipelineSteps, bollard2)
                 : createTaktsFromWorkInstructionsPrimvs(instructions, estimatedMoveTime, qcMuda);
 
         // Assign QC device name from pointOfWorkName
@@ -719,6 +725,7 @@ public class WorkQueueProcessor implements EventProcessor {
         workInstructions.remove(workQueueId);
         qcMudaByQueue.remove(workQueueId);
         loadModeByQueue.remove(workQueueId);
+        bollardByQueue.remove(workQueueId);
         canceledWorkInstructionIds.remove(workQueueId);
         return sideEffects;
     }
@@ -736,6 +743,7 @@ public class WorkQueueProcessor implements EventProcessor {
         state.put("workInstructions", instructionsCopy);
         state.put("qcMudaByQueue", new HashMap<>(qcMudaByQueue));
         state.put("loadModeByQueue", new HashMap<>(loadModeByQueue));
+        state.put("bollardByQueue", new HashMap<>(bollardByQueue));
 
         // Deep copy of canceled WI IDs
         Map<Long, Set<Long>> canceledCopy = new HashMap<>();
@@ -781,6 +789,12 @@ public class WorkQueueProcessor implements EventProcessor {
         Object loadModeState = stateMap.get("loadModeByQueue");
         if (loadModeState instanceof Map) {
             loadModeByQueue.putAll((Map<Long, LoadMode>) loadModeState);
+        }
+
+        bollardByQueue.clear();
+        Object bollardState = stateMap.get("bollardByQueue");
+        if (bollardState instanceof Map) {
+            bollardByQueue.putAll((Map<Long, String>) bollardState);
         }
 
         canceledWorkInstructionIds.clear();

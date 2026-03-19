@@ -157,6 +157,22 @@ public class Settings {
                 "apmt.terminaloperations.equipmentinstruction.quaycrane.topic.confidential.dedicated.v1");
     }
 
+    public String containerMoveStateTopic() {
+        return get("kafka.producer.container-move-state.topic",
+                "apmt.terminaloperations.containermovestate.topic.confidential.dedicated.v1");
+    }
+
+    public ConsumerConfiguration containerMoveStateConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.container-move-state.topic",
+                        "apmt.terminaloperations.containermovestate.topic.confidential.status.v1"),
+                get("kafka.consumer.container-move-state.group-id", "wondering-wizard-cms"),
+                get("kafka.consumer.container-move-state.avro-message-type", null),
+                null,
+                getBoolean("kafka.consumer.container-move-state.read-all-at-startup", false)
+        );
+    }
+
     public ConsumerConfiguration craneDelayActivitiesConsumerConfiguration() {
         return new ConsumerConfiguration(
                 get("kafka.consumer.crane-delay-activities.topic",

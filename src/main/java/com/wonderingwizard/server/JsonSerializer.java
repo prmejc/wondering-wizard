@@ -7,6 +7,7 @@ import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
 import com.wonderingwizard.events.CheLogicalPositionEvent;
+import com.wonderingwizard.events.ContainerMoveStateEvent;
 import com.wonderingwizard.events.CraneAvailabilityStatusEvent;
 import com.wonderingwizard.events.CraneDelayActivityEvent;
 import com.wonderingwizard.events.CraneReadinessEvent;
@@ -201,8 +202,11 @@ public final class JsonSerializer {
                 writeField(sb, "isTwinPut", e.isTwinPut(), false);
                 writeField(sb, "isTwinCarry", e.isTwinCarry(), false);
                 writeField(sb, "twinCompanionWorkInstruction", e.twinCompanionWorkInstruction(), false);
+                writeField(sb, "fromPosition", e.fromPosition(), false);
                 writeField(sb, "toPosition", e.toPosition(), false);
                 writeField(sb, "containerId", e.containerId(), false);
+                writeField(sb, "moveKind", e.moveKind(), false);
+                writeField(sb, "jobPosition", e.jobPosition(), false);
                 sb.append('}');
             }
             case ActionCompletedEvent e -> {
@@ -313,6 +317,21 @@ public final class JsonSerializer {
                 writeField(sb, "longitude", e.longitude(), false);
                 writeField(sb, "hdop", e.hdop(), false);
                 writeField(sb, "timestampMs", e.timestampMs(), false);
+                sb.append('}');
+            }
+            case ContainerMoveStateEvent e -> {
+                sb.append('{');
+                writeField(sb, "type", "ContainerMoveStateEvent", true);
+                writeField(sb, "containerMoveAction", e.containerMoveAction(), false);
+                writeField(sb, "containerMoveStateRequestStatus", e.containerMoveStateRequestStatus(), false);
+                writeField(sb, "responseContainerMoveState", e.responseContainerMoveState(), false);
+                writeField(sb, "carryCHEName", e.carryCHEName(), false);
+                writeField(sb, "workInstructionId", e.workInstructionId(), false);
+                writeField(sb, "moveKind", e.moveKind(), false);
+                writeField(sb, "containerId", e.containerId(), false);
+                writeField(sb, "terminalCode", e.terminalCode(), false);
+                writeField(sb, "errorMessage", e.errorMessage(), false);
+                writeField(sb, "sourceTsMs", e.sourceTsMs(), false);
                 sb.append('}');
             }
             case CraneDelayActivityEvent e -> {
@@ -491,6 +510,14 @@ public final class JsonSerializer {
                 writeField(sb, "workQueueId", e.workQueueId(), false);
                 writeField(sb, "cheShortName", e.cheShortName(), false);
                 writeField(sb, "cheId", e.cheId(), false);
+                if (e.workInstructions() != null && !e.workInstructions().isEmpty()) {
+                    var wi = e.workInstructions().getFirst();
+                    writeField(sb, "workInstructionId", wi.workInstructionId(), false);
+                    writeField(sb, "containerId", wi.containerId(), false);
+                    writeField(sb, "fetchChe", wi.fetchChe(), false);
+                    writeField(sb, "putChe", wi.putChe(), false);
+                    writeField(sb, "toPosition", wi.toPosition(), false);
+                }
                 sb.append('}');
             }
             case TruckUnassigned e -> {
@@ -553,8 +580,11 @@ public final class JsonSerializer {
         writeField(sb, "isTwinPut", wi.isTwinPut(), false);
         writeField(sb, "isTwinCarry", wi.isTwinCarry(), false);
         writeField(sb, "twinCompanionWorkInstruction", wi.twinCompanionWorkInstruction(), false);
+        writeField(sb, "fromPosition", wi.fromPosition(), false);
         writeField(sb, "toPosition", wi.toPosition(), false);
         writeField(sb, "containerId", wi.containerId(), false);
+        writeField(sb, "moveKind", wi.moveKind(), false);
+        writeField(sb, "jobPosition", wi.jobPosition(), false);
         sb.append('}');
     }
 

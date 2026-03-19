@@ -8,7 +8,7 @@ import com.wonderingwizard.engine.Event;
  *
  * @param terminalCode the terminal code
  * @param cheId the crane identifier (e.g., "QCZ9")
- * @param cheType the type of CHE (e.g., "STS")
+ * @param cheType the type of CHE (e.g., "QC")
  * @param cheStatus the availability status (READY or NOT_READY)
  * @param sourceTsMs the source timestamp in milliseconds
  */

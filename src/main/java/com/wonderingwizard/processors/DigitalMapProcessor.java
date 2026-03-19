@@ -590,7 +590,7 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
 
     @Override
     public List<GraphScheduleBuilder.ActionTemplate> enrichTemplates(
-            long workQueueId,
+            EnrichmentContext context,
             List<GraphScheduleBuilder.ActionTemplate> templates,
             WorkInstructionEvent workInstruction
     ) {
@@ -603,18 +603,55 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
             return templates;
         }
 
-        // Duration from yard position to berth (for QC standby)
-        int yardToBerth = findPathDurationOrFallback(yardPoi, BERTH_POI);
-
-        // Duration from berth to standby of yard position (for RTG standby)
         String standbyPoi = findStandbyLocation(yardPoi);
-        int berthToStandby = standbyPoi != null
-                ? findPathDurationOrFallback(BERTH_POI, standbyPoi)
-                : FALLBACK_DURATION;
+        String bollard = context.bollardPosition();
 
-        int qcStandbyDuration = Math.max(1, yardToBerth - FIXED_DURATION);
+        // --- Circular drive calculation for DSCH ---
+        // TT drives in a circle: RTG standby → RTG pull (20s) → load → QC standby → QC pull (20s) → unload → RTG standby
+        //
+        // QC standby = toPosition.standby → bollard minus the 20s pull
+        // RTG standby = bollard → toPosition.standby minus the 20s pull
+        //
+        // For consecutive singles: RTG standby = previousToPosition → currentToPosition.standby
 
-        return adjustTtDurations(templates, qcStandbyDuration, berthToStandby);
+        int qcStandbyDuration;
+        int rtgStandbyDuration;
+
+        if (bollard != null && !bollard.isBlank()) {
+            // Drive TO QC: from RTG standby to bollard
+            // QC standby = standbyPoi → bollard - 20s pull
+            int standbyToBollard = standbyPoi != null
+                    ? findPathDurationOrDefault(standbyPoi, bollard)
+                    : FALLBACK_DURATION;
+            qcStandbyDuration = Math.max(1, standbyToBollard - FIXED_DURATION);
+
+            // Drive TO RTG: from bollard to RTG standby
+            if (context.containerIndex() > 0 && context.previousToPosition() != null) {
+                // Consecutive single: drive from previous RTG position to current standby
+                String prevYardPoi = toYardPoi(context.previousToPosition());
+                if (prevYardPoi != null && standbyPoi != null) {
+                    rtgStandbyDuration = Math.max(1,
+                            findPathDurationOrDefault(prevYardPoi, standbyPoi) - FIXED_DURATION);
+                } else {
+                    rtgStandbyDuration = FALLBACK_DURATION;
+                }
+            } else {
+                // First container: drive from bollard to RTG standby
+                int bollardToStandby = standbyPoi != null
+                        ? findPathDurationOrDefault(bollard, standbyPoi)
+                        : FALLBACK_DURATION;
+                rtgStandbyDuration = Math.max(1, bollardToStandby - FIXED_DURATION);
+            }
+        } else {
+            // No bollard — fallback to old berth-based logic
+            int yardToBerth = findPathDurationOrDefault(yardPoi, BERTH_POI);
+            qcStandbyDuration = Math.max(1, yardToBerth - FIXED_DURATION);
+            rtgStandbyDuration = standbyPoi != null
+                    ? findPathDurationOrDefault(BERTH_POI, standbyPoi)
+                    : FALLBACK_DURATION;
+        }
+
+        return adjustTtDurations(templates, qcStandbyDuration, rtgStandbyDuration);
     }
 
     /**
@@ -629,7 +666,7 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
         return loc.block() + loc.bay();
     }
 
-    private int findPathDurationOrFallback(String from, String to) {
+    private int findPathDurationOrDefault(String from, String to) {
         int duration = findPathDuration(from, to);
         return duration > 0 ? duration : FALLBACK_DURATION;
     }
@@ -649,6 +686,7 @@ public class DigitalMapProcessor implements EventProcessor, SchedulePipelineStep
                 continue;
             }
             int duration = switch (tmpl.actionType()) {
+                case TT_DRIVE_TO_QC_PULL -> FIXED_DURATION;
                 case TT_DRIVE_UNDER_QC -> FIXED_DURATION;
                 case TT_DRIVE_TO_QC_STANDBY -> qcStandbyDuration;
                 case TT_HANDOVER_FROM_QC -> FIXED_DURATION;

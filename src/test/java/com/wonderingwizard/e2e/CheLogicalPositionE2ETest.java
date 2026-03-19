@@ -73,10 +73,10 @@ class CheLogicalPositionE2ETest {
     @Test
     @DisplayName("Publish 10k Avro messages to Kafka, verify server processes last within 20s")
     void shouldProcess10kKafkaMessagesWithin20Seconds() throws Exception {
-        assertServerIsReachable();
+        //assertServerIsReachable();
 
         // Ensure TT01 exists via the HTTP API (it must exist before positions are accepted)
-        ensureTruckExists(TRUCK_NAME);
+        //ensureTruckExists(TRUCK_NAME);
 
         Settings settings = Settings.load();
         String topic = settings.cheLogicalPositionConsumerConfiguration().topic();

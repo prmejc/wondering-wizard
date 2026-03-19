@@ -45,6 +45,7 @@ public class KafkaEventConsumer<E extends Event> {
     private final Metrics metrics;
     private final DeadLetterQueue deadLetterQueue;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private volatile boolean ready;
     private Thread consumerThread;
 
     public KafkaEventConsumer(
@@ -113,6 +114,14 @@ public class KafkaEventConsumer<E extends Event> {
         return running.get();
     }
 
+    /**
+     * Returns whether this consumer has completed its first successful poll
+     * (i.e., partition assignment is done and it is actively consuming).
+     */
+    public boolean isReady() {
+        return ready;
+    }
+
     private void consumeLoop() {
         Properties props = buildConsumerProperties();
 
@@ -124,6 +133,10 @@ public class KafkaEventConsumer<E extends Event> {
             while (running.get()) {
                 try {
                     ConsumerRecords<String, GenericRecord> records = consumer.poll(POLL_TIMEOUT);
+                    if (!ready) {
+                        ready = true;
+                        logger.info("Consumer ready for topic: " + consumerConfig.topic());
+                    }
                     for (var record : records) {
                         processRecord(record.value(), record.offset(), record.partition());
                     }

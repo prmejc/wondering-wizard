@@ -31,18 +31,18 @@ class ActionActivatedToEquipmentInstructionMapperTest {
 
     @BeforeEach
     void setUp() {
-        rtgMapper = new ActionActivatedToEquipmentInstructionMapper(TERMINAL_CODE,
+        rtgMapper = new ActionActivatedToEquipmentInstructionMapper(TERMINAL_CODE, "FESv4.0.18",
                 Set.of(ActionType.RTG_DRIVE, ActionType.RTG_FETCH,
                         ActionType.RTG_HANDOVER_TO_TT, ActionType.RTG_LIFT_FROM_TT,
                         ActionType.RTG_PLACE_ON_YARD));
-        ttMapper = new ActionActivatedToEquipmentInstructionMapper(TERMINAL_CODE,
+        ttMapper = new ActionActivatedToEquipmentInstructionMapper(TERMINAL_CODE, "FESv4.0.18",
                 Set.of(ActionType.TT_DRIVE_TO_RTG_PULL, ActionType.TT_DRIVE_TO_RTG_STANDBY,
                         ActionType.TT_DRIVE_TO_RTG_UNDER, ActionType.TT_HANDOVER_FROM_RTG,
                         ActionType.TT_DRIVE_TO_QC_PULL, ActionType.TT_DRIVE_TO_QC_STANDBY,
                         ActionType.TT_DRIVE_UNDER_QC, ActionType.TT_HANDOVER_TO_QC,
                         ActionType.TT_HANDOVER_FROM_QC, ActionType.TT_HANDOVER_TO_RTG,
                         ActionType.TT_DRIVE_TO_BUFFER));
-        qcMapper = new ActionActivatedToEquipmentInstructionMapper(TERMINAL_CODE,
+        qcMapper = new ActionActivatedToEquipmentInstructionMapper(TERMINAL_CODE, "FESv4.0.18",
                 Set.of(ActionType.QC_LIFT, ActionType.QC_PLACE));
     }
 
@@ -104,7 +104,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
         assertEquals("RTG05", message.destinationCHEShortName());
         assertEquals("RTG", message.recipientCHEKind());
         assertEquals(TERMINAL_CODE, message.terminalCode());
-        assertEquals("wondering-wizard", message.eventSource());
+        assertEquals("FESv4.0.18", message.eventSource());
     }
 
     @Test

@@ -72,6 +72,42 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.18">
+  <h2>v4.0.18</h2>
+  <div class="date">2026-03-19</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>ContainerMoveState consumer &mdash; processes STOPPED/ERROR/TT_ASSIGNED events to un-assign trucks before pivot (same logic as TT Unavailable)</li>
+    <li>ContainerMoveState producer &mdash; publishes TT_ASSIGNED messages to Kafka when a truck is assigned to a work instruction</li>
+    <li>Container Move State GUI page (<code>/containermovestate</code>) &mdash; send CMS events with auto-populated fields from latest TruckAssigned</li>
+    <li>Kafka consumer ready indicator &mdash; <code>Kafka X/Y</code> badge in schedule viewer header showing how many consumers have completed first poll</li>
+    <li><code>fromPosition</code>, <code>moveKind</code>, <code>jobPosition</code> fields added to WorkInstructionEvent &mdash; wired through Actions, TruckAssigned, ContainerMoveState Kafka messages</li>
+    <li>Dev settings file (<code>dev-settings.properties</code>) with <code>-dev</code> suffixed consumer group IDs to avoid stealing messages from production</li>
+    <li>Redesigned Grafana dashboard &mdash; 6 focused panels: throughput, per-topic rates, total counts, latency percentiles, slowest topics, pod CPU &amp; memory</li>
+  </ul>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Fixed TT_DRIVE_TO_QC_PULL duration not being set to 20s by the digital map enrichment (was keeping the 30s default from the blueprint)</li>
+    <li>Fixed WI Reset/Abandoned completing ALL containers instead of just the affected container and its twin &mdash; was matching by shared truck name across entire schedule; now uses twinCompanionWorkInstruction with adjacent-container fallback</li>
+    <li>Fixed &ldquo;lift twin, drop singles&rdquo; templates (same bay &amp; different bay) &mdash; RTG_DRIVE and TT_DRIVE_TO_BUFFER now require both QC Discharged Container events before activating</li>
+    <li>Fixed event gate explanation for twin discharge &mdash; now shows &ldquo;container 1&rdquo; / &ldquo;container 2&rdquo; instead of two identical messages</li>
+    <li>Fixed cheType default from &ldquo;STS&rdquo; to &ldquo;QC&rdquo; in quay crane GUI and API</li>
+    <li>Fixed <code>eventSource</code> in produced Kafka messages &mdash; now uses <code>FESvX.X.X</code> (version from release notes) instead of hardcoded &ldquo;wondering-wizard&rdquo;</li>
+    <li>Circular TT drive duration calculation using bollard position and pathfinding &mdash; QC standby = standby&rarr;bollard minus 20s pull; RTG standby = bollard&rarr;standby minus 20s pull; consecutive singles use previous toPosition</li>
+  </ul>
+
+  <h3>GUI Defaults Changed</h3>
+  <ul>
+    <li>Fetch CHE: <code>RTG-01</code> &rarr; <code>QCZ1</code></li>
+    <li>Put CHE: empty &rarr; <code>RTZ01</code></li>
+    <li>From Position: <code>V-IF3606W-661390</code> (vessel position)</li>
+    <li>Move Kind: <code>DSCH</code></li>
+    <li>Job Position: <code>FWD</code> (dropdown: FWD/AFT)</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.17">
   <h2>v4.0.17</h2>
   <div class="date">2026-03-19</div>

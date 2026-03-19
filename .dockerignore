@@ -19,6 +19,9 @@ target/
 docs/
 *.md
 
+# Dev settings (not for production)
+dev-settings.properties
+
 # OS files
 .DS_Store
 Thumbs.db

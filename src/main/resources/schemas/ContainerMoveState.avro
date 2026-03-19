@@ -1,0 +1,59 @@
+{
+  "type": "record",
+  "name": "ContainerMoveState",
+  "namespace": "apmt.terminaloperations.containermovestate.topic.confidential.dedicated.v1",
+  "fields": [
+    {
+      "name": "containerMoveState",
+      "type": "string"
+    },
+    {
+      "name": "fetchCHEName",
+      "type": "string"
+    },
+    {
+      "name": "carryCHEName",
+      "type": "string"
+    },
+    {
+      "name": "putCHEName",
+      "type": "string"
+    },
+    {
+      "name": "workInstructionId",
+      "type": "long"
+    },
+    {
+      "name": "moveKind",
+      "type": "string"
+    },
+    {
+      "name": "fromPosition",
+      "type": "string"
+    },
+    {
+      "name": "toPosition",
+      "type": "string"
+    },
+    {
+      "name": "containerId",
+      "type": "string"
+    },
+    {
+      "name": "messageSequenceNumber",
+      "type": "int"
+    },
+    {
+      "name": "terminalCode",
+      "type": "string"
+    },
+    {
+      "name": "eventSource",
+      "type": "string"
+    },
+    {
+      "name": "SOURCE_TS_MS",
+      "type": "long"
+    }
+  ]
+}

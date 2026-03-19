@@ -193,7 +193,7 @@ function getServerVal(qcName, subRow, key) {
       const fp = serverState.quayCranes[qcName];
       return fp ? (fp.terminalCode || '') : '';
     }
-    if (key === 'cheType') return 'STS';
+    if (key === 'cheType') return 'QC';
     return '';
   }
   return '';
@@ -327,9 +327,21 @@ function isDelayStopped(delay) {
 
 function buildDelaySubRow(qcName, delay, index, isLatest) {
   const stopped = isDelayStopped(delay);
-  const label = (isLatest ? '\u25CF ' : '') + 'Delay #' + (index + 1);
-  let html = '<div class="sub-row" style="background:' + (stopped ? 'var(--surface2)' : 'rgba(234,88,12,0.06)') + '">';
-  html += '<span class="sub-row-label" style="color:' + (stopped ? 'var(--text-muted)' : 'var(--active)') + '">' + label + '</span>';
+  const label = 'Delay #' + (index + 1);
+  let bg, labelColor, opacity;
+  if (isLatest) {
+    // Latest event: strong visual — orange if active, green if resolved
+    bg = stopped ? 'rgba(5,150,105,0.08)' : 'rgba(234,88,12,0.08)';
+    labelColor = stopped ? 'var(--completed)' : 'var(--active)';
+    opacity = '1';
+  } else {
+    // History: always subtle
+    bg = 'var(--surface2)';
+    labelColor = 'var(--text-muted)';
+    opacity = '0.6';
+  }
+  let html = '<div class="sub-row" style="background:' + bg + ';opacity:' + opacity + '">';
+  html += '<span class="sub-row-label" style="color:' + labelColor + '">' + (isLatest ? '\u25CF ' : '') + label + '</span>';
   html += '<div class="sub-row-fields">';
   html += delayField('Event', delay.eventType);
   html += delayField('Type', delay.delayType);
@@ -444,7 +456,7 @@ async function sendSubRow(qcName, subRow) {
     await apiCall(API + '/api/crane-availability-status', {
       cheId: getFieldVal(qcName, 'availability', 'cheId') || qcName,
       cheStatus: getFieldVal(qcName, 'availability', 'cheStatus') || 'NOT_READY',
-      cheType: getFieldVal(qcName, 'availability', 'cheType') || 'STS',
+      cheType: getFieldVal(qcName, 'availability', 'cheType') || 'QC',
       terminalCode: getFieldVal(qcName, 'availability', 'terminalCode') || ''
     });
   } else if (subRow === 'readiness') {
@@ -499,7 +511,7 @@ function addQC(name) {
   // Set defaults
   setLocal(name, 'availability', 'cheId', name);
   setLocal(name, 'availability', 'cheStatus', 'NOT_READY');
-  setLocal(name, 'availability', 'cheType', 'STS');
+  setLocal(name, 'availability', 'cheType', 'QC');
   setLocal(name, 'readiness', 'qcShortName', name);
   setLocal(name, 'readiness', 'workQueueId', '0');
   setLocal(name, 'flowposition', 'quayCraneShortName', name);

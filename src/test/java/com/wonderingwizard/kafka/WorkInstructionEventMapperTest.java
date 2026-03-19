@@ -46,7 +46,9 @@ class WorkInstructionEventMapperTest {
                     {"name": "isTwinPut", "type": ["null", "boolean"], "default": null},
                     {"name": "isTwinCarry", "type": ["null", "boolean"], "default": null},
                     {"name": "twinCompanionWorkInstruction", "type": ["null", "long"], "default": null},
-                    {"name": "toPosition", "type": ["null", "string"], "default": null}
+                    {"name": "fromPosition", "type": ["null", "string"], "default": null},
+                    {"name": "toPosition", "type": ["null", "string"], "default": null},
+                    {"name": "jobPosition", "type": ["null", "string"], "default": null}
                 ]
             }
             """;

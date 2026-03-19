@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FES - Container Move State</title>
+<style>
+  :root {
+    --bg: #e2e8f0;
+    --surface: #f8fafc;
+    --surface2: #f1f5f9;
+    --text: #1e293b;
+    --text-muted: #64748b;
+    --border: #cbd5e1;
+    --active: #ea580c;
+    --danger: #dc2626;
+    --completed: #059669;
+    --success-bg: rgba(5, 150, 105, 0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; padding: 24px; max-width: 900px; margin: 0 auto;
+  }
+  .header { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; }
+  h1 { font-size: 20px; }
+  .nav-links { margin-left: auto; display: flex; gap: 12px; }
+  .nav-links a { color: var(--active); text-decoration: none; font-size: 13px; }
+  .nav-links a:hover { text-decoration: underline; }
+  .card {
+    background: var(--surface); border-radius: 8px; padding: 20px;
+    border: 1px solid var(--border); margin-bottom: 16px;
+  }
+  .card h2 { font-size: 16px; margin-bottom: 12px; }
+  .form-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  }
+  .form-group { display: flex; flex-direction: column; gap: 3px; }
+  .form-group.full { grid-column: 1 / -1; }
+  .form-group label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px;
+    color: var(--text-muted); font-weight: 600;
+  }
+  .form-group input, .form-group select {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 4px; font-size: 13px; font-family: inherit;
+  }
+  .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--active); }
+  button {
+    background: var(--active); color: white; border: none; padding: 10px 24px;
+    border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 600;
+    margin-top: 12px;
+  }
+  button:hover { opacity: 0.9; }
+  .result {
+    margin-top: 12px; padding: 10px; border-radius: 4px;
+    font-size: 12px; font-family: monospace; white-space: pre-wrap;
+    max-height: 200px; overflow-y: auto;
+  }
+  .result.success { background: var(--success-bg); border: 1px solid var(--completed); }
+  .result.error { background: rgba(220,38,38,0.08); border: 1px solid var(--danger); }
+  .hint {
+    font-size: 12px; color: var(--text-muted); margin-bottom: 16px;
+    padding: 10px; background: var(--surface2); border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Container Move State</h1>
+  <div class="nav-links" id="nav-links"></div>
+</div>
+
+<div class="hint">
+  Send a ContainerMoveState event to un-assign a truck. The default values
+  (<strong>STOPPED / ERROR / TT_ASSIGNED</strong>) trigger TT un-assignment
+  when a matching work instruction and truck are found in an active schedule (before pivot).
+</div>
+
+<div class="card">
+  <h2>Send ContainerMoveState Event</h2>
+  <div class="form-grid">
+    <div class="form-group">
+      <label>Carry CHE Name (Truck)</label>
+      <input type="text" id="carryCHEName" placeholder="e.g. TG04">
+    </div>
+    <div class="form-group">
+      <label>Work Instruction ID</label>
+      <input type="text" id="workInstructionId" placeholder="e.g. 12345">
+    </div>
+    <div class="form-group">
+      <label>Container Move Action</label>
+      <select id="containerMoveAction">
+        <option value="STOPPED" selected>STOPPED</option>
+        <option value="STARTED">STARTED</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Request Status</label>
+      <select id="containerMoveStateRequestStatus">
+        <option value="ERROR" selected>ERROR</option>
+        <option value="SUCCESS">SUCCESS</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Response State</label>
+      <select id="responseContainerMoveState">
+        <option value="TT_ASSIGNED" selected>TT_ASSIGNED</option>
+        <option value="TT_NOT_ASSIGNED">TT_NOT_ASSIGNED</option>
+        <option value="COMPLETED">COMPLETED</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Move Kind</label>
+      <input type="text" id="moveKind" value="DSCH">
+    </div>
+    <div class="form-group">
+      <label>Container ID</label>
+      <input type="text" id="containerId" placeholder="e.g. MSKU1234567">
+    </div>
+    <div class="form-group">
+      <label>Terminal Code</label>
+      <input type="text" id="terminalCode">
+    </div>
+    <div class="form-group full">
+      <label>Error Message</label>
+      <input type="text" id="errorMessage" placeholder="e.g. TT unavailable">
+    </div>
+  </div>
+  <button id="send-btn">Send Event</button>
+  <div id="result"></div>
+</div>
+
+<script>
+const API = window.location.pathname.replace(/\/containermovestate\/?$/, '');
+document.getElementById('nav-links').innerHTML =
+  '<a href="' + (API || '/') + '">Schedule Viewer</a>' +
+  '<a href="' + API + '/trucks">Trucks</a>' +
+  '<a href="' + API + '/quaycranes">Quay Cranes</a>' +
+  '<a href="' + API + '/workqueues">Work Queues</a>';
+
+// --- SSE: auto-populate from TruckAssigned side effects ---
+function connectSSE() {
+  const es = new EventSource(API + '/api/events');
+  es.addEventListener('state', (e) => {
+    try {
+      const state = JSON.parse(e.data);
+      const steps = state.steps || [];
+      // Find the most recent TruckAssigned side effect
+      for (let i = steps.length - 1; i >= 0; i--) {
+        const sideEffects = steps[i].sideEffects || [];
+        for (const se of sideEffects) {
+          if (se.type === 'TruckAssigned' && se.cheShortName) {
+            document.getElementById('carryCHEName').value = se.cheShortName || '';
+            // Find matching work instruction data from the step's event or side effects
+            if (se.workInstructionId) {
+              document.getElementById('workInstructionId').value = se.workInstructionId;
+            }
+            if (se.containerId) {
+              document.getElementById('containerId').value = se.containerId;
+            }
+            if (!document.getElementById('moveKind').value) {
+              document.getElementById('moveKind').value = 'DSCH';
+            }
+            return;
+          }
+        }
+      }
+    } catch (err) { /* ignore */ }
+  });
+}
+connectSSE();
+
+document.getElementById('send-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('send-btn');
+  const resultDiv = document.getElementById('result');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  const body = {
+    carryCHEName: document.getElementById('carryCHEName').value,
+    workInstructionId: document.getElementById('workInstructionId').value,
+    containerMoveAction: document.getElementById('containerMoveAction').value,
+    containerMoveStateRequestStatus: document.getElementById('containerMoveStateRequestStatus').value,
+    responseContainerMoveState: document.getElementById('responseContainerMoveState').value,
+    moveKind: document.getElementById('moveKind').value,
+    containerId: document.getElementById('containerId').value,
+    terminalCode: document.getElementById('terminalCode').value,
+    errorMessage: document.getElementById('errorMessage').value
+  };
+
+  try {
+    const res = await fetch(API + '/api/container-move-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (res.ok) {
+      const effects = data.sideEffects || [];
+      const summary = effects.length > 0
+        ? effects.map(e => e.type || JSON.stringify(e)).join('\n')
+        : 'No side effects (no matching schedule/truck found)';
+      resultDiv.className = 'result success';
+      resultDiv.textContent = 'Step #' + (data.step?.stepNumber || '?') + '\n' + summary;
+    } else {
+      resultDiv.className = 'result error';
+      resultDiv.textContent = data.error || 'Unknown error';
+    }
+  } catch (err) {
+    resultDiv.className = 'result error';
+    resultDiv.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send Event';
+  }
+});
+</script>
+</body>
+</html>

@@ -372,7 +372,8 @@ public class GraphScheduleBuilder {
                         .withFirstInTakt().withSyncWith(QC, QC_PLACE),
 
                 ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS)
-                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER)
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 1)
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 2)
                         .withSkipWhenGatesSatisfied(),
 
                 ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, 1, TT, driveToRtgPull),
@@ -393,7 +394,8 @@ public class GraphScheduleBuilder {
                         withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDeviceIndex(1)
                         .withDependsOn(QC, QC_PLACE)
-                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER),
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 1)
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 2),
                 ActionTemplate.of(RTG_WAIT_FOR_TRUCK, 1, RTG, 0).withDeviceIndex(1),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 1, RTG, rtgPlaceDuration).withDeviceIndex(1),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, driveToUnderRtg + rtgPlaceDuration).withDeviceIndex(1),
@@ -402,8 +404,8 @@ public class GraphScheduleBuilder {
                         .withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDeviceIndex(2)
                         .withDependsOn(QC, QC_PLACE)
-                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER)
-                ,
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 1)
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 2),
                 ActionTemplate.of(RTG_WAIT_FOR_TRUCK, 2, RTG, 0).withDeviceIndex(2),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, rtgPlaceDuration).withDeviceIndex(2),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 2, RTG, driveToUnderRtg + rtgPlaceDuration).withDeviceIndex(2)
@@ -424,7 +426,8 @@ public class GraphScheduleBuilder {
                         .withFirstInTakt().withSyncWith(QC, QC_PLACE),
 
                 ActionTemplate.of(TT_DRIVE_TO_BUFFER, TT, TT_DRIVE_TO_BUFFER_SECONDS)
-                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER)
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 1)
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 2)
                         .withSkipWhenGatesSatisfied(),
 
                 ActionTemplate.of(TT_DRIVE_TO_RTG_PULL, TT, driveToRtgPull),
@@ -440,12 +443,14 @@ public class GraphScheduleBuilder {
                         .withFirstInTakt()
                         .withSyncWith(TT, TT_DRIVE_TO_RTG_PULL)
                         .withDependsOn(QC, QC_PLACE)
-                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER),
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 1)
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 2),
                 ActionTemplate.of(RTG_WAIT_FOR_TRUCK, 1, RTG, 0),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 1, RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 1, RTG, driveToUnderRtg + rtgPlaceDuration),
                 ActionTemplate.of(RTG_DRIVE, 2, RTG, RTG_DRIVE_SECONDS)
-                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER),
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 1)
+                        .withEventGate(QC, QC_LIFT, EventType.QC_DISCHARGED_CONTAINER, 2),
                 ActionTemplate.of(RTG_LIFT_FROM_TT, 2, RTG, rtgPlaceDuration),
                 ActionTemplate.of(RTG_PLACE_ON_YARD, 2, RTG, driveToUnderRtg + rtgPlaceDuration)
         );
@@ -647,6 +652,17 @@ public class GraphScheduleBuilder {
     public List<Takt> createTakts(List<WorkInstructionEvent> instructions, Instant estimatedMoveTime,
                                    int qcMudaSeconds, LoadMode loadMode,
                                    long workQueueId, List<SchedulePipelineStep> pipelineSteps) {
+        return createTakts(instructions, estimatedMoveTime, qcMudaSeconds, loadMode,
+                workQueueId, pipelineSteps, null);
+    }
+
+    /**
+     * Creates takts with pipeline steps and bollard position for path-based duration calculation.
+     */
+    public List<Takt> createTakts(List<WorkInstructionEvent> instructions, Instant estimatedMoveTime,
+                                   int qcMudaSeconds, LoadMode loadMode,
+                                   long workQueueId, List<SchedulePipelineStep> pipelineSteps,
+                                   String bollardPosition) {
         if (pipelineSteps == null || pipelineSteps.isEmpty()) {
             return createTakts(instructions, estimatedMoveTime, qcMudaSeconds, loadMode);
         }
@@ -660,6 +676,7 @@ public class GraphScheduleBuilder {
 
         var processedTwinIds = new HashSet<Long>();
         int containerIdx = 0;
+        String previousToPosition = null;
 
         var wiById = new HashMap<Long, WorkInstructionEvent>();
         for (var wi : sorted) {
@@ -684,14 +701,17 @@ public class GraphScheduleBuilder {
             var blueprint = buildContainerBlueprint(wi, wiById, qcMudaSeconds, loadMode);
 
             // Step 2: Run pipeline steps to enrich templates (e.g., adjust durations from digital map)
+            var context = new SchedulePipelineStep.EnrichmentContext(
+                    workQueueId, bollardPosition, containerIdx, previousToPosition);
             for (var step : pipelineSteps) {
-                blueprint = step.enrichTemplates(workQueueId, blueprint, wi);
+                blueprint = step.enrichTemplates(context, blueprint, wi);
             }
 
             // Step 3: Fit into takts
             var placed = placeContainerActions(blueprint, containerIdx, actionWis, qcMudaSeconds, takts);
             allPlacedActions.addAll(placed);
 
+            previousToPosition = wi.toPosition();
             containerIdx++;
         }
 

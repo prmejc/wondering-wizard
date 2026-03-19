@@ -263,6 +263,7 @@ class ScheduleHeader extends HTMLElement {
           <span id="live-dot" style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block"></span>
           <span id="live-label">Disconnected</span>
         </span>
+        <span id="kafka-status" style="display:none;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600"></span>
       </div>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <span id="clock" style="font-family:monospace;font-size:20px;color:var(--qc-color)">00:00:00</span>
@@ -287,6 +288,7 @@ class ScheduleHeader extends HTMLElement {
         <button class="secondary" onclick="window.open(API+'/pathfinder','_blank')" title="Open pathfinder">&#9737; Pathfinder</button>
         <button class="secondary" onclick="window.open(API+'/trucks','_blank')" title="View trucks">&#128666; Trucks</button>
         <button class="secondary" onclick="window.open(API+'/quaycranes','_blank')" title="View quay cranes">&#9875; Quay Cranes</button>
+        <button class="secondary" onclick="window.open(API+'/containermovestate','_blank')" title="Container move state">&#9654; CMS</button>
         <button class="secondary" onclick="window.open(API+'/dlq','_blank')" title="Dead letter queue">&#9888; DLQ</button>
         <input id="import-file" type="file" accept=".json" style="display:none">
       </div>`;
@@ -297,6 +299,21 @@ class ScheduleHeader extends HTMLElement {
     if (t) {
       const d = new Date(t);
       this.querySelector('#clock').textContent = d.toISOString().substring(11, 19);
+    }
+    const ks = state.kafkaStatus;
+    const badge = document.getElementById('kafka-status');
+    if (ks && badge) {
+      badge.style.display = '';
+      if (ks.allReady) {
+        badge.style.background = 'rgba(5,150,105,0.15)';
+        badge.style.color = '#059669';
+        badge.textContent = 'Kafka ' + ks.ready + '/' + ks.total;
+      } else {
+        badge.style.background = 'rgba(234,88,12,0.15)';
+        badge.style.color = '#ea580c';
+        badge.textContent = 'Kafka ' + ks.ready + '/' + ks.total;
+      }
+      badge.title = ks.ready + ' of ' + ks.total + ' consumers ready';
     }
   }
   async tick(seconds) {
@@ -436,11 +453,11 @@ class EventPanel extends HTMLElement {
       </div>
       <div class="form-group">
         <label>Fetch CHE</label>
-        <input id="wi-che" value="RTG-01">
+        <input id="wi-che" value="QCZ1">
       </div>
       <div class="form-group">
         <label>Put CHE</label>
-        <input id="wi-put-che" value="">
+        <input id="wi-put-che" value="RTZ01">
       </div>
       <div class="form-group" style="display:flex;gap:12px;align-items:center;margin-top:8px">
         <label style="display:flex;align-items:center;gap:4px;margin:0"><input id="wi-twin-fetch" type="checkbox"> Twin Fetch</label>
@@ -450,6 +467,21 @@ class EventPanel extends HTMLElement {
       <div class="form-group">
         <label>Twin Companion WI</label>
         <input id="wi-twin-companion" type="number" value="0">
+      </div>
+      <div class="form-group">
+        <label>Move Kind</label>
+        <input id="wi-move-kind" value="DSCH">
+      </div>
+      <div class="form-group">
+        <label>Job Position</label>
+        <select id="wi-job-position">
+          <option value="FWD" selected>FWD</option>
+          <option value="AFT">AFT</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>From Position</label>
+        <input id="wi-from-position" value="V-IF3606W-661390">
       </div>
       <div class="form-group">
         <label>To Position</label>
@@ -546,6 +578,9 @@ class EventPanel extends HTMLElement {
       isTwinPut: String(this.querySelector('#wi-twin-put').checked),
       isTwinCarry: String(this.querySelector('#wi-twin-carry').checked),
       twinCompanionWorkInstruction: this.querySelector('#wi-twin-companion').value,
+      moveKind: this.querySelector('#wi-move-kind').value,
+      jobPosition: this.querySelector('#wi-job-position').value,
+      fromPosition: this.querySelector('#wi-from-position').value,
       toPosition: this.querySelector('#wi-to-position').value,
       containerId: this.querySelector('#wi-container-id').value,
       estimatedMoveTime: this.querySelector('#wi-emt').value,

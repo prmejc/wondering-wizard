@@ -51,7 +51,9 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 getBooleanField(record, "isTwinPut"),
                 getBooleanField(record, "isTwinCarry"),
                 getLongField(record, "twinCompanionWorkInstruction"),
-                getStringField(record, "toPosition")
+                getStringField(record, "fromPosition"),
+                getStringField(record, "toPosition"),
+                getStringField(record, "jobPosition")
         );
     }
 
@@ -103,6 +105,10 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 ? kafkaMessage.twinCompanionWorkInstruction()
                 : 0;
 
+        String fromPosition = kafkaMessage.fromPosition() != null
+                ? kafkaMessage.fromPosition()
+                : "";
+
         String toPosition = kafkaMessage.toPosition() != null
                 ? kafkaMessage.toPosition()
                 : "";
@@ -110,6 +116,14 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
         String containerId = kafkaMessage.containerId() != null
                 ? kafkaMessage.containerId()
                 : "";
+
+        String moveKind = kafkaMessage.moveKind() != null
+                ? kafkaMessage.moveKind()
+                : "";
+
+        String jobPosition = kafkaMessage.jobPosition() != null
+                ? kafkaMessage.jobPosition()
+                : "FWD";
 
         logger.fine("Mapped WorkInstruction Kafka message: workInstructionId=" + workInstructionId
                 + ", workQueueId=" + workQueueId + ", workInstructionMoveStage=" + workInstructionMoveStage
@@ -119,7 +133,7 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 eventType, workInstructionId, workQueueId, fetchChe, workInstructionMoveStage,
                 estimatedMoveTime, estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                 putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
-                toPosition, containerId);
+                fromPosition, toPosition, containerId, moveKind, jobPosition);
     }
 
 

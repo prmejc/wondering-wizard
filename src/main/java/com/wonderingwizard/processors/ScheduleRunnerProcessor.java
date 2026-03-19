@@ -1170,7 +1170,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                     state.actionLookup.put(actionId, new ActionInfo(actionInfo.taktName(), assignedAction));
                     actionInfo = state.actionLookup.get(actionId);
                     action = assignedAction;
-                    sideEffects.add(new TruckAssigned(actionId, workQueueId, truckName, truckCheId));
+                    sideEffects.add(new TruckAssigned(actionId, workQueueId, truckName, truckCheId,
+                            action.workInstructions()));
 
                     // Propagate truck assignment to all other TT actions with the same containerIndex
                     int containerIdx = action.containerIndex();

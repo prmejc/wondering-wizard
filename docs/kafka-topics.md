@@ -19,7 +19,7 @@ Tracking implementation progress for all Kafka topics used by the system.
 | 10 | `apmt.terminaloperations.chelogicalposition.topic.confidential.dedicated.v1`           | CheLogicalPosition |     Yes     |     Yes     |
 | 11 | `APMT.terminalOperations.craneDelayActivities.topic.confidential.dedicated.v1`         | CraneDelayActivities |     Yes     |     Yes     |
 | 12 | `apmt.terminaloperations.craneavailabilitystatus.topic.confidential.dedicated.v1`      | CraneAvailabilityStatus |     Yes     |     Yes     |
-| 13 | `apmt.terminaloperations.containermovestate.topic.confidential.status.v1`              | ContainerMoveState |     No      |     No      |
+| 13 | `apmt.terminaloperations.containermovestate.topic.confidential.status.v1`              | ContainerMoveState |     Yes     |     Yes     |
 | 14 | `apmt.terminal-operations.flow-scheduling-standards.topic.internal.any.v1`             | FlowSchedulingStandards |     No      |     No      |
 | 15 | `apmt.terminal-operations.cranereadiness.topic.internal.any.v1`                        | CraneReadiness |     Yes     |     Yes     |
 
@@ -31,7 +31,7 @@ Tracking implementation progress for all Kafka topics used by the system.
 | 1 | `apmt.terminaloperations.equipmentinstruction.terminaltruck.topic.confidential.dedicated.v1` | EquipmentInstruction | TT | Yes | No |
 | 2 | `apmt.terminaloperations.equipmentinstruction.quaycrane.topic.confidential.dedicated.v1` | EquipmentInstruction | QC | Yes | No |
 | 3 | `apmt.terminaloperations.equipmentinstruction.emptyhandler.topic.confidential.dedicated.v1` | EquipmentInstruction | EH | No | No |
-| 4 | `apmt.terminaloperations.containermovestate.topic.confidential.dedicated.v1` | ContainerMoveState | - | No | No |
+| 4 | `apmt.terminaloperations.containermovestate.topic.confidential.dedicated.v1` | ContainerMoveState | TT | Yes | Yes |
 | 5 | `apmt.terminaloperations.flowstatus.topic.confidential.dedicated.v4` | FlowStatusV4 | - | No | No |
 | 6 | `apmt.deviationmanagement.exception.topic.internal.status.v1` | FlowException | - | No | No |
 | 7 | `apmt.terminaloperations.flowanalytics-taktreport.topic.internal.any.v2` | TAKTReport | - | No | No |
@@ -43,6 +43,6 @@ Tracking implementation progress for all Kafka topics used by the system.
 
 | Direction | Total | Implemented | Well Tested (SIT READY) |
 |-----------|:-----:|:-----------:|:-----------------------:|
-| Consumer  | 16    | 12          |            6            |
-| Producer  | 11    | 3           |            0            |
-| **Total** | **27**| **15**      |          **6**          |
+| Consumer  | 16    |     13      |            7            |
+| Producer  | 11    |      4      |            1            |
+| **Total** | **27**|   **17**    |          **8**          |
