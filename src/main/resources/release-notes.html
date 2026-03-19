@@ -72,6 +72,16 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.17">
+  <h2>v4.0.17</h2>
+  <div class="date">2026-03-19</div>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Fixed trucks not appearing from Kafka &mdash; the ContainerHandlingEquipment Avro schema lacks a <code>cheKind</code> field, so the mapper produced <code>null</code> which was silently rejected by TTStateProcessor; now defaults to <code>"TT"</code></li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.16">
   <h2>v4.0.16</h2>
   <div class="date">2026-03-19</div>

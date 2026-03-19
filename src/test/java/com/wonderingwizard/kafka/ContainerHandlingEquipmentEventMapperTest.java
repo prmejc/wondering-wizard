@@ -89,7 +89,7 @@ class ContainerHandlingEquipmentEventMapperTest {
         assertNull(event.messageSequenceNumber());
         assertNull(event.cheShortName());
         assertEquals(CheStatus.WORKING, event.cheStatus());
-        assertNull(event.cheKind());
+        assertEquals("TT", event.cheKind());
         assertNull(event.chePoolId());
         assertEquals(CheJobStepState.IDLE, event.cheJobStepState());
         assertNull(event.sourceTsMs());

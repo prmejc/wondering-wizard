@@ -44,7 +44,7 @@ public class ContainerHandlingEquipmentEventMapper implements EventMapper<Contai
                 messageSequenceNumber,
                 cheShortName,
                 cheStatus,
-                cheKind,
+                cheKind != null ? cheKind : "TT",
                 chePoolId,
                 cheJobStepState,
                 sourceTsMs
