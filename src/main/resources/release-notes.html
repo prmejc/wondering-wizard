@@ -72,6 +72,18 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.22">
+  <h2>v4.0.22</h2>
+  <div class="date">2026-03-19</div>
+
+  <h3>Performance</h3>
+  <ul>
+    <li>JSON serialization moved off the event loop &mdash; <code>buildState()</code> (fast snapshot) runs on the event loop, <code>serialize()</code> (slow string building) runs on the broadcast thread</li>
+    <li>Steps list uses <code>List.copyOf()</code> for thread-safe off-loop serialization</li>
+    <li>Adaptive SSE broadcast debounce &mdash; 50ms when idle (responsive UI), scales up to 500ms under queue pressure (<code>50 + queueSize &times; 50</code>, clamped)</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.21">
   <h2>v4.0.21</h2>
   <div class="date">2026-03-19</div>

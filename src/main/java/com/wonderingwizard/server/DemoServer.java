@@ -128,7 +128,8 @@ public class DemoServer {
     private com.wonderingwizard.metrics.Metrics metrics;
     private final com.wonderingwizard.kafka.DeadLetterQueue deadLetterQueue = new com.wonderingwizard.kafka.DeadLetterQueue();
     private final SseConnectionManager sseManager = new SseConnectionManager();
-    private static final long BROADCAST_DEBOUNCE_MS = 300;
+    private static final long BROADCAST_DEBOUNCE_MIN_MS = 50;
+    private static final long BROADCAST_DEBOUNCE_MAX_MS = 500;
     private volatile boolean broadcastPending;
     private volatile boolean broadcastLoopRunning;
     private final LinkedBlockingQueue<EngineCommand<?>> eventQueue = new LinkedBlockingQueue<>();
@@ -631,14 +632,19 @@ public class DemoServer {
         try {
             while (broadcastPending) {
                 broadcastPending = false;
+                // Adaptive debounce: short when idle, long when event queue has pressure
+                long debounce = Math.clamp(
+                        BROADCAST_DEBOUNCE_MIN_MS + eventQueue.size() * 50L,
+                        BROADCAST_DEBOUNCE_MIN_MS, BROADCAST_DEBOUNCE_MAX_MS);
                 try {
-                    Thread.sleep(BROADCAST_DEBOUNCE_MS);
+                    Thread.sleep(debounce);
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;
                 }
-                // Serialize state on the event processing thread, then broadcast on this thread
-                String json = submitAndWait(() -> JsonSerializer.serialize(buildState()));
+                // Build state snapshot on event loop (fast), serialize on this thread (slow)
+                Map<String, Object> stateSnapshot = submitAndWait(() -> buildState());
+                String json = JsonSerializer.serialize(stateSnapshot);
                 sseManager.broadcast("state", json);
             }
         } finally {
@@ -736,11 +742,11 @@ public class DemoServer {
         state.put("snapshotStep", snapshotStepIndex);
         state.put("totalSteps", steps.size());
 
-        // Only include the last MAX_STEPS_IN_RESPONSE steps
+        // Only include the last MAX_STEPS_IN_RESPONSE steps (copy for thread-safe serialization)
         if (steps.size() <= MAX_STEPS_IN_RESPONSE) {
-            state.put("steps", steps);
+            state.put("steps", List.copyOf(steps));
         } else {
-            state.put("steps", steps.subList(steps.size() - MAX_STEPS_IN_RESPONSE, steps.size()));
+            state.put("steps", List.copyOf(steps.subList(steps.size() - MAX_STEPS_IN_RESPONSE, steps.size())));
         }
 
         // Paginate schedules
