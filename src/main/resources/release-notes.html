@@ -72,6 +72,22 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.29">
+  <h2>v4.0.29</h2>
+  <div class="date">2026-03-20</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>RTG equipment instruction messages corrected &mdash; <code>SELECT_JOB</code>, <code>WAIT_FOR_TT</code>, <code>LIFT</code>, <code>PLACE</code> instruction types with proper text and field mapping</li>
+    <li>RTG <code>fetchCHEShortName</code> now set to the RTG itself, <code>putCHEShortName</code> null for RTG instructions, pinning-based <code>instructionDetails</code></li>
+    <li>RTG name visible in schedule viewer on RTG actions (DSCH uses putCHE, LOAD uses fetchCHE)</li>
+    <li>RTG_DRIVE auto-completion via job operation &ldquo;A&rdquo; event &mdash; <code>RTGJobOperationEvaluator</code> matches by cheId, workInstructionId, and containerId</li>
+    <li>Job operation Kafka consumer (Avro) for <code>joboperation</code> topic</li>
+    <li>Terminal simulator RTG handler &mdash; responds to <code>SELECT_JOB</code> with Avro JobOperation &ldquo;A&rdquo; message</li>
+    <li><code>TT_HANDOVER_FROM_QC</code> completion condition fix &mdash; was incorrectly using <code>TT_HANDOVER_TO_QC</code> action type</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.28">
   <h2>v4.0.28</h2>
   <div class="date">2026-03-20</div>

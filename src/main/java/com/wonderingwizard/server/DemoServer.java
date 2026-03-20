@@ -23,6 +23,7 @@ import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.kafka.ActionActivatedToEquipmentInstructionMapper;
 import com.wonderingwizard.kafka.AssetEventMapper;
 import com.wonderingwizard.kafka.CheTargetPositionEventMapper;
+import com.wonderingwizard.kafka.JobOperationEventMapper;
 import com.wonderingwizard.kafka.KafkaConsumerManager;
 import com.wonderingwizard.kafka.KafkaSideEffectPublisher;
 import com.wonderingwizard.events.CheLogicalPositionEvent;
@@ -54,6 +55,7 @@ import com.wonderingwizard.processors.DigitalMapProcessor;
 import com.wonderingwizard.processors.EventLogProcessor;
 import com.wonderingwizard.processors.RtgWaitDurationStep;
 import com.wonderingwizard.processors.QCAssetEventEvaluator;
+import com.wonderingwizard.processors.RTGJobOperationEvaluator;
 import com.wonderingwizard.processors.TTPositionEventEvaluator;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TTStateProcessor;
@@ -281,6 +283,7 @@ public class DemoServer {
         scheduleRunnerProcessor.registerSubProcessor(new ContainerMoveStoppedHandler());
         scheduleRunnerProcessor.registerCompletionEvaluator(new QCAssetEventEvaluator());
         scheduleRunnerProcessor.registerCompletionEvaluator(new TTPositionEventEvaluator());
+        scheduleRunnerProcessor.registerCompletionEvaluator(new RTGJobOperationEvaluator());
         engine.register(scheduleRunnerProcessor);
         engine.register(new DelayProcessor());
         // Take initial snapshot so we can always reset to clean state
@@ -485,6 +488,10 @@ public class DemoServer {
         kafkaConsumerManager.register(
                 settings.cheTargetPositionConsumerConfiguration(),
                 new CheTargetPositionEventMapper()
+        );
+        kafkaConsumerManager.register(
+                settings.jobOperationConsumerConfiguration(),
+                new JobOperationEventMapper()
         );
         kafkaConsumerManager.startAll();
     }

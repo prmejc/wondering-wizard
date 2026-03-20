@@ -96,12 +96,15 @@ class ActionActivatedToEquipmentInstructionMapperTest {
         EquipmentInstructionKafkaMessage message = rtgMapper.mapToMessage(activated);
 
         assertNotNull(message);
-        assertEquals("drive", message.equipmentInstructionType());
+        assertEquals("SELECT_JOB", message.equipmentInstructionType());
+        assertEquals("Select job", message.equipmentInstructionText());
         assertEquals(actionId.toString(), message.equipmentInstructionId());
         assertEquals("Y01.01.01", message.destinationNodeId());
         assertEquals(ACTIVATED_AT.toEpochMilli(), message.targetTime());
         assertEquals("RTG05", message.recipientCHEShortName());
-        assertEquals("RTG05", message.destinationCHEShortName());
+        assertEquals("", message.destinationCHEShortName());
+        assertEquals("RTG05", message.fetchCHEShortName());
+        assertNull(message.putCHEShortName());
         assertEquals("RTG", message.recipientCHEKind());
         assertEquals(TERMINAL_CODE, message.terminalCode());
         assertEquals("FESv4.0.18", message.eventSource());
@@ -180,7 +183,8 @@ class ActionActivatedToEquipmentInstructionMapperTest {
         EquipmentInstructionKafkaMessage message = rtgMapper.mapToMessage(activated);
 
         assertNotNull(message);
-        assertEquals("fetch", message.equipmentInstructionType());
+        assertEquals("LIFT", message.equipmentInstructionType());
+        assertEquals("Lift container", message.equipmentInstructionText());
         assertEquals(actionId.toString(), message.equipmentInstructionId());
         assertEquals("RTG", message.recipientCHEKind());
     }
@@ -203,7 +207,8 @@ class ActionActivatedToEquipmentInstructionMapperTest {
         EquipmentInstructionKafkaMessage message = rtgMapper.mapToMessage(activated);
 
         assertNotNull(message);
-        assertEquals("place on yard", message.equipmentInstructionType());
+        assertEquals("PLACE", message.equipmentInstructionType());
+        assertEquals("Place on yard", message.equipmentInstructionText());
     }
 
     @Test
@@ -241,7 +246,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
         GenericRecord avro = rtgMapper.map(activated);
 
         assertNotNull(avro);
-        assertEquals("drive", avro.get("equipmentInstructionType").toString());
+        assertEquals("SELECT_JOB", avro.get("equipmentInstructionType").toString());
         assertEquals(actionId.toString(), avro.get("equipmentInstructionId").toString());
         assertEquals(TERMINAL_CODE, avro.get("terminalCode").toString());
     }

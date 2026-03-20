@@ -153,6 +153,17 @@ public class Settings {
         );
     }
 
+    public ConsumerConfiguration jobOperationConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.job-operation.topic",
+                        "apmt.terminaloperations.joboperation.topic.confidential.dedicated.v1"),
+                get("kafka.consumer.job-operation.group-id", "wondering-wizard-job-operation"),
+                null,
+                "JobOperation",
+                false
+        );
+    }
+
     public String terminalCode() {
         return get("kafka.terminal-code", "UNKNOWN");
     }

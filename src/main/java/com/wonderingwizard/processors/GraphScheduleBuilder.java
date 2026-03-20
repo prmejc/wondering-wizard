@@ -778,6 +778,9 @@ public class GraphScheduleBuilder {
                  TT_DRIVE_TO_RTG_PULL, TT_DRIVE_TO_RTG_STANDBY, TT_DRIVE_TO_RTG_UNDER ->
                     List.of(new CompletionCondition(
                             "tt-position-confirmed", TTPositionEventEvaluator.CONDITION_TYPE, "TT position confirmed"));
+            // RTG drive completed by job operation "A" (operator accepted)
+            case RTG_DRIVE -> List.of(new CompletionCondition(
+                    "rtg-job-accepted", RTGJobOperationEvaluator.CONDITION_TYPE, "RTG job accepted"));
             default -> List.of();
         };
     }

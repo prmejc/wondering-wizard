@@ -566,7 +566,14 @@ public final class JsonSerializer {
         writeField(sb, "durationSeconds", action.durationSeconds(), false);
         writeField(sb, "deviceIndex", action.deviceIndex(), false);
         if (action.cheId() != null) writeField(sb, "cheId", action.cheId(), false);
-        if (action.cheShortName() != null) writeField(sb, "cheShortName", action.cheShortName(), false);
+        String cheShortName = action.cheShortName();
+        if (cheShortName == null && action.deviceType() == DeviceType.RTG
+                && action.workInstructions() != null && !action.workInstructions().isEmpty()) {
+            var wi = action.workInstructions().getFirst();
+            cheShortName = "LOAD".equalsIgnoreCase(wi.moveKind())
+                    ? wi.fetchChe() : wi.putChe();
+        }
+        if (cheShortName != null) writeField(sb, "cheShortName", cheShortName, false);
         if (action.targetChe() != null) writeField(sb, "targetChe", action.targetChe(), false);
         sb.append('}');
     }

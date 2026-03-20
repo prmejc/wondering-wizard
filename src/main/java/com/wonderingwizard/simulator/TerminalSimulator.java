@@ -149,7 +149,10 @@ public class TerminalSimulator {
                 config.getProperty("topic.equipment-instruction.tt"),
                 new TTHandler(config.getProperty("topic.che-target-position"), terminalCode));
 
-        // Future: register RTG handler here
+        // Register RTG handler
+        simulator.registerHandler(
+                config.getProperty("topic.equipment-instruction.rtg"),
+                new RTGHandler(config.getProperty("topic.job-operation")));
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             logger.info("Shutting down Terminal Simulator...");
