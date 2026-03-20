@@ -57,6 +57,12 @@ This is a clean event-driven system following these principles:
   - Persisted to a database
   - Sent as messages to Kafka or similar message brokers
 
+#### State Management: Prefer Derived State Over Event-Sourced State
+- **Use Derived State** - When information can be computed from existing state (e.g., action states, work instruction states), derive it on demand rather than maintaining a separate stateful processor that listens for events and accumulates state
+- **Why**: Derived state is self-healing (auto-corrects on next evaluation), has no sync issues, and avoids the complexity of handling every edge case (reverts, resets, abandons) in a separate processor
+- **Example**: Equipment position occupancy (QC under/standby, RTG under/standby) is derived from current action states in `ScheduleRunnerProcessor.getOccupiedPositionKeys()`, not tracked by a dedicated occupancy processor
+- **When to use a separate processor**: Only when the state genuinely requires its own lifecycle — i.e., it cannot be derived from existing state, or it reacts to events that no other processor handles
+
 #### Processing Rules
 - **No delays or thread sleeps** - Blocking operations like `Thread.sleep()` or delays are strictly forbidden inside event processing
 - **Time-based logic must use TimeEvent** - If business logic depends on current time:

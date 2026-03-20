@@ -106,6 +106,8 @@ The main coordinator that:
 
 6. **Reversible**: State can be reverted using the step-back functionality (Memento pattern).
 
+7. **Derived State over Event-Sourced State**: When information can be computed from existing state, derive it on demand rather than maintaining a separate stateful processor. Derived state is self-healing (auto-corrects on next evaluation), eliminates sync issues, and avoids the complexity of handling every edge case (reverts, resets, abandons) in a dedicated processor. Example: equipment position occupancy is derived from action states via `ScheduleRunnerProcessor.getOccupiedPositionKeys()`, not tracked by a separate occupancy processor.
+
 ## Step-Back (Undo) Architecture
 
 The engine supports reverting to previous states using the Memento design pattern.
