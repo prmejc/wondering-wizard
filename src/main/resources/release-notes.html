@@ -72,6 +72,20 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.28">
+  <h2>v4.0.28</h2>
+  <div class="date">2026-03-20</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>TT equipment instruction messages corrected &mdash; <code>recipientCHEShortName</code> now uses the assigned truck name, <code>destinationCHEShortName</code> resolves to QC for QC-bound actions and RTG for RTG-bound actions</li>
+    <li>TT position confirmation consumer &mdash; FES now consumes <code>chetargetposition</code> topic (Avro) to auto-complete TT drive actions when the truck confirms arrival</li>
+    <li>TT drive actions auto-complete via completion conditions: <code>TT_DRIVE_TO_QC_PULL</code>, <code>TT_DRIVE_TO_QC_STANDBY</code>, <code>TT_DRIVE_UNDER_QC</code>, <code>TT_DRIVE_TO_RTG_PULL</code>, <code>TT_DRIVE_TO_RTG_STANDBY</code>, <code>TT_DRIVE_TO_RTG_UNDER</code></li>
+    <li><code>TT_HANDOVER_FROM_QC</code> auto-completes from QC &ldquo;Placed container on truck&rdquo; asset event (same event as QC_PLACE)</li>
+    <li>Terminal simulator TT handler &mdash; responds to TT equipment instructions with Avro <code>CheTargetPositionConfirmation</code> messages</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.27">
   <h2>v4.0.27</h2>
   <div class="date">2026-03-20</div>

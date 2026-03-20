@@ -114,6 +114,14 @@ public class ActionActivatedToEquipmentInstructionMapper implements SideEffectMa
         return switch (activated.actionType()) {
             case QC_PLACE -> activated.cheShortName() != null ? activated.cheShortName() : "";
             case QC_LIFT -> "";
+            // TT actions going towards QC → destination is QC
+            case TT_DRIVE_TO_QC_PULL, TT_DRIVE_TO_QC_STANDBY, TT_DRIVE_UNDER_QC,
+                 TT_HANDOVER_TO_QC, TT_HANDOVER_FROM_QC ->
+                    wi.fetchChe() != null ? wi.fetchChe() : "";
+            // TT actions going towards RTG → destination is RTG
+            case TT_DRIVE_TO_RTG_PULL, TT_DRIVE_TO_RTG_STANDBY, TT_DRIVE_TO_RTG_UNDER,
+                 TT_HANDOVER_FROM_RTG, TT_HANDOVER_TO_RTG ->
+                    wi.putChe() != null ? wi.putChe() : "";
             default -> wi.putChe() != null ? wi.putChe() : "";
         };
     }
@@ -125,7 +133,7 @@ public class ActionActivatedToEquipmentInstructionMapper implements SideEffectMa
         WorkInstructionEvent wi = activated.workInstructions().getFirst();
         return switch (activated.deviceType()) {
             case QC -> wi.fetchChe() != null ? wi.fetchChe() : "";
-            case TT -> wi.fetchChe() != null ? wi.fetchChe() : "";
+            case TT -> activated.cheShortName() != null ? activated.cheShortName() : "";
             case RTG -> wi.putChe() != null ? wi.putChe() : "";
             case null -> "";
         };

@@ -771,8 +771,13 @@ public class GraphScheduleBuilder {
         return switch (actionType) {
             case QC_LIFT -> List.of(new CompletionCondition(
                     "qc-lifted-from-vessel", QCAssetEventEvaluator.CONDITION_TYPE, "Lifted container from vessel"));
-            case QC_PLACE -> List.of(new CompletionCondition(
+            case QC_PLACE, TT_HANDOVER_FROM_QC -> List.of(new CompletionCondition(
                     "qc-placed-on-truck", QCAssetEventEvaluator.CONDITION_TYPE, "Placed container on truck"));
+            // TT drive actions completed by che-target-position confirmation
+            case TT_DRIVE_TO_QC_PULL, TT_DRIVE_TO_QC_STANDBY, TT_DRIVE_UNDER_QC,
+                 TT_DRIVE_TO_RTG_PULL, TT_DRIVE_TO_RTG_STANDBY, TT_DRIVE_TO_RTG_UNDER ->
+                    List.of(new CompletionCondition(
+                            "tt-position-confirmed", TTPositionEventEvaluator.CONDITION_TYPE, "TT position confirmed"));
             default -> List.of();
         };
     }

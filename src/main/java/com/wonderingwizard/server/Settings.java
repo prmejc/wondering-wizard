@@ -142,6 +142,17 @@ public class Settings {
         );
     }
 
+    public ConsumerConfiguration cheTargetPositionConsumerConfiguration() {
+        return new ConsumerConfiguration(
+                get("kafka.consumer.che-target-position.topic",
+                        "apmt.terminaloperations.chetargetposition.topic.confidential.dedicated.v1"),
+                get("kafka.consumer.che-target-position.group-id", "wondering-wizard-che-target-position"),
+                null,
+                "CheTargetPositionConfirmation",
+                false
+        );
+    }
+
     public String terminalCode() {
         return get("kafka.terminal-code", "UNKNOWN");
     }

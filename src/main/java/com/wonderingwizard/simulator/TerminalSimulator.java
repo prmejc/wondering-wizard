@@ -144,7 +144,12 @@ public class TerminalSimulator {
                         terminalCode,
                         simulator.getWiTracker()));
 
-        // Future: register RTG and TT handlers here
+        // Register TT handler
+        simulator.registerHandler(
+                config.getProperty("topic.equipment-instruction.tt"),
+                new TTHandler(config.getProperty("topic.che-target-position"), terminalCode));
+
+        // Future: register RTG handler here
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             logger.info("Shutting down Terminal Simulator...");

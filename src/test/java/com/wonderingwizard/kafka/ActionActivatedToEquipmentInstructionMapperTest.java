@@ -260,7 +260,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
 
         ActionActivated activated = new ActionActivated(
                 actionId, 1L, "TAKT100", ActionType.TT_DRIVE_TO_RTG_PULL, "drive to RTG pull",
-                ACTIVATED_AT, DeviceType.TT, List.of(wi)
+                ACTIVATED_AT, DeviceType.TT, List.of(wi), "TT01"
         );
 
         EquipmentInstructionKafkaMessage message = ttMapper.mapToMessage(activated);
@@ -269,7 +269,8 @@ class ActionActivatedToEquipmentInstructionMapperTest {
         assertEquals("drive to RTG pull", message.equipmentInstructionType());
         assertEquals(actionId.toString(), message.equipmentInstructionId());
         assertEquals("TT", message.recipientCHEKind());
-        assertEquals("QC01", message.recipientCHEShortName());
+        assertEquals("TT01", message.recipientCHEShortName());
+        assertEquals("RTG05", message.destinationCHEShortName());
         assertEquals(TERMINAL_CODE, message.terminalCode());
     }
 
@@ -323,8 +324,8 @@ class ActionActivatedToEquipmentInstructionMapperTest {
     }
 
     @Test
-    @DisplayName("TT mapper should use fetchChe as recipientCHE for TT device type")
-    void ttMapperUsesFetchCheAsRecipient() {
+    @DisplayName("TT mapper should use assigned truck as recipientCHE for TT device type")
+    void ttMapperUsesAssignedTruckAsRecipient() {
         WorkInstructionEvent wi = new WorkInstructionEvent(
                 100L, 1L, "QC01", MoveStage.PLANNED,
                 ACTIVATED_AT, 120, 60, "RTG05",
@@ -333,12 +334,13 @@ class ActionActivatedToEquipmentInstructionMapperTest {
 
         ActionActivated activated = new ActionActivated(
                 UUID.randomUUID(), 1L, "TAKT100", ActionType.TT_DRIVE_TO_QC_PULL, "drive to QC pull",
-                ACTIVATED_AT, DeviceType.TT, List.of(wi)
+                ACTIVATED_AT, DeviceType.TT, List.of(wi), "TT03"
         );
 
         EquipmentInstructionKafkaMessage message = ttMapper.mapToMessage(activated);
 
-        assertEquals("QC01", message.recipientCHEShortName());
+        assertEquals("TT03", message.recipientCHEShortName());
+        assertEquals("QC01", message.destinationCHEShortName());
     }
 
     @Test
