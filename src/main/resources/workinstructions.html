@@ -124,6 +124,11 @@ const WI_FIELDS = [
   { key: 'twinCompanionWorkInstruction', label: 'Twin Companion', type: 'number' },
   { key: 'toPosition', label: 'To Position', type: 'text' },
   { key: 'containerId', label: 'Container ID', type: 'text' },
+  { key: 'isoType', label: 'ISO Type', type: 'text' },
+  { key: 'freightKind', label: 'Freight Kind', type: 'select',
+    options: ['', 'MTY', 'FCL', 'LCL'] },
+  { key: 'pinning', label: 'Pinning', type: 'select',
+    options: ['', 'GO_PINNING'] },
 ];
 
 // Map of workInstructionId -> latest field values (what the user sees/edits)

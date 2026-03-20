@@ -58,25 +58,64 @@ public class ActionActivatedToEquipmentInstructionMapper implements SideEffectMa
         String recipientChe = resolveRecipientChe(activated);
 
         return new EquipmentInstructionKafkaMessage(
-                activated.actionDescription(),
+                resolveEquipmentInstructionType(activated),
                 activated.actionId().toString(),
-                activated.actionDescription(),
-                firstWi.toPosition() != null ? firstWi.toPosition() : "",
-                firstWi.toPosition() != null ? firstWi.toPosition() : "",
+                resolveEquipmentInstructionText(activated),
+                resolveDestinationNodeId(activated, firstWi),
+                resolveDestinationNodeName(activated, firstWi),
                 activated.activatedAt().toEpochMilli(),
                 recipientChe,
-                firstWi.putChe() != null ? firstWi.putChe() : "",
+                resolveDestinationChe(activated, firstWi),
                 activated.deviceType() != null ? activated.deviceType().name() : "",
                 false,
-                "",
+                firstWi.moveKind() != null ? firstWi.moveKind() : "",
                 buildContainers(activated),
                 firstWi.fetchChe(),
-                null,
+                activated.cheShortName(),
                 firstWi.putChe(),
                 eventSource,
                 activated.activatedAt().toEpochMilli(),
                 terminalCode
         );
+    }
+
+    private String resolveEquipmentInstructionType(ActionActivated activated) {
+        return switch (activated.actionType()) {
+            case QC_LIFT -> "LIFT";
+            case QC_PLACE -> "PLACE";
+            default -> activated.actionDescription();
+        };
+    }
+
+    private String resolveEquipmentInstructionText(ActionActivated activated) {
+        return switch (activated.actionType()) {
+            case QC_LIFT -> "Lift";
+            case QC_PLACE -> "Place container";
+            default -> activated.actionDescription();
+        };
+    }
+
+    private String resolveDestinationNodeId(ActionActivated activated, WorkInstructionEvent wi) {
+        return switch (activated.actionType()) {
+            case QC_LIFT, QC_PLACE -> "";
+            default -> wi.toPosition() != null ? wi.toPosition() : "";
+        };
+    }
+
+    private String resolveDestinationNodeName(ActionActivated activated, WorkInstructionEvent wi) {
+        return switch (activated.actionType()) {
+            case QC_LIFT -> "";
+            case QC_PLACE -> ""; // TODO: QC under-crane position from flow position data
+            default -> wi.toPosition() != null ? wi.toPosition() : "";
+        };
+    }
+
+    private String resolveDestinationChe(ActionActivated activated, WorkInstructionEvent wi) {
+        return switch (activated.actionType()) {
+            case QC_PLACE -> activated.cheShortName() != null ? activated.cheShortName() : "";
+            case QC_LIFT -> "";
+            default -> wi.putChe() != null ? wi.putChe() : "";
+        };
     }
 
     private String resolveRecipientChe(ActionActivated activated) {
@@ -99,18 +138,28 @@ public class ActionActivatedToEquipmentInstructionMapper implements SideEffectMa
         for (WorkInstructionEvent wi : activated.workInstructions()) {
             containers.add(new Container(
                     sequence++,
-                    "",
-                    List.of(activated.actionDescription()),
+                    wi.containerId() != null ? wi.containerId() : "",
+                    resolveInstructionDetails(activated, wi),
                     String.valueOf(wi.workQueueId()),
                     wi.workInstructionId(),
-                    "",
-                    "",
-                    "",
-                    "",
+                    wi.isoType() != null ? wi.isoType() : "",
+                    wi.jobPosition() != null ? wi.jobPosition() : "",
+                    wi.freightKind() != null ? wi.freightKind() : "",
+                    wi.fromPosition() != null ? wi.fromPosition() : "",
                     wi.toPosition() != null ? wi.toPosition() : ""
             ));
         }
 
         return containers;
+    }
+
+    private List<String> resolveInstructionDetails(ActionActivated activated, WorkInstructionEvent wi) {
+        return switch (activated.actionType()) {
+            case QC_LIFT, QC_PLACE -> {
+                String pinning = wi.pinning();
+                yield (pinning != null && !pinning.isEmpty()) ? List.of("GO_PINNING") : List.of("SKIP_PINNING");
+            }
+            default -> List.of(activated.actionDescription());
+        };
     }
 }

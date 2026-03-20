@@ -72,6 +72,34 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.27">
+  <h2>v4.0.27</h2>
+  <div class="date">2026-03-20</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>QC equipment instruction messages corrected for DSCH &mdash; <code>equipmentInstructionType</code> now sends <code>LIFT</code>/<code>PLACE</code>, proper <code>equipmentInstructionText</code>, empty <code>destinationNodeId</code>/<code>destinationNodeName</code> for QC, <code>moveKind</code> from WI, pinning-based <code>instructionDetails</code> (<code>SKIP_PINNING</code>/<code>GO_PINNING</code>)</li>
+    <li>New WI fields: <code>isoType</code>, <code>freightKind</code>, <code>pinning</code> &mdash; wired through Kafka consumer, DemoServer, JsonSerializer, schedule-viewer form, and work instructions page</li>
+    <li>Container fields populated in equipment instructions: <code>containerId</code>, <code>fromPosition</code>, <code>isoType</code>, <code>freightKind</code>, <code>containerTruckPosition</code> (from WI jobPosition)</li>
+    <li><code>targetChe</code> field on actions &mdash; non-TT actions (QC, RTG) receive the assigned TT name when a truck is allocated for the same containerIndex</li>
+    <li>TT actions processed first in activation pass &mdash; ensures truck allocation and <code>targetChe</code> propagation happen before QC/RTG actions activate</li>
+    <li>Truck assignments preserved across reschedules &mdash; <code>transferTruckAssignments()</code> carries <code>cheShortName</code> and <code>targetChe</code> from old schedule to new</li>
+    <li>Completion conditions framework &mdash; actions can have static <code>CompletionCondition</code> records that must be satisfied by external events before the action auto-completes</li>
+    <li><code>CompletionConditionEvaluator</code> interface with <code>QCAssetEventEvaluator</code> &mdash; QC_LIFT completes on &ldquo;Lifted container from vessel&rdquo; asset event, QC_PLACE on &ldquo;Placed container on truck&rdquo;</li>
+    <li>Terminal Simulator (<code>com.wonderingwizard.simulator</code>) &mdash; embedded in same image, started with <code>RUN_MODE=simulator</code>. Consumes QC equipment instructions, responds with asset events and &ldquo;QC Discharged Container&rdquo; WI events</li>
+    <li>Simulator tracks WI state by consuming the WI topic (Avro) to construct discharge events with full WI fields</li>
+    <li><code>DemoEventProducer</code> abstraction &mdash; when Kafka is enabled, WI events from the UI are published to Kafka (Avro) instead of processed directly, enabling realistic round-trip through the simulator</li>
+  </ul>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li><code>destinationCHEShortName</code> on QC_PLACE now correctly set to the assigned TT (not the RTG)</li>
+    <li><code>carryCHEShortName</code> on QC instructions set to the assigned TT</li>
+    <li>Play clock uses fire-and-forget event submission &mdash; prevents HTTP request timeouts when clock is ticking</li>
+    <li>Settings file path trimmed to handle trailing whitespace from IDE env vars</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.26">
   <h2>v4.0.26</h2>
   <div class="date">2026-03-20</div>

@@ -53,6 +53,9 @@ public record WorkInstructionKafkaMessage(
         Long twinCompanionWorkInstruction,
         String fromPosition,
         String toPosition,
-        String jobPosition
+        String jobPosition,
+        String isoType,
+        String freightKind,
+        String pinning
 ) {
 }

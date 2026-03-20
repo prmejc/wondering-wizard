@@ -384,11 +384,16 @@ class ActionActivatedToEquipmentInstructionMapperTest {
         EquipmentInstructionKafkaMessage message = qcMapper.mapToMessage(activated);
 
         assertNotNull(message);
-        assertEquals("QC Lift", message.equipmentInstructionType());
+        assertEquals("LIFT", message.equipmentInstructionType());
+        assertEquals("Lift", message.equipmentInstructionText());
         assertEquals(actionId.toString(), message.equipmentInstructionId());
         assertEquals("QC", message.recipientCHEKind());
         assertEquals("QC01", message.recipientCHEShortName());
+        assertEquals("", message.destinationNodeId());
+        assertEquals("", message.destinationNodeName());
         assertEquals(TERMINAL_CODE, message.terminalCode());
+        // Default pinning is empty → SKIP_PINNING
+        assertEquals(List.of("SKIP_PINNING"), message.containers().getFirst().instructionDetails());
     }
 
     @Test
@@ -409,7 +414,9 @@ class ActionActivatedToEquipmentInstructionMapperTest {
         EquipmentInstructionKafkaMessage message = qcMapper.mapToMessage(activated);
 
         assertNotNull(message);
-        assertEquals("QC Place", message.equipmentInstructionType());
+        assertEquals("PLACE", message.equipmentInstructionType());
+        assertEquals("Place container", message.equipmentInstructionText());
+        assertEquals("", message.destinationNodeId());
     }
 
     @Test
@@ -447,7 +454,7 @@ class ActionActivatedToEquipmentInstructionMapperTest {
         GenericRecord avro = qcMapper.map(activated);
 
         assertNotNull(avro);
-        assertEquals("QC Lift", avro.get("equipmentInstructionType").toString());
+        assertEquals("LIFT", avro.get("equipmentInstructionType").toString());
         assertEquals(actionId.toString(), avro.get("equipmentInstructionId").toString());
         assertEquals(TERMINAL_CODE, avro.get("terminalCode").toString());
     }

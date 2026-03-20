@@ -487,6 +487,25 @@ class EventPanel extends HTMLElement {
         <label>Est. RTG Cycle Time (sec)</label>
         <input id="wi-rtg-ect" type="number" value="60">
       </div>
+      <div class="form-group">
+        <label>ISO Type</label>
+        <input id="wi-iso-type" value="22G1">
+      </div>
+      <div class="form-group">
+        <label>Freight Kind</label>
+        <select id="wi-freight-kind">
+          <option value="FCL" selected>FCL</option>
+          <option value="MTY">MTY</option>
+          <option value="LCL">LCL</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Pinning</label>
+        <select id="wi-pinning">
+          <option value="" selected>(none)</option>
+          <option value="GO_PINNING">GO_PINNING</option>
+        </select>
+      </div>
       <button onclick="this.closest('event-panel').sendWI()" style="margin-top:8px;width:100%">Add Work Instruction</button>
 
       <h3 style="margin-top:20px">Work Queue</h3>
@@ -570,7 +589,10 @@ class EventPanel extends HTMLElement {
       estimatedMoveTime: this.querySelector('#wi-emt').value,
       estimatedCycleTimeSeconds: this.querySelector('#wi-ect').value,
       estimatedRtgCycleTimeSeconds: this.querySelector('#wi-rtg-ect').value,
-      workInstructionMoveStage: this.querySelector('#wi-move-stage').value
+      workInstructionMoveStage: this.querySelector('#wi-move-stage').value,
+      isoType: this.querySelector('#wi-iso-type').value,
+      freightKind: this.querySelector('#wi-freight-kind').value,
+      pinning: this.querySelector('#wi-pinning').value
     };
     await apiCall('/api/work-instruction', data);
     // Auto-increment WI ID and update twin companion

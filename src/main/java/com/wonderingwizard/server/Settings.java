@@ -55,7 +55,7 @@ public class Settings {
         // Override from external file if specified
         String externalFile = System.getenv(ENV_SETTINGS_FILE);
         if (externalFile != null && !externalFile.isBlank()) {
-            Path path = Path.of(externalFile);
+            Path path = Path.of(externalFile.trim());
             if (Files.exists(path)) {
                 try (InputStream is = Files.newInputStream(path)) {
                     props.load(is);

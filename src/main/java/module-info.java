@@ -17,4 +17,6 @@ module com.wonderingwizard {
     exports com.wonderingwizard.domain.takt;
     exports com.wonderingwizard.kafka;
     exports com.wonderingwizard.metrics;
+    exports com.wonderingwizard.simulator;
+    exports com.wonderingwizard.server.demo;
 }

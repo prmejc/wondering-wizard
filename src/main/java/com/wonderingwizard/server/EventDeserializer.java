@@ -80,7 +80,10 @@ public final class EventDeserializer {
                     fields.getOrDefault("toPosition", ""),
                     fields.getOrDefault("containerId", ""),
                     fields.getOrDefault("moveKind", ""),
-                    fields.getOrDefault("jobPosition", "FWD"));
+                    fields.getOrDefault("jobPosition", "FWD"),
+                    fields.getOrDefault("isoType", ""),
+                    fields.getOrDefault("freightKind", ""),
+                    fields.getOrDefault("pinning", ""));
 
             case "ActionCompletedEvent" -> new ActionCompletedEvent(
                     UUID.fromString(requireField(fields, "actionId")),

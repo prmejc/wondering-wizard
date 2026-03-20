@@ -52,6 +52,7 @@ import com.wonderingwizard.processors.DelayProcessor;
 import com.wonderingwizard.processors.DigitalMapProcessor;
 import com.wonderingwizard.processors.EventLogProcessor;
 import com.wonderingwizard.processors.RtgWaitDurationStep;
+import com.wonderingwizard.processors.QCAssetEventEvaluator;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TTStateProcessor;
 import com.wonderingwizard.processors.ContainerMoveStoppedHandler;
@@ -124,6 +125,7 @@ public class DemoServer {
     private DigitalMapProcessor digitalMapProcessor;
     private HttpServer httpServer;
     private KafkaConsumerManager kafkaConsumerManager;
+    private com.wonderingwizard.server.demo.DemoEventProducer demoEventProducer;
     private KafkaSideEffectPublisher sideEffectPublisher;
     private com.wonderingwizard.metrics.Metrics metrics;
     private final com.wonderingwizard.kafka.DeadLetterQueue deadLetterQueue = new com.wonderingwizard.kafka.DeadLetterQueue();
@@ -275,6 +277,7 @@ public class DemoServer {
         scheduleRunnerProcessor.registerSubProcessor(new WIRevertHandler());
         scheduleRunnerProcessor.registerSubProcessor(new WQChangeHandler());
         scheduleRunnerProcessor.registerSubProcessor(new ContainerMoveStoppedHandler());
+        scheduleRunnerProcessor.registerCompletionEvaluator(new QCAssetEventEvaluator());
         engine.register(scheduleRunnerProcessor);
         engine.register(new DelayProcessor());
         // Take initial snapshot so we can always reset to clean state
@@ -356,7 +359,9 @@ public class DemoServer {
         if (settings.kafkaEnabled()) {
             startKafkaConsumers();
             startSideEffectPublisher();
+            demoEventProducer = new com.wonderingwizard.server.demo.DemoEventKafkaProducer(settings);
         } else {
+            demoEventProducer = new com.wonderingwizard.server.demo.DemoEventDirectProducer(this);
             logger.info("Kafka disabled (kafka.enabled=false)");
         }
     }
@@ -368,6 +373,9 @@ public class DemoServer {
         stopPlayClock();
         eventLoopRunning = false;
         sseManager.stop();
+        if (demoEventProducer instanceof com.wonderingwizard.server.demo.DemoEventKafkaProducer kafkaProducer) {
+            kafkaProducer.close();
+        }
         if (sideEffectPublisher != null) {
             sideEffectPublisher.stop();
         }
@@ -1974,16 +1982,19 @@ public class DemoServer {
             String containerId = body.getOrDefault("containerId", "");
             String moveKind = body.getOrDefault("moveKind", "");
             String jobPosition = body.getOrDefault("jobPosition", "FWD");
+            String isoType = body.getOrDefault("isoType", "");
+            String freightKind = body.getOrDefault("freightKind", "");
+            String pinning = body.getOrDefault("pinning", "");
 
             WorkInstructionEvent event = new WorkInstructionEvent(
                     eventType, workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
                     estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                     putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
-                    fromPosition, toPosition, containerId, moveKind, jobPosition);
-            StepResult result = processStep("WorkInstruction: " + workInstructionId, event);
+                    fromPosition, toPosition, containerId, moveKind, jobPosition,
+                    isoType, freightKind, pinning);
+            demoEventProducer.sendWorkInstruction(event);
 
-            sendJsonResponse(exchange, 200, JsonSerializer.serialize(
-                    Map.of("step", result.step(), "sideEffects", result.sideEffects())));
+            sendJsonResponse(exchange, 200, "{\"ok\":true}");
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }
@@ -2123,19 +2134,29 @@ public class DemoServer {
         stopPlayClock();
         playClockLastSentTime = currentTime;
         Thread thread = Thread.ofVirtual().name("play-clock").start(() -> {
+            var tickPending = new java.util.concurrent.atomic.AtomicBoolean(false);
             while (!Thread.currentThread().isInterrupted()) {
                 try {
                     double speed = playClockSpeed;
                     long intervalMs = Math.max(50, Math.round(1000.0 / speed));
                     Thread.sleep(intervalMs);
 
+                    // Skip if previous tick is still being processed
+                    if (tickPending.get()) continue;
+
                     playClockLastSentTime = playClockLastSentTime.plusSeconds(1);
                     Instant timeToSet = playClockLastSentTime;
-                    submitAndWait(() -> {
-                        currentTime = timeToSet;
-                        TimeEvent te = new TimeEvent(timeToSet);
-                        processStepInternal("Tick +1s", te);
-                    });
+                    tickPending.set(true);
+                    eventQueue.add(new EngineCommand<>(() -> {
+                        try {
+                            currentTime = timeToSet;
+                            TimeEvent te = new TimeEvent(timeToSet);
+                            processStepInternal("Tick +1s", te);
+                        } finally {
+                            tickPending.set(false);
+                        }
+                        return null;
+                    }, new java.util.concurrent.CompletableFuture<>()));
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     break;

@@ -48,7 +48,10 @@ class WorkInstructionEventMapperTest {
                     {"name": "twinCompanionWorkInstruction", "type": ["null", "long"], "default": null},
                     {"name": "fromPosition", "type": ["null", "string"], "default": null},
                     {"name": "toPosition", "type": ["null", "string"], "default": null},
-                    {"name": "jobPosition", "type": ["null", "string"], "default": null}
+                    {"name": "jobPosition", "type": ["null", "string"], "default": null},
+                    {"name": "isoType", "type": ["null", "string"], "default": null},
+                    {"name": "freightKind", "type": ["null", "string"], "default": null},
+                    {"name": "pinning", "type": ["null", "string"], "default": null}
                 ]
             }
             """;

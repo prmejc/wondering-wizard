@@ -2,6 +2,7 @@ package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.ActionStatus;
+import com.wonderingwizard.domain.takt.CompletionCondition;
 import com.wonderingwizard.domain.takt.ActionConditionContext;
 import com.wonderingwizard.domain.takt.ConditionMode;
 import com.wonderingwizard.domain.takt.ActionType;
@@ -556,6 +557,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     private final Map<Long, ScheduleState> scheduleStates = new HashMap<>();
     private final Map<Long, Instant> workInstructionEstimatedMoveTime = new HashMap<>();
     private final List<ScheduleSubProcessor> subProcessors = new ArrayList<>();
+    private final List<CompletionConditionEvaluator> completionEvaluators = new ArrayList<>();
+    private final Map<UUID, Set<String>> satisfiedCompletionConditions = new HashMap<>();
     private Instant currentTime = Instant.EPOCH;
     private TTAllocationStrategy ttAllocationStrategy;
 
@@ -575,6 +578,10 @@ public class ScheduleRunnerProcessor implements EventProcessor {
      */
     public void registerSubProcessor(ScheduleSubProcessor subProcessor) {
         this.subProcessors.add(subProcessor);
+    }
+
+    public void registerCompletionEvaluator(CompletionConditionEvaluator evaluator) {
+        this.completionEvaluators.add(evaluator);
     }
 
     /**
@@ -723,6 +730,9 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             }
         }
 
+        // Evaluate completion conditions
+        sideEffects.addAll(evaluateCompletionConditions(event));
+
         // Final activation pass: always run after all state mutations.
         // This consolidates all activation logic into one place and ensures
         // takts are always processed in sequence order for TT allocation priority.
@@ -780,6 +790,9 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         // Transfer event gate states from old actions to new actions by (actionType, containerIndex)
         transferEventGateState(oldState, newState);
 
+        // Transfer truck assignments from old schedule to new schedule by containerIndex
+        transferTruckAssignments(oldState, newState);
+
         for (Takt newTakt : newState.takts) {
             String taktName = newTakt.name();
             TaktState oldTaktState = oldState.taktStates.getOrDefault(taktName, TaktState.WAITING);
@@ -819,6 +832,42 @@ public class ScheduleRunnerProcessor implements EventProcessor {
      */
     private static String actionKey(Action a) {
         return a.actionType() + ":" + a.containerIndex() + ":" + a.deviceIndex();
+    }
+
+    /**
+     * Transfers truck assignments from the old schedule to the new schedule.
+     * For each containerIndex that had a truck assigned in the old state,
+     * assigns the same truck to matching actions in the new state.
+     */
+    private void transferTruckAssignments(ScheduleState oldState, ScheduleState newState) {
+        // Build containerIndex → truck assignment from old TT actions
+        Map<Integer, Map.Entry<Long, String>> oldAssignments = new HashMap<>();
+        for (ActionInfo info : oldState.actionLookup.values()) {
+            Action a = info.action();
+            if (a.deviceType() == DeviceType.TT && a.cheShortName() != null) {
+                oldAssignments.putIfAbsent(a.containerIndex(), Map.entry(
+                        a.cheId() != null ? a.cheId() : 0L, a.cheShortName()));
+            }
+        }
+
+        // Apply to new state actions
+        for (Map.Entry<Integer, Map.Entry<Long, String>> assignment : oldAssignments.entrySet()) {
+            int containerIdx = assignment.getKey();
+            Long cheId = assignment.getValue().getKey();
+            String cheShortName = assignment.getValue().getValue();
+
+            for (Map.Entry<UUID, ActionInfo> e : newState.actionLookup.entrySet()) {
+                Action a = e.getValue().action();
+                if (a.containerIndex() != containerIdx) continue;
+                if (a.deviceType() == DeviceType.TT && a.cheShortName() == null) {
+                    Action assigned = a.withTruckAssignment(cheId, cheShortName);
+                    newState.actionLookup.put(e.getKey(), new ActionInfo(e.getValue().taktName(), assigned));
+                } else if (a.deviceType() != DeviceType.TT && a.targetChe() == null) {
+                    Action withTarget = a.withTargetChe(cheShortName);
+                    newState.actionLookup.put(e.getKey(), new ActionInfo(e.getValue().taktName(), withTarget));
+                }
+            }
+        }
     }
 
     private void transferEventGateState(ScheduleState oldState, ScheduleState newState) {
@@ -1171,10 +1220,12 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         // All conditions met — activate the action
         state.setActionStatus(actionId, ActionStatus.ACTIVE);
         armEventGatesForAction(state, actionId);
+        String cheForMessage = action.deviceType() == DeviceType.TT ? action.cheShortName() : action.targetChe();
         return List.of(new ActionActivated(
                 actionId, workQueueId, taktName,
                 action.actionType(), action.description(), this.currentTime,
-                action.deviceType(), action.workInstructions()
+                action.deviceType(), action.workInstructions(),
+                cheForMessage
         ));
     }
 
@@ -1186,8 +1237,78 @@ public class ScheduleRunnerProcessor implements EventProcessor {
      * all cascading: takt activation, action activation, auto-completion, takt completion,
      * force-activation of overridden actions, and cross-schedule truck reallocation.
      */
+    /**
+     * Evaluates completion condition evaluators against all active actions.
+     * When all completion conditions on an action are satisfied, the action is auto-completed.
+     */
+    private List<SideEffect> evaluateCompletionConditions(Event event) {
+        if (completionEvaluators.isEmpty()) return List.of();
+
+        // Collect all active actions across all schedules
+        Map<UUID, Action> activeActions = new HashMap<>();
+        Map<UUID, Long> actionToWorkQueue = new HashMap<>();
+        for (Map.Entry<Long, ScheduleState> entry : scheduleStates.entrySet()) {
+            for (Map.Entry<UUID, ActionInfo> actionEntry : entry.getValue().actionLookup.entrySet()) {
+                Action action = actionEntry.getValue().action();
+                if (action.status() == ActionStatus.ACTIVE
+                        && action.completionConditions() != null
+                        && !action.completionConditions().isEmpty()) {
+                    activeActions.put(actionEntry.getKey(), action);
+                    actionToWorkQueue.put(actionEntry.getKey(), entry.getKey());
+                }
+            }
+        }
+
+        if (activeActions.isEmpty()) return List.of();
+
+        // Evaluate all evaluators
+        Set<String> newlySatisfied = new HashSet<>();
+        for (CompletionConditionEvaluator evaluator : completionEvaluators) {
+            newlySatisfied.addAll(evaluator.evaluateSatisfied(event, activeActions));
+        }
+
+        if (newlySatisfied.isEmpty()) return List.of();
+
+        // Track satisfied conditions and check for fully satisfied actions
+        List<SideEffect> sideEffects = new ArrayList<>();
+        for (Map.Entry<UUID, Action> entry : activeActions.entrySet()) {
+            UUID actionId = entry.getKey();
+            Action action = entry.getValue();
+
+            Set<String> satisfied = satisfiedCompletionConditions.computeIfAbsent(actionId, k -> new HashSet<>());
+            boolean changed = false;
+            for (CompletionCondition cond : action.completionConditions()) {
+                if (newlySatisfied.contains(cond.id())) {
+                    changed |= satisfied.add(cond.id());
+                }
+            }
+
+            if (changed && allConditionsSatisfied(action, satisfied)) {
+                long wqId = actionToWorkQueue.get(actionId);
+                ScheduleState state = scheduleStates.get(wqId);
+                if (state != null) {
+                    String taktName = state.actionLookup.get(actionId).taktName();
+                    state.setActionStatus(actionId, ActionStatus.COMPLETED);
+                    satisfiedCompletionConditions.remove(actionId);
+                    sideEffects.add(new ActionCompleted(actionId, wqId, taktName,
+                            action.description(), this.currentTime));
+                }
+            }
+        }
+
+        return sideEffects;
+    }
+
+    private boolean allConditionsSatisfied(Action action, Set<String> satisfied) {
+        for (CompletionCondition cond : action.completionConditions()) {
+            if (!satisfied.contains(cond.id())) return false;
+        }
+        return true;
+    }
+
     private List<SideEffect> reactivateAllSchedules() {
         List<SideEffect> allEffects = new ArrayList<>();
+
         boolean progress = true;
 
         while (progress) {
@@ -1391,6 +1512,12 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             // Compute occupied positions fresh each iteration (may change as actions activate)
             Set<String> occupiedPositions = getOccupiedPositionKeys();
             List<UUID> actionsToActivate = state.getActivatableActionsInTakt(taktName, occupiedPositions);
+            // Process TT actions first so truck allocation + targetChe propagation
+            // happens before QC/RTG actions activate in the same pass
+            actionsToActivate.sort(Comparator.comparingInt(id -> {
+                ActionInfo info = state.actionLookup.get(id);
+                return info != null && info.action().deviceType() == DeviceType.TT ? 0 : 1;
+            }));
             for (UUID actionId : actionsToActivate) {
                 ActionInfo actionInfo = state.actionLookup.get(actionId);
                 Action action = actionInfo.action();
@@ -1430,16 +1557,19 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                     sideEffects.add(new TruckAssigned(actionId, workQueueId, truckName, truckCheId,
                             action.workInstructions()));
 
-                    // Propagate truck assignment to all other TT actions with the same containerIndex
+                    // Propagate truck assignment to all other TT actions with the same containerIndex,
+                    // and set targetChe on non-TT actions (QC, RTG) with the same containerIndex
                     int containerIdx = action.containerIndex();
                     for (Map.Entry<UUID, ActionInfo> e : state.actionLookup.entrySet()) {
                         Action other = e.getValue().action();
-                        if (other.deviceType() == DeviceType.TT
-                                && other.containerIndex() == containerIdx
-                                && other.cheShortName() == null
-                                && !e.getKey().equals(actionId)) {
-                            Action propagated = other.withTruckAssignment(truckCheId, truckName);
-                            state.actionLookup.put(e.getKey(), new ActionInfo(e.getValue().taktName(), propagated));
+                        if (other.containerIndex() == containerIdx && !e.getKey().equals(actionId)) {
+                            if (other.deviceType() == DeviceType.TT && other.cheShortName() == null) {
+                                Action propagated = other.withTruckAssignment(truckCheId, truckName);
+                                state.actionLookup.put(e.getKey(), new ActionInfo(e.getValue().taktName(), propagated));
+                            } else if (other.deviceType() != DeviceType.TT && other.targetChe() == null) {
+                                Action withTarget = other.withTargetChe(truckName);
+                                state.actionLookup.put(e.getKey(), new ActionInfo(e.getValue().taktName(), withTarget));
+                            }
                         }
                     }
                 }
@@ -1460,7 +1590,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
                 state.setActionStatus(actionId, ActionStatus.ACTIVE);
                 armEventGatesForAction(state, actionId);
-
+                String cheForMsg = action.deviceType() == DeviceType.TT ? action.cheShortName() : action.targetChe();
                 sideEffects.add(new ActionActivated(
                         actionId,
                         workQueueId,
@@ -1469,7 +1599,8 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                         action.description(),
                         this.currentTime,
                         action.deviceType(),
-                        action.workInstructions()
+                        action.workInstructions(),
+                        cheForMsg
                 ));
             }
         }

@@ -53,7 +53,10 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 getLongField(record, "twinCompanionWorkInstruction"),
                 getStringField(record, "fromPosition"),
                 getStringField(record, "toPosition"),
-                getStringField(record, "jobPosition")
+                getStringField(record, "jobPosition"),
+                getStringField(record, "isoType"),
+                getStringField(record, "freightKind"),
+                getStringField(record, "pinning")
         );
     }
 
@@ -125,6 +128,10 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 ? kafkaMessage.jobPosition()
                 : "FWD";
 
+        String isoType = kafkaMessage.isoType() != null ? kafkaMessage.isoType() : "";
+        String freightKind = kafkaMessage.freightKind() != null ? kafkaMessage.freightKind() : "";
+        String pinning = kafkaMessage.pinning() != null ? kafkaMessage.pinning() : "";
+
         logger.fine("Mapped WorkInstruction Kafka message: workInstructionId=" + workInstructionId
                 + ", workQueueId=" + workQueueId + ", workInstructionMoveStage=" + workInstructionMoveStage
                 + ", fetchChe=" + fetchChe + ", putChe=" + putChe);
@@ -133,7 +140,8 @@ public class WorkInstructionEventMapper implements EventMapper<WorkInstructionEv
                 eventType, workInstructionId, workQueueId, fetchChe, workInstructionMoveStage,
                 estimatedMoveTime, estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
                 putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
-                fromPosition, toPosition, containerId, moveKind, jobPosition);
+                fromPosition, toPosition, containerId, moveKind, jobPosition,
+                isoType, freightKind, pinning);
     }
 
 

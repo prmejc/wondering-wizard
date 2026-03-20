@@ -2,6 +2,7 @@ package com.wonderingwizard.processors;
 
 import com.wonderingwizard.domain.YardLocation;
 import com.wonderingwizard.domain.takt.Action;
+import com.wonderingwizard.domain.takt.CompletionCondition;
 import com.wonderingwizard.domain.takt.ActionType;
 import com.wonderingwizard.domain.takt.DeviceType;
 import com.wonderingwizard.domain.takt.EquipmentPosition;
@@ -74,56 +75,57 @@ public class GraphScheduleBuilder {
             SyncRef dependsOn,
             List<EventGate> eventGates,
             boolean skipWhenGatesSatisfied,
-            List<LocationFreeCondition> locationSkipConditions
+            List<LocationFreeCondition> locationSkipConditions,
+            List<CompletionCondition> completionConditions
     ) {
         static ActionTemplate of(ActionType actionType, DeviceType type, int duration) {
-            return new ActionTemplate(actionType, actionType.displayName(), type, duration, false, false, null, false, 0, false, 0, null, List.of(), false, List.of());
+            return new ActionTemplate(actionType, actionType.displayName(), type, duration, false, false, null, false, 0, false, 0, null, List.of(), false, List.of(), List.of());
         }
 
         static ActionTemplate of(ActionType actionType, int containerSuffix, DeviceType type, int duration) {
-            return new ActionTemplate(actionType, actionType.displayName(containerSuffix), type, duration, false, false, null, false, 0, false, containerSuffix, null, List.of(), false, List.of());
+            return new ActionTemplate(actionType, actionType.displayName(containerSuffix), type, duration, false, false, null, false, 0, false, containerSuffix, null, List.of(), false, List.of(), List.of());
         }
 
         ActionTemplate withFirstInTakt() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, true, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, true, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions, completionConditions);
         }
 
         ActionTemplate withAnchor() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, true, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, true, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions, completionConditions);
         }
 
         ActionTemplate withSyncWith(DeviceType type, ActionType refActionType) {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, new SyncRef(type, refActionType), onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, new SyncRef(type, refActionType), onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions, completionConditions);
         }
 
         ActionTemplate withOnlyOnePerTakt() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, true, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, true, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions, completionConditions);
         }
 
         ActionTemplate withDeviceIndex(int deviceIndex) {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions, completionConditions);
         }
 
         ActionTemplate withIndependentAcrossContainers() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, true, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, true, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions, completionConditions);
         }
 
         /**
          * Creates a copy of this template with a different duration.
          */
         public ActionTemplate withDuration(int newDurationSeconds) {
-            return new ActionTemplate(actionType, name, deviceType, newDurationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions);
+            return new ActionTemplate(actionType, name, deviceType, newDurationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions, completionConditions);
         }
 
         ActionTemplate withDependsOn(DeviceType type, ActionType refActionType) {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, new SyncRef(type, refActionType), eventGates, skipWhenGatesSatisfied, locationSkipConditions);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, new SyncRef(type, refActionType), eventGates, skipWhenGatesSatisfied, locationSkipConditions, completionConditions);
         }
 
         ActionTemplate withEventGate(DeviceType sourceDeviceType, ActionType sourceActionType, String requiredEventType) {
             var gate = new EventGate(sourceDeviceType, sourceActionType, requiredEventType, 0);
             var newGates = new java.util.ArrayList<>(eventGates);
             newGates.add(gate);
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, List.copyOf(newGates), skipWhenGatesSatisfied, locationSkipConditions);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, List.copyOf(newGates), skipWhenGatesSatisfied, locationSkipConditions, completionConditions);
         }
 
         /**
@@ -134,7 +136,7 @@ public class GraphScheduleBuilder {
             var gate = new EventGate(sourceDeviceType, sourceActionType, requiredEventType, gateContainerSuffix);
             var newGates = new java.util.ArrayList<>(eventGates);
             newGates.add(gate);
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, List.copyOf(newGates), skipWhenGatesSatisfied, locationSkipConditions);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, List.copyOf(newGates), skipWhenGatesSatisfied, locationSkipConditions, completionConditions);
         }
 
         /**
@@ -144,7 +146,7 @@ public class GraphScheduleBuilder {
          * have not been satisfied yet (e.g., drive to buffer only if QC discharge hasn't completed).
          */
         ActionTemplate withSkipWhenGatesSatisfied() {
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, true, locationSkipConditions);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, true, locationSkipConditions, completionConditions);
         }
 
         /** Skip this action if the given position is free (truck skips ahead). */
@@ -157,10 +159,16 @@ public class GraphScheduleBuilder {
             return addLocationCondition(LocationFreeCondition.blockIfOccupied(equipmentType, position));
         }
 
+        ActionTemplate withCompletionCondition(CompletionCondition cond) {
+            var newConds = new java.util.ArrayList<>(completionConditions);
+            newConds.add(cond);
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, locationSkipConditions, List.copyOf(newConds));
+        }
+
         private ActionTemplate addLocationCondition(LocationFreeCondition cond) {
             var newConds = new java.util.ArrayList<>(locationSkipConditions);
             newConds.add(cond);
-            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, List.copyOf(newConds));
+            return new ActionTemplate(actionType, name, deviceType, durationSeconds, firstInTakt, isAnchor, syncWith, onlyOnePerTakt, deviceIndex, independentAcrossContainers, containerSuffix, dependsOn, eventGates, skipWhenGatesSatisfied, List.copyOf(newConds), completionConditions);
         }
     }
 
@@ -759,6 +767,16 @@ public class GraphScheduleBuilder {
      * Filters work instructions based on the 1-based container suffix.
      * Suffix 0 means all work instructions, suffix 1 means only the first, suffix 2 only the second, etc.
      */
+    private static List<CompletionCondition> defaultCompletionConditions(ActionType actionType) {
+        return switch (actionType) {
+            case QC_LIFT -> List.of(new CompletionCondition(
+                    "qc-lifted-from-vessel", QCAssetEventEvaluator.CONDITION_TYPE, "Lifted container from vessel"));
+            case QC_PLACE -> List.of(new CompletionCondition(
+                    "qc-placed-on-truck", QCAssetEventEvaluator.CONDITION_TYPE, "Placed container on truck"));
+            default -> List.of();
+        };
+    }
+
     private static List<WorkInstructionEvent> filterWorkInstructions(List<WorkInstructionEvent> workInstructions, int containerSuffix) {
         if (containerSuffix <= 0 || workInstructions.size() <= 1) {
             return workInstructions;
@@ -809,9 +827,12 @@ public class GraphScheduleBuilder {
                         .map(g -> new EventGateCondition(g.sourceDeviceType(), g.sourceActionType(),
                                 g.requiredEventType(), g.containerSuffix()))
                         .toList();
+                var allCompletionConditions = new java.util.ArrayList<>(tmpl.completionConditions());
+                allCompletionConditions.addAll(defaultCompletionConditions(tmpl.actionType()));
                 var action = new Action(UUID.randomUUID(), segment.deviceType(), tmpl.actionType(), tmpl.name(),
                         new HashSet<>(), containerIndex, tmpl.durationSeconds(), tmpl.deviceIndex(), actionWis, gates, tmpl.skipWhenGatesSatisfied())
-                        .withLocationSkipConditions(tmpl.locationSkipConditions());
+                        .withLocationSkipConditions(tmpl.locationSkipConditions())
+                        .withCompletionConditions(allCompletionConditions.isEmpty() ? List.of() : List.copyOf(allCompletionConditions));
                 takt.actions().add(action);
                 placedActions.add(new PlacedAction(tmpl, action, containerIndex, blueprintOrder.getOrDefault(tmpl, 0)));
                 placementIndex.put(placementKey(containerIndex, tmpl.deviceType(), tmpl.name()), taktIndex);

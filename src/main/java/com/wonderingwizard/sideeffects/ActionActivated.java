@@ -24,6 +24,7 @@ import java.util.UUID;
  * @param activatedAt the timestamp when the action was activated
  * @param deviceType the type of CHE device performing this action
  * @param workInstructions the work instructions associated with this action
+ * @param cheShortName the short name of the assigned CHE (e.g. truck for TT actions)
  */
 public record ActionActivated(
         UUID actionId,
@@ -33,15 +34,26 @@ public record ActionActivated(
         String actionDescription,
         Instant activatedAt,
         DeviceType deviceType,
-        List<WorkInstructionEvent> workInstructions
+        List<WorkInstructionEvent> workInstructions,
+        String cheShortName
 ) implements SideEffect {
 
     /**
-     * Backward-compatible constructor without actionType, deviceType and workInstructions.
+     * Backward-compatible constructor without cheShortName.
+     */
+    public ActionActivated(UUID actionId, long workQueueId, String taktName,
+                           ActionType actionType, String actionDescription,
+                           Instant activatedAt, DeviceType deviceType,
+                           List<WorkInstructionEvent> workInstructions) {
+        this(actionId, workQueueId, taktName, actionType, actionDescription, activatedAt, deviceType, workInstructions, null);
+    }
+
+    /**
+     * Backward-compatible constructor without actionType, deviceType, workInstructions and cheShortName.
      */
     public ActionActivated(UUID actionId, long workQueueId, String taktName,
                            String actionDescription, Instant activatedAt) {
-        this(actionId, workQueueId, taktName, null, actionDescription, activatedAt, null, List.of());
+        this(actionId, workQueueId, taktName, null, actionDescription, activatedAt, null, List.of(), null);
     }
 
     @Override

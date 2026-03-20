@@ -210,6 +210,9 @@ public final class JsonSerializer {
                 writeField(sb, "containerId", e.containerId(), false);
                 writeField(sb, "moveKind", e.moveKind(), false);
                 writeField(sb, "jobPosition", e.jobPosition(), false);
+                writeField(sb, "isoType", e.isoType(), false);
+                writeField(sb, "freightKind", e.freightKind(), false);
+                writeField(sb, "pinning", e.pinning(), false);
                 sb.append('}');
             }
             case ActionCompletedEvent e -> {
@@ -564,6 +567,7 @@ public final class JsonSerializer {
         writeField(sb, "deviceIndex", action.deviceIndex(), false);
         if (action.cheId() != null) writeField(sb, "cheId", action.cheId(), false);
         if (action.cheShortName() != null) writeField(sb, "cheShortName", action.cheShortName(), false);
+        if (action.targetChe() != null) writeField(sb, "targetChe", action.targetChe(), false);
         sb.append('}');
     }
 
@@ -588,6 +592,9 @@ public final class JsonSerializer {
         writeField(sb, "containerId", wi.containerId(), false);
         writeField(sb, "moveKind", wi.moveKind(), false);
         writeField(sb, "jobPosition", wi.jobPosition(), false);
+        writeField(sb, "isoType", wi.isoType(), false);
+        writeField(sb, "freightKind", wi.freightKind(), false);
+        writeField(sb, "pinning", wi.pinning(), false);
         sb.append('}');
     }
 

@@ -30,5 +30,7 @@ WORKDIR /app
 COPY --from=build /app/target/event-processing-engine-1.0-SNAPSHOT.jar app.jar
 COPY --from=build /app/target/libs/ libs/
 
-# Run the application with JPMS module reads for unnamed modules (Kafka, Avro, etc.)
-ENTRYPOINT ["java", "--add-reads", "com.wonderingwizard=ALL-UNNAMED", "--add-reads", "io.opentelemetry.exporter.prometheus=ALL-UNNAMED", "--add-reads", "io.opentelemetry.sdk=ALL-UNNAMED", "-cp", "app.jar:libs/*", "com.wonderingwizard.Main"]
+# Set RUN_MODE=simulator to run the terminal simulator instead of the FES service
+ENV RUN_MODE=service
+ENV JAVA_OPTS="--add-reads com.wonderingwizard=ALL-UNNAMED --add-reads io.opentelemetry.exporter.prometheus=ALL-UNNAMED --add-reads io.opentelemetry.sdk=ALL-UNNAMED"
+ENTRYPOINT ["sh", "-c", "if [ \"$RUN_MODE\" = 'simulator' ]; then exec java $JAVA_OPTS -cp app.jar:libs/* com.wonderingwizard.simulator.TerminalSimulator; else exec java $JAVA_OPTS -cp app.jar:libs/* com.wonderingwizard.Main; fi"]
