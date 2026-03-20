@@ -132,6 +132,9 @@ public class DemoServer {
     private static final long BROADCAST_DEBOUNCE_MAX_MS = 500;
     private volatile boolean broadcastPending;
     private volatile boolean broadcastLoopRunning;
+    private volatile Thread playClockThread;
+    private volatile double playClockSpeed = 1.0;
+    private volatile Instant playClockLastSentTime;
     private final LinkedBlockingQueue<EngineCommand<?>> eventQueue = new LinkedBlockingQueue<>();
     private volatile boolean eventLoopRunning;
 
@@ -296,12 +299,14 @@ public class DemoServer {
      */
     public void start(int port) throws IOException {
         httpServer = HttpServer.create(new InetSocketAddress(port), 0);
-        httpServer.createContext("/", this::handleRoot);
+        httpServer.createContext("/", this::handleSystemStatus);
+        httpServer.createContext("/schedule-viewer", this::handleScheduleViewer);
         httpServer.createContext("/api/state", this::handleGetState);
         httpServer.createContext("/api/work-instruction", this::handleWorkInstruction);
         httpServer.createContext("/api/work-queue", this::handleWorkQueue);
         httpServer.createContext("/api/nuke-work-queue", this::handleNukeWorkQueue);
         httpServer.createContext("/api/tick", this::handleTick);
+        httpServer.createContext("/api/play", this::handlePlay);
         httpServer.createContext("/api/action-completed", this::handleActionCompleted);
         httpServer.createContext("/api/override-condition", this::handleOverrideCondition);
         httpServer.createContext("/api/override-action-condition", this::handleOverrideActionCondition);
@@ -339,8 +344,11 @@ public class DemoServer {
         startEventLoop();
         logger.info("Demo server started on port " + port);
 
-        // Set system time to current computer time
+        // Set system time to current computer time and start the play clock
         sendSystemTimeSet(Instant.now().truncatedTo(ChronoUnit.SECONDS));
+        if (settings.clockAutoStart()) {
+            startPlayClock();
+        }
 
         // Load default digital map
         loadDefaultDigitalMap();
@@ -357,6 +365,7 @@ public class DemoServer {
      * Stops the HTTP server.
      */
     public void stop() {
+        stopPlayClock();
         eventLoopRunning = false;
         sseManager.stop();
         if (sideEffectPublisher != null) {
@@ -782,6 +791,11 @@ public class DemoServer {
         if (kafkaConsumerManager != null) {
             state.put("kafkaStatus", kafkaConsumerManager.getStatus());
         }
+
+        // Include play clock status
+        state.put("playStatus", Map.of(
+                "playing", playClockThread != null,
+                "speed", playClockSpeed));
 
         return state;
     }
@@ -1236,7 +1250,7 @@ public class DemoServer {
         });
     }
 
-    private void handleRoot(HttpExchange exchange) throws IOException {
+    private void handleScheduleViewer(HttpExchange exchange) throws IOException {
         if (!"GET".equals(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
             return;
@@ -1710,6 +1724,26 @@ public class DemoServer {
         }
     }
 
+    private void handleSystemStatus(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try (InputStream is = getClass().getResourceAsStream("/system-status.html")) {
+            if (is == null) {
+                sendResponse(exchange, 404, "System status not found");
+                return;
+            }
+            byte[] html = is.readAllBytes();
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
+            exchange.sendResponseHeaders(200, html.length);
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(html);
+            }
+        }
+    }
+
     private void handleReleaseNotes(HttpExchange exchange) throws IOException {
         if (!"GET".equals(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
@@ -2024,6 +2058,9 @@ public class DemoServer {
 
             StepResult result = submitAndWait(() -> {
                 currentTime = currentTime.plusSeconds(seconds);
+                if (playClockLastSentTime != null) {
+                    playClockLastSentTime = playClockLastSentTime.plusSeconds(seconds);
+                }
                 TimeEvent te = new TimeEvent(currentTime);
                 return processStepInternal("Tick +" + seconds + "s", te);
             });
@@ -2032,6 +2069,89 @@ public class DemoServer {
                     Map.of("step", result.step(), "sideEffects", result.sideEffects())));
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handlePlay(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            String action = body.getOrDefault("action", "toggle");
+
+            switch (action) {
+                case "start" -> {
+                    String speedStr = body.getOrDefault("speed", "1");
+                    playClockSpeed = Math.max(0.1, Math.min(120, Double.parseDouble(speedStr)));
+                    startPlayClock();
+                    sendJsonResponse(exchange, 200, "{\"playing\":true,\"speed\":" + playClockSpeed + "}");
+                }
+                case "stop" -> {
+                    stopPlayClock();
+                    sendJsonResponse(exchange, 200, "{\"playing\":false}");
+                }
+                case "speed" -> {
+                    String speedStr = body.getOrDefault("speed", "1");
+                    playClockSpeed = Math.max(0.1, Math.min(120, Double.parseDouble(speedStr)));
+                    sendJsonResponse(exchange, 200, "{\"playing\":" + (playClockThread != null) + ",\"speed\":" + playClockSpeed + "}");
+                }
+                case "toggle" -> {
+                    if (playClockThread != null) {
+                        stopPlayClock();
+                        sendJsonResponse(exchange, 200, "{\"playing\":false}");
+                    } else {
+                        String speedStr = body.getOrDefault("speed", "1");
+                        playClockSpeed = Math.max(0.1, Math.min(120, Double.parseDouble(speedStr)));
+                        startPlayClock();
+                        sendJsonResponse(exchange, 200, "{\"playing\":true,\"speed\":" + playClockSpeed + "}");
+                    }
+                }
+                case "status" -> {
+                    sendJsonResponse(exchange, 200, "{\"playing\":" + (playClockThread != null) + ",\"speed\":" + playClockSpeed + "}");
+                }
+                default -> sendJsonResponse(exchange, 400, "{\"error\":\"Unknown action: " + escapeJson(action) + "\"}");
+            }
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private synchronized void startPlayClock() {
+        stopPlayClock();
+        playClockLastSentTime = currentTime;
+        Thread thread = Thread.ofVirtual().name("play-clock").start(() -> {
+            while (!Thread.currentThread().isInterrupted()) {
+                try {
+                    double speed = playClockSpeed;
+                    long intervalMs = Math.max(50, Math.round(1000.0 / speed));
+                    Thread.sleep(intervalMs);
+
+                    playClockLastSentTime = playClockLastSentTime.plusSeconds(1);
+                    Instant timeToSet = playClockLastSentTime;
+                    submitAndWait(() -> {
+                        currentTime = timeToSet;
+                        TimeEvent te = new TimeEvent(timeToSet);
+                        processStepInternal("Tick +1s", te);
+                    });
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (Exception e) {
+                    logger.warning("Play clock error: " + e.getMessage());
+                }
+            }
+        });
+        playClockThread = thread;
+    }
+
+    private synchronized void stopPlayClock() {
+        Thread thread = playClockThread;
+        if (thread != null) {
+            thread.interrupt();
+            playClockThread = null;
         }
     }
 

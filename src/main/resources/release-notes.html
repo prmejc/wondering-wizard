@@ -72,6 +72,40 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.26">
+  <h2>v4.0.26</h2>
+  <div class="date">2026-03-20</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>System Status dashboard (<code>/</code>) &mdash; new main page with collapsible navigation sidebar, schedule viewer, timeline, and side effects log. No actionable buttons (complete/override) to prevent accidental clicks</li>
+    <li>Navigation sidebar with live badges:
+      <ul>
+        <li><strong>Work Instructions</strong> &mdash; count of active WIs (not Complete or Cancelled)</li>
+        <li><strong>Work Queues</strong> &mdash; count of WQs managed by FES4</li>
+        <li><strong>Trucks</strong> &mdash; count of trucks with poolId=23</li>
+        <li><strong>Quay Cranes</strong> &mdash; count of QCs with no delay and standby position set</li>
+        <li><strong>Locations</strong> &mdash; count of occupied locations (orange)</li>
+        <li><strong>Pathfinder</strong> &mdash; count of digital map nodes</li>
+        <li><strong>Dead Letter Queue</strong> &mdash; count of DLQ entries (red)</li>
+      </ul>
+    </li>
+    <li>Custom SVG icons for Quay Cranes, Trucks, Pathfinder, Dead Letter Queue, and Container Move State navigation buttons</li>
+    <li>Previous schedule viewer moved to <code>/schedule-viewer</code></li>
+    <li>Backend play clock &mdash; server-side thread sends <code>TimeEvent</code> at configurable speed instead of frontend-driven ticking. Clock starts automatically on server startup</li>
+    <li>Play clock speed control &mdash; at Nx speed, the backend advances time by 1 second every 1000/N ms</li>
+    <li>Manual time jumps (+1s, +1m, +5m, +15m) now also advance the play clock&rsquo;s last-sent time so the clock continues seamlessly from the new position</li>
+  </ul>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li>Default estimated move time for first work instruction changed from 30 minutes to 8 minutes in the future</li>
+    <li>Removed resolution (s/tick) control from schedule viewer &mdash; backend always advances 1 second per tick</li>
+    <li>FES System Time label added to the clock display</li>
+    <li><code>clock.autostart</code> setting (default <code>true</code>) &mdash; controls whether the play clock starts automatically on server startup</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.24">
   <h2>v4.0.24</h2>
   <div class="date">2026-03-19</div>

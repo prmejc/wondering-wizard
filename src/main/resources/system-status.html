@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>FES - Schedule Viewer</title>
+<title>FES - System Status</title>
 <style>
   :root {
     --rtg-color: #2563eb;
@@ -27,7 +27,7 @@
     height: 100vh;
     display: grid;
     grid-template-rows: auto 1fr auto;
-    grid-template-columns: 280px 1fr 300px;
+    grid-template-columns: auto 1fr 300px;
     grid-template-areas:
       "header header header"
       "left center right"
@@ -51,18 +51,48 @@
   }
   label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 4px; margin-top: 8px; }
   .form-group { margin-bottom: 6px; }
+
+  /* Collapsible sidebar */
+  .sidebar { grid-area: left; background: var(--surface); display: flex; flex-direction: column; overflow-y: auto; transition: width 0.2s ease; width: 220px; }
+  .sidebar.collapsed { width: 44px; }
+  .sidebar.collapsed .sidebar-content { display: none; }
+  .sidebar.collapsed .sidebar-toggle span { display: none; }
+  .sidebar-toggle {
+    display: flex; align-items: center; gap: 8px; padding: 10px 12px;
+    cursor: pointer; border: none; background: var(--surface2); color: var(--text);
+    font-size: 13px; font-weight: 600; border-bottom: 1px solid var(--border);
+    width: 100%; text-align: left;
+  }
+  .sidebar-toggle:hover { background: var(--bg); }
+  .sidebar-content { padding: 10px; display: flex; flex-direction: column; gap: 4px; }
+  .sidebar-content button {
+    width: 100%; text-align: left; padding: 8px 12px; font-size: 12px;
+    background: var(--surface2); color: var(--text); border-radius: 4px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sidebar-content button:hover { background: var(--bg); }
+  .sidebar-content .section-label {
+    font-size: 10px; text-transform: uppercase; color: var(--text-muted);
+    letter-spacing: 1px; padding: 8px 4px 4px; font-weight: 600;
+  }
+  .sidebar-content .nav-badge {
+    margin-left: auto; background: var(--completed); color: white;
+    font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600;
+  }
+  .sidebar-content .nav-badge-orange { background: var(--active); }
+  .sidebar-content .nav-badge-red { background: #ef4444; }
 </style>
 </head>
 <body>
 
 <schedule-header></schedule-header>
-<event-panel></event-panel>
+<nav-sidebar></nav-sidebar>
 <schedule-view></schedule-view>
 <timeline-panel></timeline-panel>
 <side-effects-log></side-effects-log>
 
 <script>
-const API = window.location.pathname.replace(/\/schedule-viewer\/?$/, '').replace(/\/$/, '');
+const API = window.location.pathname.replace(/\/$/, '');
 
 async function apiCall(path, body) {
   const opts = body ? { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) } : {};
@@ -79,7 +109,6 @@ const _sound = (() => {
   const pageOpenTime = Date.now();
   const MUTE_MS = 5000;
 
-  // G major scale frequencies by octave (G, A, B, C, D, E, F#)
   const G_MAJOR = {
     1: [196.00, 220.00, 246.94, 261.63, 293.66, 329.63, 369.99],
     2: [392.00, 440.00, 493.88, 523.25, 587.33, 659.25, 739.99],
@@ -88,8 +117,6 @@ const _sound = (() => {
     5: [3135.96, 3520.00, 3951.07, 4186.01, 4698.63, 5274.04, 5919.91]
   };
 
-  // G minor intervals (from G in each octave)
-  // terca=Bb, quarta=C, kvinta=D, sexta=Eb, septima=F
   const G_MINOR_INTERVALS = {
     1: { g: 196.00, terca: 233.08, quarta: 261.63, kvinta: 293.66, sexta: 311.13, septima: 349.23 },
     2: { g: 392.00, terca: 466.16, quarta: 523.25, kvinta: 587.33, sexta: 622.25, septima: 698.46 }
@@ -126,23 +153,17 @@ const _sound = (() => {
     }
   }
 
-  // All G major notes across octaves for continuous ascending
   const G_MAJOR_ALL = [].concat(G_MAJOR[1], G_MAJOR[2], G_MAJOR[3], G_MAJOR[4], G_MAJOR[5]);
 
-  // Action completion sound: starts at base octave by device, climbs into higher octaves
-  // deviceType: QC=octave1, RTG=octave2, TT=octave3
-  // actionIndex: 0=G, 1=A, 2=B, ... continues across octaves
   function playActionCompleted(deviceType, actionIndex) {
     if (isMuted()) return;
     const baseOctave = deviceType === 'QC' ? 1 : deviceType === 'RTG' ? 2 : 3;
-    const baseOffset = (baseOctave - 1) * 7; // index into G_MAJOR_ALL
+    const baseOffset = (baseOctave - 1) * 7;
     const idx = Math.min(baseOffset + actionIndex, G_MAJOR_ALL.length - 1);
     const ac = getCtx();
     playTone(G_MAJOR_ALL[idx], 0.4, ac.currentTime);
   }
 
-  // Delay check sound every 30s
-  // Short beep for delay alerts — rising pitch with severity
   function playBeep(freq, startTime) {
     const ac = getCtx();
     const osc = ac.createOscillator();
@@ -151,7 +172,7 @@ const _sound = (() => {
     osc.type = 'triangle';
     osc2.type = 'triangle';
     osc.frequency.value = freq;
-    osc2.frequency.value = freq + 3; // slight detune for edge
+    osc2.frequency.value = freq + 3;
     gain.gain.setValueAtTime(0.14, startTime);
     gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.12);
     osc.connect(gain);
@@ -163,8 +184,6 @@ const _sound = (() => {
     osc2.stop(startTime + 0.12);
   }
 
-  // Delay beeps every 15s: 1 beep per 4 min of delay, max 5
-  // Pitch rises: 440, 554, 659, 784, 988 Hz
   function playDelaySound(totalDelaySeconds) {
     if (isMuted()) return;
     if (totalDelaySeconds <= 0) {
@@ -184,10 +203,8 @@ const _sound = (() => {
   return { playActionCompleted, playDelaySound, isMuted };
 })();
 
-// Track completed action IDs to detect new completions
 window._prevCompletedActionIds = new Set();
 
-// Periodic delay sound check (every 15s)
 setInterval(() => {
   const state = window._lastState;
   if (!state || _sound.isMuted()) return;
@@ -207,7 +224,7 @@ async function refreshState() {
 }
 
 // --- SSE live connection ---
-let _sseStatus = 'disconnected'; // 'connected' | 'disconnected' | 'reconnecting'
+let _sseStatus = 'disconnected';
 function updateConnectionIndicator() {
   const dot = document.getElementById('live-dot');
   const label = document.getElementById('live-label');
@@ -248,7 +265,7 @@ connectSSE();
 fetch(API + '/api/version').then(r => r.json()).then(data => {
   document.querySelectorAll('#app-title').forEach(el => { el.textContent = 'FES v' + data.version; });
   document.querySelectorAll('#app-title').forEach(el => { el.href = API + '/release-notes'; });
-  document.title = 'FES v' + data.version + ' - Schedule Viewer';
+  document.title = 'FES v' + data.version + ' - System Status';
 }).catch(() => {});
 
 // --- Header Component ---
@@ -258,7 +275,7 @@ class ScheduleHeader extends HTMLElement {
     this.innerHTML = `
       <div style="display:flex;align-items:center;gap:16px">
         <a href="#" style="font-size:18px;font-weight:bold;color:var(--text);text-decoration:none" id="app-title">FES</a>
-        <span style="color:var(--text-muted);font-size:13px">Schedule Viewer</span>
+        <span style="color:var(--text-muted);font-size:13px">System Status</span>
         <span style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text-muted)">
           <span id="live-dot" style="width:8px;height:8px;border-radius:50%;background:#ef4444;display:inline-block"></span>
           <span id="live-label">Disconnected</span>
@@ -266,29 +283,8 @@ class ScheduleHeader extends HTMLElement {
         <span id="kafka-status" style="display:none;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600"></span>
       </div>
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-size:12px;color:var(--text-muted)">FES System Time:</span>
         <span id="clock" style="font-family:monospace;font-size:20px;color:var(--qc-color)">00:00:00</span>
-        <button class="secondary" onclick="this.closest('schedule-header').tick(1)">+1 sec</button>
-        <button class="secondary" onclick="this.closest('schedule-header').tick(60)">+1 min</button>
-        <button class="secondary" onclick="this.closest('schedule-header').tick(300)">+5 min</button>
-        <button class="secondary" onclick="this.closest('schedule-header').tick(900)">+15 min</button>
-        <span style="border-left:1px solid var(--border);height:24px;margin:0 4px"></span>
-        <button id="play-btn" class="secondary" onclick="this.closest('schedule-header').togglePlay()">&#9724; Pause</button>
-        <label style="font-size:12px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
-          <input id="play-speed" type="number" min="0.1" max="120" step="0.1" value="1" style="width:50px;text-align:center;font-size:12px;padding:2px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg);color:var(--text)" onchange="this.closest('schedule-header')._updatePlaySpeed()">x
-        </label>
-        <span style="border-left:1px solid var(--border);height:24px;margin:0 4px"></span>
-        <button class="secondary" onclick="this.closest('schedule-header').exportLog()" title="Export event log">&#8615; Export</button>
-        <button class="secondary" onclick="this.closest('schedule-header').importLog()" title="Import event log">&#8613; Import</button>
-        <button class="secondary" onclick="window.open(API+'/editor','_blank')" title="Open export editor">&#9998; Editor</button>
-        <button class="secondary" onclick="window.open(API+'/workinstructions','_blank')" title="View work instructions">&#9776; Work Instructions</button>
-        <button class="secondary" onclick="window.open(API+'/workqueues','_blank')" title="View work queues">&#9776; Work Queues</button>
-        <button class="secondary" onclick="window.open(API+'/pathfinder','_blank')" title="Open pathfinder">&#9737; Pathfinder</button>
-        <button class="secondary" onclick="window.open(API+'/trucks','_blank')" title="View trucks">&#128666; Trucks</button>
-        <button class="secondary" onclick="window.open(API+'/quaycranes','_blank')" title="View quay cranes">&#9875; Quay Cranes</button>
-        <button class="secondary" onclick="window.open(API+'/containermovestate','_blank')" title="Container move state">&#9654; CMS</button>
-        <button class="secondary" onclick="window.open(API+'/locations','_blank')" title="Equipment locations">&#9678; Locations</button>
-        <button class="secondary" onclick="window.open(API+'/dlq','_blank')" title="Dead letter queue">&#9888; DLQ</button>
-        <input id="import-file" type="file" accept=".json" style="display:none">
       </div>`;
     this.setAttribute('data-refresh', '');
   }
@@ -313,18 +309,15 @@ class ScheduleHeader extends HTMLElement {
       }
       badge.title = ks.ready + ' of ' + ks.total + ' consumers ready';
     }
-    const ps = state.playStatus;
-    if (ps) {
-      this._playing = ps.playing;
-      const btn = this.querySelector('#play-btn');
-      if (btn) btn.innerHTML = ps.playing ? '&#9724; Pause' : '&#9654; Play';
-      const speedInput = this.querySelector('#play-speed');
-      if (speedInput && !speedInput.matches(':focus')) speedInput.value = ps.speed;
-    }
   }
   async tick(seconds) {
     await apiCall('/api/tick', { seconds });
     refreshState();
+  }
+  async _playTick() {
+    const resolution = parseInt(this.querySelector('#play-resolution').value) || 1;
+    await apiCall('/api/tick', { seconds: resolution });
+    await refreshState();
   }
   async exportLog() {
     const res = await fetch(API + '/api/event-log/export');
@@ -352,255 +345,181 @@ class ScheduleHeader extends HTMLElement {
     };
     fileInput.click();
   }
-  async togglePlay() {
-    const speed = parseFloat(this.querySelector('#play-speed').value) || 1;
-    const res = await apiCall('/api/play', { action: 'toggle', speed: String(speed) });
-    if (res.playing) {
-      this._playing = true;
-      this.querySelector('#play-btn').innerHTML = '&#9724; Pause';
-    } else {
-      this._playing = false;
+  togglePlay() {
+    if (this._playTimer) {
+      clearInterval(this._playTimer);
+      this._playTimer = null;
       this.querySelector('#play-btn').innerHTML = '&#9654; Play';
+      refreshState();
+      return;
     }
-  }
-  async _updatePlaySpeed() {
-    if (!this._playing) return;
-    const speed = parseFloat(this.querySelector('#play-speed').value) || 1;
-    await apiCall('/api/play', { action: 'speed', speed: String(speed) });
+    this.querySelector('#play-btn').innerHTML = '&#9724; Stop';
+    const speed = () => parseFloat(this.querySelector('#play-speed').value) || 1;
+    const resolution = () => parseInt(this.querySelector('#play-resolution').value) || 1;
+    const intervalMs = () => Math.round(resolution() * 1000 / speed());
+    let pending = false;
+    const doTick = async () => {
+      if (pending) return;
+      pending = true;
+      try {
+        await this._playTick();
+      } finally {
+        pending = false;
+      }
+    };
+    doTick();
+    this._playTimer = setInterval(doTick, intervalMs());
+    const speedInput = this.querySelector('#play-speed');
+    const onSpeedChange = () => {
+      if (!this._playTimer) return;
+      clearInterval(this._playTimer);
+      this._playTimer = setInterval(doTick, intervalMs());
+    };
+    speedInput.addEventListener('input', onSpeedChange);
+    this._speedCleanup = () => speedInput.removeEventListener('input', onSpeedChange);
   }
 }
 customElements.define('schedule-header', ScheduleHeader);
 
-// --- Event Input Panel ---
-class EventPanel extends HTMLElement {
+// --- Collapsible Navigation Sidebar ---
+class NavSidebar extends HTMLElement {
   connectedCallback() {
-    this.style.cssText = 'grid-area:left';
-    this.classList.add('panel');
+    this.classList.add('sidebar');
     this.setAttribute('data-refresh', '');
-    this._emtDirty = false;
-    this._emtOffsetMin = 0;
     this.innerHTML = `
-      <h2>Events</h2>
+      <button class="sidebar-toggle" onclick="this.closest('nav-sidebar').toggle()">
+        &#9776; <span>Navigation</span>
+      </button>
+      <div class="sidebar-content">
+        <div class="section-label">Operations</div>
+        <button onclick="window.open(API+'/workinstructions','_blank')">&#9776; Work Instructions <span id="wi-count" class="nav-badge" style="display:none"></span></button>
+        <button onclick="window.open(API+'/workqueues','_blank')">&#9776; Work Queues <span id="wq-count" class="nav-badge" style="display:none"></span></button>
+        <button onclick="window.open(API+'/trucks','_blank')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="8" width="14" height="8" rx="1"/><path d="M15 12h4l3 3v1h-7z"/><circle cx="6" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><line x1="8" y1="16" x2="17" y2="16"/></svg> Trucks <span id="truck-count" class="nav-badge" style="display:none"></span></button>
+        <button onclick="window.open(API+'/quaycranes','_blank')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="22" x2="7" y2="22"/><line x1="15" y1="22" x2="19" y2="22"/><line x1="5" y1="22" x2="5" y2="8"/><line x1="17" y1="22" x2="17" y2="8"/><line x1="5" y1="8" x2="17" y2="8"/><rect x="7" y="5" width="8" height="3" rx="0.5"/><line x1="11" y1="5" x2="11" y2="2"/><line x1="11" y1="2" x2="23" y2="2"/><line x1="11" y1="5" x2="1" y2="3"/></svg> Quay Cranes <span id="qc-count" class="nav-badge" style="display:none"></span></button>
+        <button onclick="window.open(API+'/locations','_blank')">&#9678; Locations <span id="loc-count" class="nav-badge nav-badge-orange" style="display:none"></span></button>
+        <button onclick="window.open(API+'/pathfinder','_blank')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="1,6 9,2 15,6 23,2 23,18 15,22 9,18 1,22"/><line x1="9" y1="2" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="22"/></svg> Pathfinder <span id="pf-count" class="nav-badge" style="display:none"></span></button>
 
-      <h3>Work Instruction</h3>
-      <div class="form-group">
-        <label>Event Type</label>
-        <select id="wi-event-type">
-          <option value="CarryCHE Assigned">CarryCHE Assigned</option>
-          <option value="CarryCHE Changed">CarryCHE Changed</option>
-          <option value="Dispatch Changed">Dispatch Changed</option>
-          <option value="Estimated Cycle Time Assigned">Estimated Cycle Time Assigned</option>
-          <option value="Estimated Cycle Time Changed">Estimated Cycle Time Changed</option>
-          <option value="Estimated Move Time Assigned">Estimated Move Time Assigned</option>
-          <option value="Estimated Move Time Changed">Estimated Move Time Changed</option>
-          <option value="FetchCHE Assigned">FetchCHE Assigned</option>
-          <option value="FetchCHE Changed">FetchCHE Changed</option>
-          <option value="Pinning Changed">Pinning Changed</option>
-          <option value="PutCHE Assigned">PutCHE Assigned</option>
-          <option value="PutCHE Changed">PutCHE Changed</option>
-          <option value="QC Discharged Container">QC Discharged Container</option>
-          <option value="QC Loaded Container">QC Loaded Container</option>
-          <option value="StateFetch Changed">StateFetch Changed</option>
-          <option value="To Position Changed">To Position Changed</option>
-          <option value="WI Abandoned">WI Abandoned</option>
-          <option value="WI Bypassed">WI Bypassed</option>
-          <option value="WI Created" selected>WI Created</option>
-          <option value="WI MoveStage Changed">WI MoveStage Changed</option>
-          <option value="WI Resequenced">WI Resequenced</option>
-          <option value="WI Reset">WI Reset</option>
-          <option value="WI Resumed">WI Resumed</option>
-          <option value="WI Reverted">WI Reverted</option>
-          <option value="WQ Change">WQ Change</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Move Stage</label>
-        <select id="wi-move-stage">
-          <option value="Planned" selected>Planned</option>
-          <option value="Ready">Ready</option>
-          <option value="Fetch Underway">Fetch Underway</option>
-          <option value="Carry Underway">Carry Underway</option>
-          <option value="Carry Complete">Carry Complete</option>
-          <option value="Put Underway">Put Underway</option>
-          <option value="Put Complete">Put Complete</option>
-          <option value="Complete">Complete</option>
-          <option value="Cancelled">Cancelled</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Instruction ID</label>
-        <input id="wi-id" type="number" value="1">
-      </div>
-      <div class="form-group">
-        <label>Work Queue ID</label>
-        <input id="wi-queue" type="number" value="1">
-      </div>
-      <div class="form-group">
-        <label>Fetch CHE</label>
-        <input id="wi-che" value="QCZ1">
-      </div>
-      <div class="form-group">
-        <label>Put CHE</label>
-        <input id="wi-put-che" value="RTZ01">
-      </div>
-      <div class="form-group" style="display:flex;gap:12px;align-items:center;margin-top:8px">
-        <label style="display:flex;align-items:center;gap:4px;margin:0"><input id="wi-twin-fetch" type="checkbox"> Twin Fetch</label>
-        <label style="display:flex;align-items:center;gap:4px;margin:0"><input id="wi-twin-put" type="checkbox"> Twin Put</label>
-        <label style="display:flex;align-items:center;gap:4px;margin:0"><input id="wi-twin-carry" type="checkbox"> Twin Carry</label>
-      </div>
-      <div class="form-group">
-        <label>Twin Companion WI</label>
-        <input id="wi-twin-companion" type="number" value="0">
-      </div>
-      <div class="form-group">
-        <label>Move Kind</label>
-        <input id="wi-move-kind" value="DSCH">
-      </div>
-      <div class="form-group">
-        <label>Job Position</label>
-        <select id="wi-job-position">
-          <option value="FWD" selected>FWD</option>
-          <option value="AFT">AFT</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>From Position</label>
-        <input id="wi-from-position" value="V-IF3606W-661390">
-      </div>
-      <div class="form-group">
-        <label>To Position</label>
-        <input id="wi-to-position" value="Y-PTM-1L20E4">
-      </div>
-      <div class="form-group">
-        <label>Container ID</label>
-        <input id="wi-container-id" value="THIVE1">
-      </div>
-      <div class="form-group">
-        <label>Est. Move Time (ISO)</label>
-        <input id="wi-emt" value="">
-      </div>
-      <div class="form-group">
-        <label>Est. Cycle Time (sec)</label>
-        <input id="wi-ect" type="number" value="120">
-      </div>
-      <div class="form-group">
-        <label>Est. RTG Cycle Time (sec)</label>
-        <input id="wi-rtg-ect" type="number" value="60">
-      </div>
-      <button onclick="this.closest('event-panel').sendWI()" style="margin-top:8px;width:100%">Add Work Instruction</button>
+        <div class="section-label">System</div>
+        <button onclick="window.open(API+'/dlq','_blank')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8l10 6 10-6"/><rect x="2" y="6" width="20" height="14" rx="1"/><path d="M6 2l2 4M10 1l1 5M14 1l-1 5M18 2l-2 4"/></svg> Dead Letter Queue <span id="dlq-count" class="nav-badge nav-badge-red" style="display:none"></span></button>
+        <button onclick="window.open(API+'/release-notes','_blank')">&#128196; Release Notes</button>
 
-      <h3 style="margin-top:20px">Work Queue</h3>
-      <div class="form-group">
-        <label>Work Queue ID</label>
-        <input id="wq-id" type="number" value="1">
-      </div>
-      <div class="form-group">
-        <label>Status</label>
-        <select id="wq-status">
-          <option value="ACTIVE">ACTIVE</option>
-          <option value="INACTIVE">INACTIVE</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>QC Muda (sec)</label>
-        <input id="wq-muda" type="number" value="5">
-      </div>
-      <div class="form-group">
-        <label>Load Mode</label>
-        <select id="wq-load-mode">
-          <option value="DSCH">DSCH</option>
-          <option value="LOAD">LOAD</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Sequence</label>
-        <input id="wq-sequence" type="text" value="100">
-      </div>
-      <div class="form-group">
-        <label>Point of Work</label>
-        <input id="wq-point-of-work" type="text" value="QCZ1">
-      </div>
-      <div class="form-group">
-        <label>Bollard Position</label>
-        <input id="wq-bollard" type="text" value="B52">
-      </div>
-      <div class="form-group">
-        <label>Managed</label>
-        <input id="wq-managed" type="text" value="FES4">
-      </div>
-      <button onclick="this.closest('event-panel').sendWQ()" style="margin-top:8px;width:100%">Send Work Queue</button>`;
-    this.querySelector('#wi-emt').addEventListener('input', () => { this._emtDirty = true; });
-    const updateCompanion = () => {
-      const anyTwin = this.querySelector('#wi-twin-fetch').checked
-          || this.querySelector('#wi-twin-put').checked
-          || this.querySelector('#wi-twin-carry').checked;
-      const id = parseInt(this.querySelector('#wi-id').value) || 0;
-      this.querySelector('#wi-twin-companion').value = anyTwin ? (id % 2 === 1 ? id + 1 : id - 1) : 0;
-    };
-    this.querySelector('#wi-twin-fetch').addEventListener('change', updateCompanion);
-    this.querySelector('#wi-twin-put').addEventListener('change', updateCompanion);
-    this.querySelector('#wi-twin-carry').addEventListener('change', updateCompanion);
-    this.querySelector('#wi-id').addEventListener('input', () => {
-      updateCompanion();
-      this.querySelector('#wi-container-id').value = 'THIVE' + (this.querySelector('#wi-id').value || '0');
-    });
+        <div class="section-label">Simulator</div>
+        <button onclick="window.open(API+'/containermovestate','_blank')"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="16" height="12" rx="1"/><line x1="6" y1="6" x2="6" y2="18"/><line x1="10" y1="6" x2="10" y2="18"/><line x1="14" y1="6" x2="14" y2="18"/><path d="M18 15l3-3-3-3"/></svg> Container Move State</button>
+        <button onclick="window.open(API+'/schedule-viewer','_blank')">&#128200; Schedule Viewer</button>
+        <button onclick="window.open(API+'/editor','_blank')">&#9998; Editor</button>
+      </div>`;
   }
   refresh(state) {
-    if (!this._emtDirty && state.currentTime) {
-      const emt = new Date(new Date(state.currentTime).getTime() + (8 + this._emtOffsetMin) * 60 * 1000);
-      this.querySelector('#wi-emt').value = emt.toISOString().replace('.000Z', 'Z');
+    const steps = state.steps || [];
+    const wiMap = new Map();
+    for (const step of steps) {
+      const evt = step.event;
+      if (evt && evt.type === 'WorkInstructionEvent') {
+        wiMap.set(evt.workInstructionId, evt.workInstructionMoveStage || '');
+      }
+      if (evt && evt.type === 'NukeWorkQueueEvent') {
+        const nukedWqId = Number(evt.workQueueId);
+        for (const [id, ms] of wiMap) {
+          if (Number(step.event.workQueueId) === nukedWqId) wiMap.delete(id);
+        }
+      }
+    }
+    let activeCount = 0;
+    for (const [, ms] of wiMap) {
+      if (ms !== 'Complete' && ms !== 'Cancelled') activeCount++;
+    }
+    const badge = this.querySelector('#wi-count');
+    if (badge) {
+      if (activeCount > 0) {
+        badge.style.display = '';
+        badge.textContent = activeCount;
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+
+    const wqMap = new Map();
+    for (const step of steps) {
+      const evt = step.event;
+      if (evt && evt.type === 'WorkQueueMessage') {
+        wqMap.set(evt.workQueueId, evt.workQueueManaged || '');
+      }
+      if (evt && evt.type === 'NukeWorkQueueEvent') {
+        wqMap.delete(evt.workQueueId);
+      }
+    }
+    let fesCount = 0;
+    for (const [, managed] of wqMap) {
+      if (managed === 'FES4') fesCount++;
+    }
+    const wqBadge = this.querySelector('#wq-count');
+    if (wqBadge) {
+      if (fesCount > 0) {
+        wqBadge.style.display = '';
+        wqBadge.textContent = fesCount;
+      } else {
+        wqBadge.style.display = 'none';
+      }
+    }
+
+    const rawTrucks = state.trucks || {};
+    let truckCount = 0;
+    for (const truck of Object.values(rawTrucks)) {
+      if (Number(truck.chePoolId) === 23) truckCount++;
+    }
+    const truckBadge = this.querySelector('#truck-count');
+    if (truckBadge) {
+      if (truckCount > 0) {
+        truckBadge.style.display = '';
+        truckBadge.textContent = truckCount;
+      } else {
+        truckBadge.style.display = 'none';
+      }
+    }
+
+    const quayCranes = state.quayCranes || {};
+    const craneDelays = state.craneDelays || {};
+    let qcCount = 0;
+    for (const [name, qc] of Object.entries(quayCranes)) {
+      const hasStandby = qc.standbyPositionName && qc.standbyPositionName.trim() !== '';
+      const delays = craneDelays[name] || [];
+      let noDelay = true;
+      if (delays.length > 0) {
+        const last = delays[delays.length - 1];
+        const status = (last.delayStatus || '').toUpperCase();
+        const action = (last.delayTypeAction || '').toUpperCase();
+        const eventType = (last.eventType || '').toUpperCase();
+        const stopped = status.includes('STOPPED') || action === 'CONTAINER_MOVE_ACTIVE' || eventType.includes('STOPPED');
+        if (!stopped) noDelay = false;
+      }
+      if (hasStandby && noDelay) qcCount++;
+    }
+    const locOccupancy = state.locationOccupancy || [];
+    const locBadge = this.querySelector('#loc-count');
+    if (locBadge) {
+      if (locOccupancy.length > 0) {
+        locBadge.style.display = '';
+        locBadge.textContent = locOccupancy.length;
+      } else {
+        locBadge.style.display = 'none';
+      }
+    }
+
+    const qcBadge = this.querySelector('#qc-count');
+    if (qcBadge) {
+      if (qcCount > 0) {
+        qcBadge.style.display = '';
+        qcBadge.textContent = qcCount;
+      } else {
+        qcBadge.style.display = 'none';
+      }
     }
   }
-  async sendWI() {
-    const data = {
-      eventType: this.querySelector('#wi-event-type').value,
-      workInstructionId: this.querySelector('#wi-id').value,
-      workQueueId: this.querySelector('#wi-queue').value,
-      fetchChe: this.querySelector('#wi-che').value,
-      putChe: this.querySelector('#wi-put-che').value,
-      isTwinFetch: String(this.querySelector('#wi-twin-fetch').checked),
-      isTwinPut: String(this.querySelector('#wi-twin-put').checked),
-      isTwinCarry: String(this.querySelector('#wi-twin-carry').checked),
-      twinCompanionWorkInstruction: this.querySelector('#wi-twin-companion').value,
-      moveKind: this.querySelector('#wi-move-kind').value,
-      jobPosition: this.querySelector('#wi-job-position').value,
-      fromPosition: this.querySelector('#wi-from-position').value,
-      toPosition: this.querySelector('#wi-to-position').value,
-      containerId: this.querySelector('#wi-container-id').value,
-      estimatedMoveTime: this.querySelector('#wi-emt').value,
-      estimatedCycleTimeSeconds: this.querySelector('#wi-ect').value,
-      estimatedRtgCycleTimeSeconds: this.querySelector('#wi-rtg-ect').value,
-      workInstructionMoveStage: this.querySelector('#wi-move-stage').value
-    };
-    await apiCall('/api/work-instruction', data);
-    // Auto-increment WI ID and update twin companion
-    const idInput = this.querySelector('#wi-id');
-    const newId = parseInt(idInput.value) + 1;
-    idInput.value = newId;
-    const anyTwin = this.querySelector('#wi-twin-fetch').checked
-        || this.querySelector('#wi-twin-put').checked
-        || this.querySelector('#wi-twin-carry').checked;
-    this.querySelector('#wi-twin-companion').value = anyTwin ? (newId % 2 === 1 ? newId + 1 : newId - 1) : 0;
-    this.querySelector('#wi-container-id').value = 'THIVE' + newId;
-    this._emtDirty = false;
-    this._emtOffsetMin += 2;
-    refreshState();
-  }
-  async sendWQ() {
-    await apiCall('/api/work-queue', {
-      workQueueId: this.querySelector('#wq-id').value,
-      status: this.querySelector('#wq-status').value,
-      qcMudaSeconds: this.querySelector('#wq-muda').value,
-      loadMode: this.querySelector('#wq-load-mode').value,
-      workQueueSequence: this.querySelector('#wq-sequence').value,
-      pointOfWorkName: this.querySelector('#wq-point-of-work').value,
-      bollardPosition: this.querySelector('#wq-bollard').value,
-      workQueueManaged: this.querySelector('#wq-managed').value
-    });
-    refreshState();
+  toggle() {
+    this.classList.toggle('collapsed');
   }
 }
-customElements.define('event-panel', EventPanel);
+customElements.define('nav-sidebar', NavSidebar);
 
 // --- Schedule View (Center Panel) ---
 class ScheduleView extends HTMLElement {
@@ -615,27 +534,10 @@ class ScheduleView extends HTMLElement {
       this.querySelector('#scale-val').textContent = this._pxPerSec;
       this.refresh(window._lastState || {});
     });
-    // Delegated click handler for complete buttons — survives DOM rebuilds during playback
-    this.addEventListener('click', async (e) => {
-      const btn = e.target.closest('.complete-btn');
-      if (!btn || btn.disabled) return;
-      e.stopPropagation();
-      btn.disabled = true;
-      setTimeout(() => { btn.disabled = false; }, 5000);
-      await apiCall('/api/action-completed', {
-        actionId: btn.dataset.actionId,
-        workQueueId: btn.dataset.wq
-      });
-      const popup = btn.closest('.action-popup');
-      if (popup) popup.remove();
-      refreshState();
-    });
   }
   refresh(state) {
-    // Detect newly completed actions and play sounds
     const newCompleted = new Set();
     for (const s of (state.schedules || [])) {
-      // Build a map of containerIndex → ordered action list per device for this schedule
       const containerDeviceActions = {};
       for (const takt of (s.takts || [])) {
         for (const action of (takt.actions || [])) {
@@ -667,7 +569,6 @@ class ScheduleView extends HTMLElement {
     const pageSize = state.schedulePageSize || 5;
     const totalPages = Math.max(1, Math.ceil(totalSchedules / pageSize));
 
-    // Render pager
     const pager = this.querySelector('#schedule-pager');
     if (totalSchedules > pageSize) {
       pager.innerHTML = '<button class="secondary" id="sched-prev" style="padding:2px 8px;font-size:11px"' + (page <= 0 ? ' disabled' : '') + '>&lt;</button>'
@@ -708,11 +609,7 @@ class ScheduleView extends HTMLElement {
       const takts = schedule.takts || [];
       if (takts.length === 0) { html += '</div>'; continue; }
 
-      // 7 double-rows: each has RTG sub-row on top, TT sub-row on bottom
-      // Containers assigned round-robin: container 0→slot 0, ..., container 6→slot 6, container 7→slot 0, ...
       const LANE_COUNT = 7;
-
-      // Collect all container indices and assign round-robin slots
       const containerIndices = new Set();
       for (const takt of takts) {
         for (const action of takt.actions || []) {
@@ -726,11 +623,9 @@ class ScheduleView extends HTMLElement {
       sortedContainers.forEach((ci, i) => { containerSlot[ci] = i % LANE_COUNT; });
       const actualLanes = Math.min(LANE_COUNT, sortedContainers.length);
 
-      // Grid: label column + one column per takt
       const colDefs = takts.map(t => { const d = t.durationSeconds || 120; return 'minmax(' + Math.round(d * scale) + 'px,' + d + 'fr)'; }).join(' ');
       html += '<div style="display:inline-grid;grid-template-columns:56px ' + colDefs + ';gap:1px;min-width:100%">';
 
-      // Header row: corner + takt headers
       html += '<div style="background:var(--surface2);padding:4px;position:sticky;left:0;z-index:2"></div>';
       for (const takt of takts) {
         const ts = takt.status || 'WAITING';
@@ -766,7 +661,6 @@ class ScheduleView extends HTMLElement {
         html += '</div>';
       }
 
-      // QC row (unchanged — single row)
       html += '<div style="background:var(--surface2);padding:4px;display:flex;align-items:center;justify-content:center;position:sticky;left:0;z-index:1">';
       html += '<span style="background:' + deviceColors.QC + ';color:white;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600">QC</span>';
       html += '</div>';
@@ -779,7 +673,6 @@ class ScheduleView extends HTMLElement {
         html += '</div>';
       }
 
-      // Detect distinct RTG deviceIndex values to determine if we need split RTG rows
       const rtgDeviceIndices = new Set();
       for (const takt of takts) {
         for (const action of takt.actions || []) {
@@ -793,16 +686,15 @@ class ScheduleView extends HTMLElement {
       const rtgDeviceA = sortedRtgDeviceIndices[0] ?? 0;
       const rtgDeviceB = sortedRtgDeviceIndices[1] ?? -1;
 
-      const SRH = 60; // sub-row height
+      const SRH = 60;
       const rtgSubRows = hasMultipleRtgDevices ? 2 : 1;
-      const subRowCount = rtgSubRows + 1; // +1 for TT
-      const laneHeight = SRH * subRowCount + (subRowCount - 1); // height + borders
+      const subRowCount = rtgSubRows + 1;
+      const laneHeight = SRH * subRowCount + (subRowCount - 1);
 
       for (let lane = 0; lane < actualLanes; lane++) {
         const laneSlot = lane;
         const matchLane = a => containerSlot[a.containerIndex != null ? a.containerIndex : 0] === laneSlot;
 
-        // Label spanning all sub-rows
         html += '<div style="background:var(--surface2);padding:2px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:sticky;left:0;z-index:1;gap:1px;height:' + laneHeight + 'px">';
         if (hasMultipleRtgDevices) {
           html += '<span style="background:' + deviceColors.RTG + ';color:white;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600">RTG A</span>';
@@ -820,29 +712,24 @@ class ScheduleView extends HTMLElement {
           html += '<div style="background:var(--bg);display:flex;flex-direction:column;gap:0;height:' + laneHeight + 'px">';
 
           if (hasMultipleRtgDevices) {
-            // Split RTG actions by deviceIndex — first distinct index → row A, rest → row B
             const allRtg = laneActions.filter(a => a.deviceType === 'RTG');
             const cellRtgIndices = [...new Set(allRtg.map(a => a.deviceIndex != null ? a.deviceIndex : 0))].sort((a, b) => a - b);
             const cellFirstIdx = cellRtgIndices[0];
             const rtgA = allRtg.filter(a => (a.deviceIndex != null ? a.deviceIndex : 0) === cellFirstIdx);
             const rtgB = allRtg.filter(a => (a.deviceIndex != null ? a.deviceIndex : 0) !== cellFirstIdx);
-            // RTG-A sub-row
             html += '<div style="display:flex;flex-direction:row;gap:0;height:' + SRH + 'px;align-items:stretch;border-bottom:1px solid var(--surface2)">';
             for (const action of rtgA) html += this._renderAction(action, schedule.workQueueId, scale);
             html += '</div>';
-            // RTG-B sub-row
             html += '<div style="display:flex;flex-direction:row;gap:0;height:' + SRH + 'px;align-items:stretch;border-bottom:1px solid var(--surface2)">';
             for (const action of rtgB) html += this._renderAction(action, schedule.workQueueId, scale);
             html += '</div>';
           } else {
-            // Single RTG sub-row
             const rtgActions = laneActions.filter(a => a.deviceType === 'RTG');
             html += '<div style="display:flex;flex-direction:row;gap:0;height:' + SRH + 'px;align-items:stretch;border-bottom:1px solid var(--surface2)">';
             for (const action of rtgActions) html += this._renderAction(action, schedule.workQueueId, scale);
             html += '</div>';
           }
 
-          // TT sub-row
           html += '<div style="display:flex;flex-direction:row;gap:0;height:' + SRH + 'px;align-items:stretch">';
           for (const action of ttActions) html += this._renderAction(action, schedule.workQueueId, scale);
           html += '</div>';
@@ -854,12 +741,10 @@ class ScheduleView extends HTMLElement {
     }
     container.innerHTML = html;
 
-    // Bind click popups for narrow actions
     const self = this;
     container.querySelectorAll('[data-popup-html]').forEach(el => {
       el.addEventListener('click', e => {
         e.stopPropagation();
-        // Toggle: remove if already open for this element
         const existingId = el.dataset.popupId;
         if (existingId) {
           const ep = document.getElementById(existingId);
@@ -867,7 +752,6 @@ class ScheduleView extends HTMLElement {
           delete el.dataset.popupId;
           return;
         }
-        // Remove any other open popups
         self.querySelectorAll('.action-popup').forEach(p => p.remove());
         const popup = document.createElement('div');
         popup.className = 'action-popup';
@@ -880,7 +764,6 @@ class ScheduleView extends HTMLElement {
         popup.innerHTML = el.dataset.popupHtml + '<div style="margin-top:4px;text-align:right"><span style="cursor:pointer;font-size:11px;color:var(--text-muted);padding:2px 4px" onclick="this.closest(\'.action-popup\').remove()">&#10005; close</span></div>';
         self.appendChild(popup);
 
-        // Bind action conditions buttons inside popup
         popup.querySelectorAll('.action-conditions-btn').forEach(btn => {
           btn.addEventListener('click', e => {
             e.stopPropagation();
@@ -899,7 +782,6 @@ class ScheduleView extends HTMLElement {
               const icon = cond.satisfied ? '<span style="color:var(--completed)">&#10003;</span>' : cond.overridden ? '<span style="color:var(--tt-color)">&#8623;</span>' : '<span style="color:#ef4444">&#10007;</span>';
               const label = cond.type === 'TAKT_ACTIVATION' ? 'Takt Activation' : 'Action Dependencies';
               cHtml += '<div style="padding:6px 0;border-top:1px solid var(--border)"><div style="display:flex;align-items:center;justify-content:space-between;gap:8px"><span>' + icon + ' <strong>' + label + '</strong></span>';
-              if (!cond.satisfied && !cond.overridden) cHtml += '<button class="action-override-btn" data-wq="' + wqId + '" data-action-id="' + actionId + '" data-cond-id="' + cond.id + '" style="background:#f59e0b;color:white;border:none;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-weight:600">Override</button>';
               cHtml += '</div>';
               if (cond.explanation) cHtml += '<div style="font-size:11px;color:var(--text-muted);margin-top:3px;word-break:break-word">' + cond.explanation + '</div>';
               if (cond.overridden) cHtml += '<div style="font-size:10px;color:var(--tt-color);margin-top:2px">Overridden</div>';
@@ -907,13 +789,9 @@ class ScheduleView extends HTMLElement {
             }
             condPopup.innerHTML = cHtml;
             self.appendChild(condPopup);
-            condPopup.querySelectorAll('.action-override-btn').forEach(obtn => {
-              obtn.addEventListener('click', async (ev) => { ev.stopPropagation(); await apiCall('/api/override-action-condition', { workQueueId: obtn.dataset.wq, actionId: obtn.dataset.actionId, conditionId: obtn.dataset.condId }); condPopup.remove(); refreshState(); });
-            });
           });
         });
 
-        // Bind completion reason buttons inside popup
         popup.querySelectorAll('.completion-reason-btn').forEach(btn => {
           btn.addEventListener('click', e => {
             e.stopPropagation();
@@ -931,7 +809,6 @@ class ScheduleView extends HTMLElement {
       });
     });
 
-    // Bind action conditions buttons
     container.querySelectorAll('.action-conditions-btn').forEach(btn => {
       btn.addEventListener('click', e => {
         e.stopPropagation();
@@ -962,9 +839,6 @@ class ScheduleView extends HTMLElement {
           popupHtml += '<div style="padding:6px 0;border-top:1px solid var(--border)">';
           popupHtml += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
           popupHtml += '<span>' + icon + ' <strong>' + label + '</strong></span>';
-          if (!cond.satisfied && !cond.overridden) {
-            popupHtml += '<button class="action-override-btn" data-wq="' + wqId + '" data-action-id="' + actionId + '" data-cond-id="' + cond.id + '" style="background:#f59e0b;color:white;border:none;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-weight:600">Override</button>';
-          }
           popupHtml += '</div>';
           if (cond.explanation) {
             popupHtml += '<div style="font-size:11px;color:var(--text-muted);margin-top:3px;word-break:break-word">' + cond.explanation + '</div>';
@@ -978,23 +852,9 @@ class ScheduleView extends HTMLElement {
         popup.innerHTML = popupHtml;
         self.appendChild(popup);
 
-        // Bind action override buttons
-        popup.querySelectorAll('.action-override-btn').forEach(obtn => {
-          obtn.addEventListener('click', async (ev) => {
-            ev.stopPropagation();
-            await apiCall('/api/override-action-condition', {
-              workQueueId: obtn.dataset.wq,
-              actionId: obtn.dataset.actionId,
-              conditionId: obtn.dataset.condId
-            });
-            popup.remove();
-            refreshState();
-          });
-        });
       });
     });
 
-    // Bind completion reason buttons (⚠ icon on force-completed actions)
     container.querySelectorAll('.completion-reason-btn').forEach(btn => {
       btn.addEventListener('click', e => {
         e.stopPropagation();
@@ -1017,11 +877,9 @@ class ScheduleView extends HTMLElement {
       });
     });
 
-    // Bind conditions buttons
     container.querySelectorAll('.conditions-btn').forEach(btn => {
       btn.addEventListener('click', e => {
         e.stopPropagation();
-        // Remove any existing conditions popup
         self.querySelectorAll('.conditions-popup').forEach(p => p.remove());
 
         const conditions = JSON.parse(decodeURIComponent(btn.dataset.conditions));
@@ -1048,9 +906,6 @@ class ScheduleView extends HTMLElement {
           popupHtml += '<div style="padding:6px 0;border-top:1px solid var(--border)">';
           popupHtml += '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px">';
           popupHtml += '<span>' + icon + ' <strong>' + label + '</strong></span>';
-          if (!cond.satisfied && !cond.overridden) {
-            popupHtml += '<button class="override-btn" data-wq="' + wqId + '" data-takt="' + taktName + '" data-cond-id="' + cond.id + '" style="background:#f59e0b;color:white;border:none;padding:2px 8px;border-radius:3px;cursor:pointer;font-size:10px;font-weight:600">Override</button>';
-          }
           popupHtml += '</div>';
           if (cond.explanation) {
             popupHtml += '<div style="font-size:11px;color:var(--text-muted);margin-top:3px;word-break:break-word">' + cond.explanation + '</div>';
@@ -1064,19 +919,6 @@ class ScheduleView extends HTMLElement {
         popup.innerHTML = popupHtml;
         self.appendChild(popup);
 
-        // Bind override buttons
-        popup.querySelectorAll('.override-btn').forEach(obtn => {
-          obtn.addEventListener('click', async (ev) => {
-            ev.stopPropagation();
-            await apiCall('/api/override-condition', {
-              workQueueId: obtn.dataset.wq,
-              taktName: obtn.dataset.takt,
-              conditionId: obtn.dataset.condId
-            });
-            popup.remove();
-            refreshState();
-          });
-        });
       });
     });
   }
@@ -1120,9 +962,6 @@ class ScheduleView extends HTMLElement {
     const containerLabel = (action.containerIds && action.containerIds.length > 0) ? action.containerIds.join(', ') : 'C' + ci;
     const truckLabel = action.cheShortName ? ' <span style="font-size:9px;color:#9a3412;font-weight:600" title="Assigned truck">' + action.cheShortName + '</span>' : '';
     let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600;min-width:0">' + statusLabel + ' <span title="' + containerLabel + '" style="color:' + containerColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + containerLabel + '</span>' + truckLabel + conditionsIcon + '</div><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + action.description + '</div>';
-    if (action.status === 'ACTIVE') {
-      innerHtml += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Complete</button>';
-    }
 
     let h = '<div style="position:relative;background:' + bgColor + ';' + extraStyle + 'border:1px solid ' + borderColor + ';border-top:3px solid ' + containerColor + ';border-radius:4px;padding:' + (narrow ? '1px 2px' : '3px 5px') + ';opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0;overflow:hidden;cursor:' + (narrow ? 'pointer' : 'default') + '"' + (narrow ? ' data-popup-html="' + innerHtml.replace(/"/g, '&quot;') + '" data-popup-bg="' + bgColor + '" data-popup-border="' + borderColor + '" data-popup-container="' + containerColor + '"' : '') + '>';
     if (!narrow) {
@@ -1140,11 +979,7 @@ class TimelinePanel extends HTMLElement {
     this.style.cssText = 'grid-area:right';
     this.classList.add('panel');
     this.setAttribute('data-refresh', '');
-    this.innerHTML = '<h2 style="display:flex;align-items:center;gap:12px">Timeline <button id="snapshot-btn" class="secondary" style="font-size:11px;padding:3px 8px">Snapshot</button> <label style="font-size:12px;font-weight:400;display:flex;align-items:center;gap:4px;color:var(--text-muted)"><input id="hide-ticks" type="checkbox" checked> Hide time events</label></h2><div id="timeline-content"></div>';
-    this.querySelector('#snapshot-btn').addEventListener('click', async () => {
-      await apiCall('/api/snapshot');
-      refreshState();
-    });
+    this.innerHTML = '<h2 style="display:flex;align-items:center;gap:12px">Timeline <label style="font-size:12px;font-weight:400;display:flex;align-items:center;gap:4px;color:var(--text-muted)"><input id="hide-ticks" type="checkbox" checked> Hide time events</label></h2><div id="timeline-content"></div>';
     this.querySelector('#hide-ticks').addEventListener('change', () => { if (window._lastState) this.refresh(window._lastState); });
   }
   refresh(state) {
@@ -1167,14 +1002,9 @@ class TimelinePanel extends HTMLElement {
       const step = steps[i];
       if (hideTicks && step.description && (step.description.startsWith('Tick ') || step.description === 'System time set')) continue;
       const effectCount = (step.sideEffects || []).length;
-      const canRevert = step.stepNumber > snapshotStep && snapshotStep >= 0;
       const isSnapshot = step.stepNumber === snapshotStep;
-      html += '<div class="timeline-entry" data-step="' + step.stepNumber + '" ';
-      html += 'style="padding:8px 10px;margin-bottom:4px;border-radius:4px;'
-           + (canRevert ? 'cursor:pointer;' : 'cursor:default;opacity:0.6;')
-           + 'border:1px solid ' + (isSnapshot ? 'var(--active)' : 'var(--border)') + ';font-size:13px;transition:background .15s"';
-      if (canRevert) html += ' onmouseover="this.style.background=\'var(--surface2)\'" onmouseout="this.style.background=\'transparent\'"';
-      html += '>';
+      html += '<div style="padding:8px 10px;margin-bottom:4px;border-radius:4px;cursor:default;'
+           + 'border:1px solid ' + (isSnapshot ? 'var(--active)' : 'var(--border)') + ';font-size:13px">';
       html += '<div style="display:flex;justify-content:space-between;align-items:center">';
       html += '<span>';
       if (isSnapshot) html += '<span style="color:var(--active);font-size:10px;margin-right:4px">SNAPSHOT</span>';
@@ -1186,15 +1016,6 @@ class TimelinePanel extends HTMLElement {
     }
     container.innerHTML = html;
 
-    container.querySelectorAll('.timeline-entry').forEach(entry => {
-      const stepNum = parseInt(entry.dataset.step);
-      if (stepNum <= snapshotStep) return;
-      entry.addEventListener('click', async () => {
-        const targetStep = stepNum - 1;
-        await apiCall('/api/step-back-to', { targetStep: String(targetStep) });
-        refreshState();
-      });
-    });
   }
 }
 customElements.define('timeline-panel', TimelinePanel);
@@ -1235,8 +1056,32 @@ class SideEffectsLog extends HTMLElement {
 }
 customElements.define('side-effects-log', SideEffectsLog);
 
-// Initial state load
 refreshState();
+
+fetch(API + '/api/digitalmap').then(r => r.json()).then(data => {
+  const count = (data.pois || []).length;
+  const badge = document.getElementById('pf-count');
+  if (badge && count > 0) {
+    badge.style.display = '';
+    badge.textContent = count;
+  }
+}).catch(() => {});
+
+function refreshDlqCount() {
+  fetch(API + '/api/dlq').then(r => r.json()).then(data => {
+    const badge = document.getElementById('dlq-count');
+    if (badge) {
+      if (data.count > 0) {
+        badge.style.display = '';
+        badge.textContent = data.count;
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+  }).catch(() => {});
+}
+refreshDlqCount();
+setInterval(refreshDlqCount, 15000);
 </script>
 </body>
 </html>

@@ -300,6 +300,7 @@ class DemoServerTest {
         void startServer() throws Exception {
             var props = new java.util.Properties();
             props.setProperty("kafka.enabled", "false");
+            props.setProperty("clock.autostart", "false");
             httpServer = new DemoServer(Settings.of(props));
             httpServer.start(0); // random available port
         }
@@ -374,7 +375,7 @@ class DemoServerTest {
             assertEquals("application/json; charset=UTF-8", conn.getHeaderField("Content-Type"));
             String body = new String(conn.getInputStream().readAllBytes());
             assertTrue(body.contains("\"version\""));
-            assertTrue(body.contains("4.0.24"));
+            assertTrue(body.contains("4.0.26"));
         }
 
         @Test

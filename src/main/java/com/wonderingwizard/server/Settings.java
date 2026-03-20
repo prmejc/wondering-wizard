@@ -77,6 +77,10 @@ public class Settings {
         return getInt("server.port", 8080);
     }
 
+    public boolean clockAutoStart() {
+        return getBoolean("clock.autostart", true);
+    }
+
     // --- Kafka ---
 
     public boolean kafkaEnabled() {
