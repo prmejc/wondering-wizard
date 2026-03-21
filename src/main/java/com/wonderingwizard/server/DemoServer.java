@@ -325,6 +325,8 @@ public class DemoServer {
         httpServer.createContext("/api/play", this::handlePlay);
         httpServer.createContext("/api/action-completed", this::handleActionCompleted);
         httpServer.createContext("/api/simulate-qc-event", this::handleSimulateQcEvent);
+        httpServer.createContext("/api/simulate-rtg-asset-event", this::handleSimulateRtgAssetEvent);
+        httpServer.createContext("/api/simulate-rtg-job-operation", this::handleSimulateRtgJobOperation);
         httpServer.createContext("/api/override-condition", this::handleOverrideCondition);
         httpServer.createContext("/api/override-action-condition", this::handleOverrideActionCondition);
         httpServer.createContext("/api/step-back-to", this::handleStepBackTo);
@@ -2352,6 +2354,107 @@ public class DemoServer {
                 sendJsonResponse(exchange, 200, JsonSerializer.serialize(
                         Map.of("ok", true, "target", "direct", "sideEffects", result.sideEffects())));
             }
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    /**
+     * Sends an RTG asset event to Kafka (when enabled) or processes it directly.
+     * Used by the schedule viewer for RTG_LIFT_FROM_TT and RTG_PLACE_ON_YARD actions.
+     */
+    private void handleSimulateRtgAssetEvent(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            UUID actionId = UUID.fromString(requireField(body, "actionId"));
+            long workQueueId = Long.parseLong(requireField(body, "workQueueId"));
+
+            Action action = scheduleRunnerProcessor.getAction(workQueueId, actionId);
+            if (action == null) {
+                sendJsonResponse(exchange, 404, "{\"error\":\"Action not found\"}");
+                return;
+            }
+
+            String cheId = action.workInstructions().isEmpty() ? "" : action.workInstructions().getFirst().putChe();
+            String operationalEvent = switch (action.actionType()) {
+                case RTG_LIFT_FROM_TT -> "RTGliftedContainerfromTruck";
+                case RTG_PLACE_ON_YARD -> "RTGplacedContainerOnYard";
+                default -> null;
+            };
+            if (operationalEvent == null) {
+                sendJsonResponse(exchange, 400, "{\"error\":\"Unsupported action type for RTG asset event: " + action.actionType() + "\"}");
+                return;
+            }
+
+            String json = "{" +
+                    "\"move\":\"DSCH\"," +
+                    "\"operationalEvent\":\"" + operationalEvent + "\"," +
+                    "\"cheID\":\"" + cheId + "\"," +
+                    "\"terminalCode\":\"" + settings.terminalCode() + "\"," +
+                    "\"timestamp\":" + java.time.Instant.now().getEpochSecond() +
+                    "}";
+
+            if (jsonKafkaProducer != null) {
+                String topic = settings.assetEventRtgConsumerConfiguration().topic();
+                jsonKafkaProducer.send(new org.apache.kafka.clients.producer.ProducerRecord<>(topic, cheId, json));
+                sendJsonResponse(exchange, 200, "{\"ok\":true,\"target\":\"kafka\"}");
+            } else {
+                var assetEvent = new com.wonderingwizard.events.AssetEvent(
+                        "DSCH", operationalEvent, cheId, settings.terminalCode(), java.time.Instant.now());
+                processStep("RTG asset event: " + cheId + " " + operationalEvent, assetEvent);
+                sendJsonResponse(exchange, 200, "{\"ok\":true,\"target\":\"direct\"}");
+            }
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    /**
+     * Processes an RTG job operation event directly through the engine.
+     * Used by the schedule viewer for RTG_DRIVE and RTG_PLACE_ON_YARD actions.
+     */
+    private void handleSimulateRtgJobOperation(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            UUID actionId = UUID.fromString(requireField(body, "actionId"));
+            long workQueueId = Long.parseLong(requireField(body, "workQueueId"));
+
+            Action action = scheduleRunnerProcessor.getAction(workQueueId, actionId);
+            if (action == null) {
+                sendJsonResponse(exchange, 404, "{\"error\":\"Action not found\"}");
+                return;
+            }
+
+            String actionCode = switch (action.actionType()) {
+                case RTG_DRIVE -> "A";
+                case RTG_PLACE_ON_YARD -> "D";
+                default -> null;
+            };
+            if (actionCode == null) {
+                sendJsonResponse(exchange, 400, "{\"error\":\"Unsupported action type for RTG job operation: " + action.actionType() + "\"}");
+                return;
+            }
+
+            // Send one job operation per work instruction (handles twins)
+            for (var wi : action.workInstructions()) {
+                String cheId = wi.putChe();
+                String wiId = String.valueOf(wi.workInstructionId());
+                String containerId = wi.containerId() != null ? wi.containerId() : "";
+                var jobOpEvent = new com.wonderingwizard.events.JobOperationEvent(
+                        actionCode, cheId, "RTG", wiId, containerId);
+                processStep("RTG job op '" + actionCode + "': " + cheId + " WI " + wiId, jobOpEvent);
+            }
+            sendJsonResponse(exchange, 200, "{\"ok\":true,\"target\":\"direct\"}");
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }

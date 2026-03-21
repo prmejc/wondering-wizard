@@ -732,6 +732,32 @@ class ScheduleView extends HTMLElement {
       if (popup) popup.remove();
       refreshState();
     });
+    // RTG asset event button (RTG_LIFT_FROM_TT, RTG_PLACE_ON_YARD "Placed")
+    this.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.rtg-asset-btn');
+      if (!btn || btn.disabled) return;
+      e.stopPropagation();
+      btn.disabled = true;
+      setTimeout(() => { btn.disabled = false; }, 5000);
+      await apiCall('/api/simulate-rtg-asset-event', {
+        actionId: btn.dataset.actionId,
+        workQueueId: btn.dataset.wq
+      });
+      refreshState();
+    });
+    // RTG job operation button (RTG_DRIVE "Job Accept", RTG_PLACE_ON_YARD "Job Done")
+    this.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.rtg-job-btn');
+      if (!btn || btn.disabled) return;
+      e.stopPropagation();
+      btn.disabled = true;
+      setTimeout(() => { btn.disabled = false; }, 5000);
+      await apiCall('/api/simulate-rtg-job-operation', {
+        actionId: btn.dataset.actionId,
+        workQueueId: btn.dataset.wq
+      });
+      refreshState();
+    });
   }
   refresh(state) {
     // Detect newly completed actions and play sounds
@@ -1234,7 +1260,15 @@ class ScheduleView extends HTMLElement {
     const truckLabel = action.cheShortName ? ' <span style="font-size:9px;color:#9a3412;font-weight:600" title="Assigned truck">' + action.cheShortName + '</span>' : '';
     let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600;min-width:0">' + statusLabel + ' <span title="' + containerLabel + '" style="color:' + containerColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + containerLabel + '</span>' + truckLabel + conditionsIcon + '</div><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + action.description + '</div>';
     if (action.status === 'ACTIVE') {
-      innerHtml += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '" data-action-type="' + (action.actionType || '') + '" data-che-id="' + (action.cheShortName || '') + '">Complete</button>';
+      if (action.actionType === 'RTG_PLACE_ON_YARD') {
+        innerHtml += '<div style="display:flex;gap:3px;margin-top:2px"><button class="rtg-job-btn" style="font-size:9px;padding:1px 4px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Job Done</button><button class="rtg-asset-btn" style="font-size:9px;padding:1px 4px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Placed</button></div>';
+      } else if (action.actionType === 'RTG_DRIVE') {
+        innerHtml += '<button class="rtg-job-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Job Accept</button>';
+      } else if (action.actionType === 'RTG_LIFT_FROM_TT') {
+        innerHtml += '<button class="rtg-asset-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Complete</button>';
+      } else {
+        innerHtml += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '" data-action-type="' + (action.actionType || '') + '" data-che-id="' + (action.cheShortName || '') + '">Complete</button>';
+      }
     }
 
     let h = '<div style="position:relative;background:' + bgColor + ';' + extraStyle + 'border:1px solid ' + borderColor + ';border-top:3px solid ' + containerColor + ';border-radius:4px;padding:' + (narrow ? '1px 2px' : '3px 5px') + ';opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0;overflow:hidden;cursor:' + (narrow ? 'pointer' : 'default') + '"' + (narrow ? ' data-popup-html="' + innerHtml.replace(/"/g, '&quot;') + '" data-popup-bg="' + bgColor + '" data-popup-border="' + borderColor + '" data-popup-container="' + containerColor + '"' : '') + '>';
