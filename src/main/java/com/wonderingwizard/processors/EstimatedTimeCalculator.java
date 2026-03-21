@@ -1,5 +1,6 @@
 package com.wonderingwizard.processors;
 
+import com.wonderingwizard.domain.takt.ActionStatus;
 import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.SideEffect;
@@ -86,6 +87,16 @@ public class EstimatedTimeCalculator implements ScheduleSubProcessor {
             }
             Takt prev = takts.get(i - 1);
             current.setEstimatedStartTime(prev.estimatedStartTime().plusSeconds(prev.durationSeconds()));
+        }
+
+        // Recompute action estimated times for all non-completed takts
+        for (Takt takt : takts) {
+            var state = context.getTaktState(wqId, takt.name());
+            if (state != ScheduleRunnerProcessor.TaktState.COMPLETED) {
+                ActionTimeCalculator.recomputeEstimatedTimes(takt, wqId,
+                        actionId -> context.getActionStatus(wqId, actionId) == ActionStatus.COMPLETED,
+                        context);
+            }
         }
     }
 }

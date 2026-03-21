@@ -40,11 +40,11 @@ public class PlannedTimeStep implements SchedulePostProcessingStep {
             for (Action action : takt.actions()) {
                 Action updated = action;
                 if (plannedStart != null) {
-                    Instant start = computeStart(plannedStart, action, taktActions, true);
+                    Instant start = ActionTimeCalculator.computeActionStart(plannedStart, action, taktActions, Action::plannedEndTime);
                     updated = updated.withPlannedTimes(start, start.plusSeconds(action.durationSeconds()));
                 }
                 if (estimatedStart != null) {
-                    Instant start = computeStart(estimatedStart, action, taktActions, false);
+                    Instant start = ActionTimeCalculator.computeActionStart(estimatedStart, updated, taktActions, Action::estimatedEndTime);
                     updated = updated.withEstimatedTimes(start, start.plusSeconds(action.durationSeconds()));
                 }
                 updatedActions.add(updated);
@@ -55,21 +55,5 @@ public class PlannedTimeStep implements SchedulePostProcessingStep {
         }
 
         return result;
-    }
-
-    private Instant computeStart(Instant taktStart, Action action, Map<UUID, Action> taktActions, boolean usePlanned) {
-        Instant start = taktStart;
-        if (action.dependsOn() != null) {
-            for (UUID depId : action.dependsOn()) {
-                Action dep = taktActions.get(depId);
-                if (dep != null && dep.deviceType() == action.deviceType()) {
-                    Instant depEnd = usePlanned ? dep.plannedEndTime() : dep.estimatedEndTime();
-                    if (depEnd != null && depEnd.isAfter(start)) {
-                        start = depEnd;
-                    }
-                }
-            }
-        }
-        return start;
     }
 }

@@ -85,4 +85,9 @@ public interface ScheduleContext {
      * Replaces a takt at the given index in the schedule's takt list.
      */
     default void replaceTakt(long workQueueId, int index, Takt takt) {}
+
+    /**
+     * Updates an action in the action lookup (syncs takt list changes to the lookup).
+     */
+    default void updateAction(long workQueueId, UUID actionId, Action action) {}
 }

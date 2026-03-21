@@ -267,10 +267,19 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         /**
          * Updates the action's status in the actionLookup.
          */
-        void setActionStatus(UUID actionId, ActionStatus status) {
+        void setActionStatus(UUID actionId, ActionStatus status, Instant currentTime) {
             ActionInfo info = actionLookup.get(actionId);
             if (info != null) {
-                actionLookup.put(actionId, new ActionInfo(info.taktName(), info.action().withStatus(status)));
+                Action action = info.action();
+                Action updated = action.withStatus(status);
+                // Only set actualStartTime once (first activation or first completion if skipped)
+                Instant actualStart = action.actualStartTime() != null ? action.actualStartTime() : currentTime;
+                if (status == ActionStatus.ACTIVE) {
+                    updated = updated.withActualTimes(actualStart, null);
+                } else if (status == ActionStatus.COMPLETED) {
+                    updated = updated.withActualTimes(actualStart, currentTime);
+                }
+                actionLookup.put(actionId, new ActionInfo(info.taktName(), updated));
             }
         }
 
@@ -671,9 +680,11 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 if (info == null) return List.of();
                 if (info.action().status() == ActionStatus.COMPLETED) return List.of();
 
-                // Update the action with completion reason and status
+                // Update the action with completion reason, status, and actual times
                 Action canceledAction = info.action();
-                Action updatedAction = canceledAction.withCompletionReason(reason).withStatus(ActionStatus.COMPLETED);
+                Instant actualStart = canceledAction.actualStartTime() != null ? canceledAction.actualStartTime() : currentTime;
+                Action updatedAction = canceledAction.withCompletionReason(reason).withStatus(ActionStatus.COMPLETED)
+                        .withActualTimes(actualStart, currentTime);
                 state.actionLookup.put(actionId, new ActionInfo(info.taktName(), updatedAction));
 
                 // Re-wire dependencies: any action that depended on the canceled action
@@ -764,6 +775,17 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 ScheduleState state = scheduleStates.get(workQueueId);
                 if (state != null && index >= 0 && index < state.takts.size()) {
                     state.takts.set(index, takt);
+                }
+            }
+
+            @Override
+            public void updateAction(long workQueueId, UUID actionId, Action action) {
+                ScheduleState state = scheduleStates.get(workQueueId);
+                if (state != null) {
+                    ActionInfo info = state.actionLookup.get(actionId);
+                    if (info != null) {
+                        state.actionLookup.put(actionId, new ActionInfo(info.taktName(), action));
+                    }
                 }
             }
         };
@@ -928,7 +950,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 // Completed takts: mark takt and all actions as completed
                 newState.taktStates.put(taktName, TaktState.COMPLETED);
                 for (Action action : newTakt.actions()) {
-                    newState.setActionStatus(action.id(), ActionStatus.COMPLETED);
+                    newState.setActionStatus(action.id(), ActionStatus.COMPLETED, this.currentTime);
                 }
             } else if (oldTaktState == TaktState.ACTIVE) {
                 // Active takts: transfer completed action states by (actionType, containerIndex)
@@ -940,7 +962,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 for (Action action : newTakt.actions()) {
                     String key = action.actionType() + ":" + action.containerIndex();
                     if (completedKeys.contains(key)) {
-                        newState.setActionStatus(action.id(), ActionStatus.COMPLETED);
+                        newState.setActionStatus(action.id(), ActionStatus.COMPLETED, this.currentTime);
                     }
                 }
 
@@ -1337,7 +1359,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         // Auto-complete: if skipWhenGatesSatisfied and all gates are already satisfied, skip
         if (action.skipWhenGatesSatisfied()
                 && state.areEventGatesSatisfied(actionId, action, overrides)) {
-            state.setActionStatus(actionId, ActionStatus.COMPLETED);
+            state.setActionStatus(actionId, ActionStatus.COMPLETED, currentTime);
             return List.of(new ActionCompleted(
                     actionId, workQueueId, taktName,
                     action.description(), this.currentTime
@@ -1345,7 +1367,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
 
         // All conditions met — activate the action
-        state.setActionStatus(actionId, ActionStatus.ACTIVE);
+        state.setActionStatus(actionId, ActionStatus.ACTIVE, currentTime);
         armEventGatesForAction(state, actionId);
         String cheForMessage = action.deviceType() == DeviceType.TT ? action.cheShortName() : action.targetChe();
         return List.of(new ActionActivated(
@@ -1454,7 +1476,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                     ScheduleState state = scheduleStates.get(wqId);
                     if (state != null) {
                         String taktName = state.actionLookup.get(actionId).taktName();
-                        state.setActionStatus(actionId, ActionStatus.COMPLETED);
+                        state.setActionStatus(actionId, ActionStatus.COMPLETED, currentTime);
                         satisfiedCompletionConditions.remove(actionId);
                         allSideEffects.add(new ActionCompleted(actionId, wqId, taktName,
                                 action.description(), this.currentTime));
@@ -1741,7 +1763,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 if (action.skipWhenGatesSatisfied()
                         && state.areEventGatesSatisfied(actionId, action, overrides)
                         && state.areDependenciesCompleted(action.dependsOn())) {
-                    state.setActionStatus(actionId, ActionStatus.COMPLETED);
+                    state.setActionStatus(actionId, ActionStatus.COMPLETED, currentTime);
                     sideEffects.add(new ActionCompleted(
                             actionId, workQueueId, actionInfo.taktName(),
                             action.description(), this.currentTime
@@ -1790,7 +1812,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 // Must be after TT allocation — can't skip without a truck assigned
                 if (action.cheShortName() != null
                         && state.shouldSkipForLocation(action, occupiedPositions, overrides)) {
-                    state.setActionStatus(actionId, ActionStatus.COMPLETED);
+                    state.setActionStatus(actionId, ActionStatus.COMPLETED, currentTime);
                     sideEffects.add(new ActionCompleted(
                             actionId, workQueueId, actionInfo.taktName(),
                             action.description(), this.currentTime,
@@ -1800,7 +1822,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                     continue;
                 }
 
-                state.setActionStatus(actionId, ActionStatus.ACTIVE);
+                state.setActionStatus(actionId, ActionStatus.ACTIVE, currentTime);
                 armEventGatesForAction(state, actionId);
                 String cheForMsg = action.deviceType() == DeviceType.TT ? action.cheShortName() : action.targetChe();
                 sideEffects.add(new ActionActivated(
@@ -1836,7 +1858,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             Set<String> overrides = state.overriddenActionConditions.getOrDefault(actionId, Set.of());
             if (!state.areEventGatesSatisfied(actionId, action, overrides)) continue;
 
-            state.setActionStatus(actionId, ActionStatus.COMPLETED);
+            state.setActionStatus(actionId, ActionStatus.COMPLETED, currentTime);
             sideEffects.add(new ActionCompleted(
                     actionId, workQueueId, info.taktName(),
                     action.description(), this.currentTime
@@ -1864,7 +1886,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
 
         // Move action from active to completed
-        state.setActionStatus(completedActionId, ActionStatus.COMPLETED);
+        state.setActionStatus(completedActionId, ActionStatus.COMPLETED, this.currentTime);
 
         // Produce ActionCompleted side effect
         return List.of(new ActionCompleted(
