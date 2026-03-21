@@ -716,7 +716,7 @@ class ScheduleView extends HTMLElement {
       setTimeout(() => { btn.disabled = false; }, 5000);
       // QC actions: send real asset event (via Kafka or direct) instead of ActionCompletedEvent
       if (btn.dataset.actionType === 'QC_LIFT' || btn.dataset.actionType === 'QC_PLACE') {
-        var opEvent = btn.dataset.actionType === 'QC_LIFT' ? 'Lifted container from vessel' : 'Placed container on truck';
+        var opEvent = btn.dataset.actionType === 'QC_LIFT' ? 'QCliftedContainerfromVessel' : 'QCplacedContaineronTruck';
         await apiCall('/api/simulate-qc-event', {
           cheId: btn.dataset.cheId,
           operationalEvent: opEvent,

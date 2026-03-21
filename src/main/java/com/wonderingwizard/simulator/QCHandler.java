@@ -11,8 +11,8 @@ import java.util.logging.Logger;
 /**
  * Handles QC equipment instructions.
  * <p>
- * LIFT → produces "Lifted container from vessel" asset event + "QC Discharged Container" WI event.
- * PLACE → produces "Placed container on truck" asset event.
+ * LIFT → produces "QCliftedContainerfromVessel" (DSCH) or "QCliftedContainerfromTruck" (LOAD) asset event + "QC Discharged Container" WI event.
+ * PLACE → produces "QCplacedContaineronTruck" (DSCH) or "QCplacedContaineronVessel" (LOAD) asset event.
  */
 public class QCHandler implements InstructionHandler {
 
@@ -38,8 +38,10 @@ public class QCHandler implements InstructionHandler {
         String moveKind = getString(instruction, "moveKind");
 
         String operationalEvent = switch (instructionType) {
-            case "LIFT" -> "Lifted container from vessel";
-            case "PLACE" -> "Placed container on truck";
+            case "LIFT" -> "LOAD".equalsIgnoreCase(moveKind)
+                    ? "QCliftedContainerfromTruck" : "QCliftedContainerfromVessel";
+            case "PLACE" -> "LOAD".equalsIgnoreCase(moveKind)
+                    ? "QCplacedContaineronVessel" : "QCplacedContaineronTruck";
             default -> null;
         };
 
