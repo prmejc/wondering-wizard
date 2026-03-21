@@ -134,6 +134,7 @@ public class DemoServer {
     private com.wonderingwizard.server.demo.DemoEventProducer demoEventProducer;
     private KafkaSideEffectPublisher sideEffectPublisher;
     private org.apache.kafka.clients.producer.KafkaProducer<String, String> jsonKafkaProducer;
+    private org.apache.kafka.clients.producer.KafkaProducer<String, org.apache.avro.generic.GenericRecord> avroKafkaProducer;
     private com.wonderingwizard.metrics.Metrics metrics;
     private final com.wonderingwizard.kafka.DeadLetterQueue deadLetterQueue = new com.wonderingwizard.kafka.DeadLetterQueue();
     private final SseConnectionManager sseManager = new SseConnectionManager();
@@ -392,6 +393,22 @@ public class DemoServer {
                                 + kafkaConfig.saslUsername() + "\" password=\"" + kafkaConfig.saslPassword() + "\";");
             }
             jsonKafkaProducer = new org.apache.kafka.clients.producer.KafkaProducer<>(producerProps);
+            // Avro producer for sending job operations
+            var avroProps = new java.util.Properties();
+            avroProps.put("bootstrap.servers", kafkaConfig.bootstrapServer());
+            avroProps.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+            avroProps.put("value.serializer", "io.confluent.kafka.serializers.KafkaAvroSerializer");
+            avroProps.put("schema.registry.url", kafkaConfig.schemaRegistryUrl());
+            if (kafkaConfig.securityProtocol() != null && !kafkaConfig.securityProtocol().isEmpty()) {
+                avroProps.put("security.protocol", kafkaConfig.securityProtocol());
+            }
+            if (kafkaConfig.saslMechanism() != null && !kafkaConfig.saslMechanism().isEmpty()) {
+                avroProps.put("sasl.mechanism", kafkaConfig.saslMechanism());
+                avroProps.put("sasl.jaas.config",
+                        "org.apache.kafka.common.security.plain.PlainLoginModule required username=\""
+                                + kafkaConfig.saslUsername() + "\" password=\"" + kafkaConfig.saslPassword() + "\";");
+            }
+            avroKafkaProducer = new org.apache.kafka.clients.producer.KafkaProducer<>(avroProps);
         } else {
             demoEventProducer = new com.wonderingwizard.server.demo.DemoEventDirectProducer(this);
             logger.info("Kafka disabled (kafka.enabled=false)");
@@ -2450,14 +2467,44 @@ public class DemoServer {
                 String cheId = wi.putChe();
                 String wiId = String.valueOf(wi.workInstructionId());
                 String containerId = wi.containerId() != null ? wi.containerId() : "";
-                var jobOpEvent = new com.wonderingwizard.events.JobOperationEvent(
-                        actionCode, cheId, "RTG", wiId, containerId);
-                processStep("RTG job op '" + actionCode + "': " + cheId + " WI " + wiId, jobOpEvent);
+
+                if (avroKafkaProducer != null) {
+                    // Send to Kafka as Avro
+                    var schema = loadJobOperationSchema();
+                    var jobOp = new org.apache.avro.generic.GenericData.Record(schema);
+                    jobOp.put("containerId", containerId);
+                    jobOp.put("workInstructionId", wiId);
+                    jobOp.put("action", actionCode);
+                    jobOp.put("cheId", cheId);
+                    jobOp.put("cheType", "RTG");
+                    jobOp.put("yardSlot", null);
+                    jobOp.put("containerTruckPosition", null);
+                    String topic = settings.jobOperationConsumerConfiguration().topic();
+                    avroKafkaProducer.send(new org.apache.kafka.clients.producer.ProducerRecord<>(topic, cheId, jobOp));
+                } else {
+                    var jobOpEvent = new com.wonderingwizard.events.JobOperationEvent(
+                            actionCode, cheId, "RTG", wiId, containerId);
+                    processStep("RTG job op '" + actionCode + "': " + cheId + " WI " + wiId, jobOpEvent);
+                }
             }
-            sendJsonResponse(exchange, 200, "{\"ok\":true,\"target\":\"direct\"}");
+            sendJsonResponse(exchange, 200, "{\"ok\":true,\"target\":\"" + (avroKafkaProducer != null ? "kafka" : "direct") + "\"}");
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }
+    }
+
+    private org.apache.avro.Schema jobOperationSchema;
+
+    private org.apache.avro.Schema loadJobOperationSchema() {
+        if (jobOperationSchema == null) {
+            try (var is = getClass().getResourceAsStream("/schemas/JobOperation.avsc")) {
+                if (is == null) throw new IllegalStateException("JobOperation schema not found");
+                jobOperationSchema = new org.apache.avro.Schema.Parser().parse(is);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("Failed to load JobOperation schema", e);
+            }
+        }
+        return jobOperationSchema;
     }
 
     private void handleOverrideCondition(HttpExchange exchange) throws IOException {

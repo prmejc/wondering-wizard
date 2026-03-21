@@ -713,7 +713,9 @@ class ScheduleView extends HTMLElement {
       if (!btn || btn.disabled) return;
       e.stopPropagation();
       btn.disabled = true;
-      setTimeout(() => { btn.disabled = false; }, 5000);
+      btn.style.opacity = '0.4';
+      btn.textContent = 'Sent';
+      setTimeout(() => { btn.disabled = false; btn.style.opacity = ''; }, 10000);
       // QC actions: send real asset event (via Kafka or direct) instead of ActionCompletedEvent
       if (btn.dataset.actionType === 'QC_LIFT' || btn.dataset.actionType === 'QC_PLACE') {
         var opEvent = btn.dataset.actionType === 'QC_LIFT' ? 'QCliftedContainerfromVessel' : 'QCplacedContaineronTruck';
@@ -738,7 +740,9 @@ class ScheduleView extends HTMLElement {
       if (!btn || btn.disabled) return;
       e.stopPropagation();
       btn.disabled = true;
-      setTimeout(() => { btn.disabled = false; }, 5000);
+      btn.style.opacity = '0.4';
+      btn.textContent = 'Sent';
+      setTimeout(() => { btn.disabled = false; btn.style.opacity = ''; }, 10000);
       await apiCall('/api/simulate-rtg-asset-event', {
         actionId: btn.dataset.actionId,
         workQueueId: btn.dataset.wq
@@ -751,7 +755,9 @@ class ScheduleView extends HTMLElement {
       if (!btn || btn.disabled) return;
       e.stopPropagation();
       btn.disabled = true;
-      setTimeout(() => { btn.disabled = false; }, 5000);
+      btn.style.opacity = '0.4';
+      btn.textContent = 'Sent';
+      setTimeout(() => { btn.disabled = false; btn.style.opacity = ''; }, 10000);
       await apiCall('/api/simulate-rtg-job-operation', {
         actionId: btn.dataset.actionId,
         workQueueId: btn.dataset.wq
