@@ -8,15 +8,17 @@ import com.wonderingwizard.events.JobOperationEvent;
 import com.wonderingwizard.events.WorkInstructionEvent;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.logging.Logger;
 
 /**
- * Evaluates JobOperationEvent (action "A") against active RTG action completion conditions.
+ * Evaluates JobOperationEvent against active RTG action completion conditions.
  * <p>
- * Matches by cheId (RTG name = wi.putChe()), workInstructionId, and containerId.
+ * Matches by cheId (RTG name = wi.putChe()), workInstructionId, containerId,
+ * and job operation action code (condition description must match the event's action, e.g. "A" or "D").
  */
 public class RTGJobOperationEvaluator implements CompletionConditionEvaluator {
 
@@ -25,31 +27,28 @@ public class RTGJobOperationEvaluator implements CompletionConditionEvaluator {
     public static final String CONDITION_TYPE = "RTG_JOB_OPERATION";
 
     @Override
-    public List<String> evaluateSatisfied(Event event, Map<UUID, Action> activeActions) {
+    public Map<UUID, List<String>> evaluateSatisfied(Event event, Map<UUID, Action> activeActions) {
         if (!(event instanceof JobOperationEvent jobOp)) {
-            return List.of();
+            return Map.of();
         }
 
-        if (!"A".equals(jobOp.action())) {
-            return List.of();
-        }
-
+        String jobAction = jobOp.action();
         String cheId = jobOp.cheId();
         String wiIdStr = jobOp.workInstructionId();
         String containerId = jobOp.containerId();
 
-        if (cheId == null || wiIdStr == null || containerId == null) {
-            return List.of();
+        if (jobAction == null || cheId == null || wiIdStr == null || containerId == null) {
+            return Map.of();
         }
 
         long wiId;
         try {
             wiId = Long.parseLong(wiIdStr);
         } catch (NumberFormatException e) {
-            return List.of();
+            return Map.of();
         }
 
-        List<String> satisfiedConditionIds = new ArrayList<>();
+        Map<UUID, List<String>> result = new HashMap<>();
 
         for (Map.Entry<UUID, Action> entry : activeActions.entrySet()) {
             Action action = entry.getValue();
@@ -68,15 +67,19 @@ public class RTGJobOperationEvaluator implements CompletionConditionEvaluator {
             }
             if (!matches) continue;
 
+            List<String> satisfiedConditionIds = new ArrayList<>();
             for (CompletionCondition condition : action.completionConditions()) {
-                if (CONDITION_TYPE.equals(condition.type())) {
-                    logger.info("RTG job operation satisfied condition '" + condition.id()
-                            + "' on action " + entry.getKey() + ": " + cheId + " accepted job for WI " + wiId);
+                if (CONDITION_TYPE.equals(condition.type()) && jobAction.equals(condition.description())) {
+                    logger.fine("RTG job operation '" + jobAction + "' satisfied condition '" + condition.id()
+                            + "' on action " + entry.getKey() + ": " + cheId + " for WI " + wiId);
                     satisfiedConditionIds.add(condition.id());
                 }
             }
+            if (!satisfiedConditionIds.isEmpty()) {
+                result.put(entry.getKey(), satisfiedConditionIds);
+            }
         }
 
-        return satisfiedConditionIds;
+        return result;
     }
 }

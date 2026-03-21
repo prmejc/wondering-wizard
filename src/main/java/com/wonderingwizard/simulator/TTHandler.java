@@ -58,7 +58,7 @@ public class TTHandler implements InstructionHandler {
         confirmation.put("timeStamp", Instant.now().toEpochMilli());
         confirmation.put("eventSource", "Terminal Simulator");
 
-        logger.info("TT: " + cheShortName + " → confirmed " + instructionType
+        logger.fine("TT: " + cheShortName + " → confirmed " + instructionType
                 + " at " + destinationNodeName + " (instruction=" + equipmentInstructionId + ")");
         kafka.sendAvro(cheTargetPositionTopic, cheShortName, confirmation);
     }

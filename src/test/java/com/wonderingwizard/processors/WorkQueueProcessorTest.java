@@ -11,6 +11,7 @@ import com.wonderingwizard.events.WorkQueueMessage;
 import com.wonderingwizard.sideeffects.ScheduleAborted;
 import com.wonderingwizard.sideeffects.ScheduleCreated;
 import com.wonderingwizard.sideeffects.WorkInstructionCanceled;
+import com.wonderingwizard.events.TimeEvent;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -1697,6 +1698,106 @@ class WorkQueueProcessorTest {
         void nukeNonExistentIsNoOp() {
             List<SideEffect> effects = engine.processEvent(new NukeWorkQueueEvent(999L));
             assertTrue(effects.isEmpty());
+        }
+    }
+
+    @Nested
+    @DisplayName("F-31: Debounced Schedule Creation on WI Events")
+    class DebouncedScheduleCreation {
+
+        private static final Instant T0 = Instant.parse("2026-03-08T09:00:00Z");
+
+        @Test
+        @DisplayName("Should create schedule via debounce when WI arrives after WQ activation")
+        void wiArrivesAfterActivation_debouncedScheduleCreated() {
+            // Set current time first
+            engine.processEvent(new TimeEvent(T0));
+
+            // Activate WQ (creates empty schedule)
+            engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, null));
+
+            // WI arrives — EMT is 10 min from now (well above 5-min cutoff)
+            Instant wiEmt = T0.plusSeconds(600);
+            engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, wiEmt, 120));
+
+            // TimeEvent at T0+2s — within debounce window, no schedule yet
+            List<SideEffect> effects2s = engine.processEvent(new TimeEvent(T0.plusSeconds(2)));
+            assertTrue(effects2s.stream().noneMatch(e -> e instanceof ScheduleCreated),
+                    "Should not create schedule within debounce window");
+
+            // TimeEvent at T0+4s — debounce window elapsed (3s since WI at T0)
+            List<SideEffect> effects4s = engine.processEvent(new TimeEvent(T0.plusSeconds(4)));
+            List<ScheduleCreated> schedules = effects4s.stream()
+                    .filter(e -> e instanceof ScheduleCreated)
+                    .map(e -> (ScheduleCreated) e)
+                    .toList();
+            assertEquals(1, schedules.size(), "Should create schedule after debounce window");
+            assertEquals(1L, schedules.getFirst().workQueueId());
+            assertFalse(schedules.getFirst().takts().isEmpty(), "Schedule should have takts from WI");
+        }
+
+        @Test
+        @DisplayName("Should reset debounce when another WI arrives within window")
+        void multipleWisResetDebounce() {
+            engine.processEvent(new TimeEvent(T0));
+            engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, null));
+
+            Instant wiEmt = T0.plusSeconds(600);
+
+            // First WI at T0
+            engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, wiEmt, 120));
+
+            // TimeEvent at T0+2s — within debounce window
+            engine.processEvent(new TimeEvent(T0.plusSeconds(2)));
+
+            // Second WI at T0+2s — resets debounce
+            engine.processEvent(new WorkInstructionEvent(2L, 1L, "CHE-002", PLANNED, wiEmt.plusSeconds(120), 120));
+
+            // TimeEvent at T0+4s — only 2s since last WI, still within debounce
+            List<SideEffect> effects4s = engine.processEvent(new TimeEvent(T0.plusSeconds(4)));
+            assertTrue(effects4s.stream().noneMatch(e -> e instanceof ScheduleCreated),
+                    "Should not create schedule — debounce reset by second WI");
+
+            // TimeEvent at T0+6s — 4s since last WI change at T0+2s, debounce elapsed
+            List<SideEffect> effects6s = engine.processEvent(new TimeEvent(T0.plusSeconds(6)));
+            List<ScheduleCreated> schedules = effects6s.stream()
+                    .filter(e -> e instanceof ScheduleCreated)
+                    .map(e -> (ScheduleCreated) e)
+                    .toList();
+            assertEquals(1, schedules.size(), "Should create schedule after debounce elapsed");
+        }
+
+        @Test
+        @DisplayName("Should not recreate schedule when min EMT < 5 min from current time")
+        void emtCutoff_noRecreation() {
+            engine.processEvent(new TimeEvent(T0));
+            engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, null));
+
+            // WI with EMT only 4 min from T0 (below 5-min cutoff)
+            Instant closeEmt = T0.plusSeconds(240);
+            engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, closeEmt, 120));
+
+            // TimeEvent at T0+4s — debounce elapsed but EMT too close
+            List<SideEffect> effects = engine.processEvent(new TimeEvent(T0.plusSeconds(4)));
+            assertTrue(effects.stream().noneMatch(e -> e instanceof ScheduleCreated),
+                    "Should not create schedule when min EMT < 5 min from current time");
+        }
+
+        @Test
+        @DisplayName("Should not trigger debounce for non-FES4 or inactive WQ")
+        void nonFes4OrInactive_noDebounce() {
+            engine.processEvent(new TimeEvent(T0));
+
+            // Activate WQ as non-FES4 managed
+            engine.processEvent(new WorkQueueMessage(1L, ACTIVE, 0, null, null, null, null, "OTHER"));
+
+            Instant wiEmt = T0.plusSeconds(600);
+            engine.processEvent(new WorkInstructionEvent(1L, 1L, "CHE-001", PLANNED, wiEmt, 120));
+
+            // TimeEvent well past debounce window
+            List<SideEffect> effects = engine.processEvent(new TimeEvent(T0.plusSeconds(10)));
+            assertTrue(effects.stream().noneMatch(e -> e instanceof ScheduleCreated),
+                    "Should not debounce-create schedule for non-FES4 WQ");
         }
     }
 }

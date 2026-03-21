@@ -22,7 +22,10 @@ import com.wonderingwizard.sideeffects.WorkInstructionCanceled;
 import com.wonderingwizard.sideeffects.WorkInstructionReassigned;
 import jdk.jfr.Timespan;
 
+import com.wonderingwizard.events.TimeEvent;
+
 import java.security.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ThreadLocalRandom;
@@ -59,6 +62,8 @@ public class WorkQueueProcessor implements EventProcessor {
     private static final int DRIVE_TIME_MIN_SECONDS = 30;
     private static final int DRIVE_TIME_MAX_SECONDS = 300;
     private static final int QC_DRIVE_TIME_OFFSET_RANGE = 30;
+    private static final Duration DEBOUNCE_QUIET_PERIOD = Duration.ofSeconds(3);
+    private static final Duration EMT_CUTOFF = Duration.ofMinutes(5);
 
     private final Map<Long, Boolean> activeSchedules = new HashMap<>();
     private final Map<Long, List<WorkInstructionEvent>> workInstructions = new HashMap<>();
@@ -68,6 +73,12 @@ public class WorkQueueProcessor implements EventProcessor {
     private final Map<Long, String> bollardByQueue = new HashMap<>();
     /** Work instruction IDs whose actions were force-completed (e.g., TT_UNAVAILABLE). */
     private final Map<Long, Set<Long>> canceledWorkInstructionIds = new HashMap<>();
+    /** Tracks whether each WQ is managed by FES4. */
+    private final Map<Long, Boolean> managedByFesQueue = new HashMap<>();
+    /** Last WI change time per WQ (from TimeEvent system time), for debounce. */
+    private final Map<Long, Instant> lastWiChangeTime = new HashMap<>();
+    /** Current system time, updated from TimeEvent. */
+    private Instant currentTime;
     private final IntSupplier driveTimeSupplier;
     private final IntSupplier qcDriveTimeOffsetSupplier;
     private final boolean useGraphScheduleBuilder;
@@ -107,6 +118,10 @@ public class WorkQueueProcessor implements EventProcessor {
 
     @Override
     public List<SideEffect> process(Event event) {
+        if (event instanceof TimeEvent timeEvent) {
+            currentTime = timeEvent.timestamp();
+            return checkDebouncedScheduleCreation();
+        }
         if (event instanceof WorkQueueMessage message) {
             return handleWorkQueueMessage(message);
         }
@@ -127,6 +142,55 @@ public class WorkQueueProcessor implements EventProcessor {
             return handleNukeWorkQueue(nuke.workQueueId());
         }
         return List.of();
+    }
+
+    /**
+     * Checks pending WQs in lastWiChangeTime and creates schedules via reschedule
+     * if the debounce quiet period (3s) has elapsed and the min EMT is >5 min away.
+     */
+    private List<SideEffect> checkDebouncedScheduleCreation() {
+        if (lastWiChangeTime.isEmpty()) {
+            return List.of();
+        }
+
+        var effects = new ArrayList<SideEffect>();
+        var resolved = new ArrayList<Long>();
+
+        for (var entry : lastWiChangeTime.entrySet()) {
+            long wqId = entry.getKey();
+            Instant lastChange = entry.getValue();
+
+            // Skip if WQ not active or not FES4-managed
+            if (!activeSchedules.containsKey(wqId) || !Boolean.TRUE.equals(managedByFesQueue.get(wqId))) {
+                resolved.add(wqId);
+                continue;
+            }
+
+            // Skip if debounce window hasn't elapsed
+            if (Duration.between(lastChange, currentTime).compareTo(DEBOUNCE_QUIET_PERIOD) < 0) {
+                continue;
+            }
+
+            // Check min EMT cutoff: if min EMT < 5 min from current time, stop recreating
+            List<WorkInstructionEvent> instructions = workInstructions.getOrDefault(wqId, List.of());
+            var minEmt = instructions.stream()
+                    .map(WorkInstructionEvent::estimatedMoveTime)
+                    .filter(Objects::nonNull)
+                    .min(Instant::compareTo)
+                    .orElse(null);
+
+            if (minEmt != null && Duration.between(currentTime, minEmt).compareTo(EMT_CUTOFF) < 0) {
+                resolved.add(wqId);
+                continue;
+            }
+
+            // Debounce elapsed, create/recreate schedule
+            effects.addAll(handleReschedule(wqId));
+            resolved.add(wqId);
+        }
+
+        resolved.forEach(lastWiChangeTime::remove);
+        return effects;
     }
 
     private List<SideEffect> handleWorkInstructionEvent(WorkInstructionEvent event) {
@@ -158,6 +222,13 @@ public class WorkQueueProcessor implements EventProcessor {
         workInstructions
                 .computeIfAbsent(workQueueId, k -> new ArrayList<>())
                 .add(event);
+
+        // Track WI change for debounced schedule creation
+        if (activeSchedules.containsKey(workQueueId)
+                && Boolean.TRUE.equals(managedByFesQueue.get(workQueueId))
+                && currentTime != null) {
+            lastWiChangeTime.put(workQueueId, currentTime);
+        }
 
         if (!isDischargeEvent) {
             return List.of();
@@ -390,6 +461,7 @@ public class WorkQueueProcessor implements EventProcessor {
         }
 
         boolean managedByFes = MANAGED_BY_FES.equals(message.workQueueManaged());
+        managedByFesQueue.put(workQueueId, managedByFes);
 
         if (status == WorkQueueStatus.ACTIVE && managedByFes) {
             return handleActiveStatus(workQueueId);
@@ -727,6 +799,8 @@ public class WorkQueueProcessor implements EventProcessor {
         loadModeByQueue.remove(workQueueId);
         bollardByQueue.remove(workQueueId);
         canceledWorkInstructionIds.remove(workQueueId);
+        managedByFesQueue.remove(workQueueId);
+        lastWiChangeTime.remove(workQueueId);
         return sideEffects;
     }
 
@@ -751,6 +825,9 @@ public class WorkQueueProcessor implements EventProcessor {
             canceledCopy.put(entry.getKey(), new HashSet<>(entry.getValue()));
         }
         state.put("canceledWorkInstructionIds", canceledCopy);
+        state.put("managedByFesQueue", new HashMap<>(managedByFesQueue));
+        state.put("lastWiChangeTime", new HashMap<>(lastWiChangeTime));
+        state.put("currentTime", currentTime);
 
         return state;
     }
@@ -805,5 +882,19 @@ public class WorkQueueProcessor implements EventProcessor {
                 canceledWorkInstructionIds.put(entry.getKey(), new HashSet<>(entry.getValue()));
             }
         }
+
+        managedByFesQueue.clear();
+        Object managedState = stateMap.get("managedByFesQueue");
+        if (managedState instanceof Map) {
+            managedByFesQueue.putAll((Map<Long, Boolean>) managedState);
+        }
+
+        lastWiChangeTime.clear();
+        Object lastWiState = stateMap.get("lastWiChangeTime");
+        if (lastWiState instanceof Map) {
+            lastWiChangeTime.putAll((Map<Long, Instant>) lastWiState);
+        }
+
+        currentTime = (Instant) stateMap.get("currentTime");
     }
 }

@@ -71,7 +71,7 @@ async function apiCall(path, body) {
 }
 
 window._schedulePage = 0;
-window._schedulePageSize = 5;
+window._schedulePageSize = 10;
 
 // --- Sound System (F-21) ---
 const _sound = (() => {
@@ -271,6 +271,7 @@ class ScheduleHeader extends HTMLElement {
         <button class="secondary" onclick="this.closest('schedule-header').tick(60)">+1 min</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(300)">+5 min</button>
         <button class="secondary" onclick="this.closest('schedule-header').tick(900)">+15 min</button>
+        <button class="secondary" onclick="this.closest('schedule-header').tick(28800)">+8 hrs</button>
         <span style="border-left:1px solid var(--border);height:24px;margin:0 4px"></span>
         <button id="play-btn" class="secondary" onclick="this.closest('schedule-header').togglePlay()">&#9724; Pause</button>
         <label style="font-size:12px;display:flex;align-items:center;gap:4px;color:var(--text-muted)">
@@ -507,6 +508,7 @@ class EventPanel extends HTMLElement {
         </select>
       </div>
       <button onclick="this.closest('event-panel').sendWI()" style="margin-top:8px;width:100%">Add Work Instruction</button>
+      <button onclick="this.closest('event-panel').sendWIBatch(100)" style="margin-top:4px;width:100%" class="secondary">Send 100 Work Instructions</button>
 
       <h3 style="margin-top:20px">Work Queue</h3>
       <div class="form-group">
@@ -547,7 +549,13 @@ class EventPanel extends HTMLElement {
         <label>Managed</label>
         <input id="wq-managed" type="text" value="FES4">
       </div>
-      <button onclick="this.closest('event-panel').sendWQ()" style="margin-top:8px;width:100%">Send Work Queue</button>`;
+      <button onclick="this.closest('event-panel').sendWQ()" style="margin-top:8px;width:100%">Send Work Queue</button>
+      <h3 style="margin-top:20px">Performance Test</h3>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <div class="form-group" style="flex:1"><label>WQs</label><input id="perf-wq-count" type="number" value="10" min="1" max="100"></div>
+        <div class="form-group" style="flex:1"><label>WIs/WQ</label><input id="perf-wi-count" type="number" value="240" min="1" max="1000"></div>
+      </div>
+      <button onclick="this.closest('event-panel').runPerfTest()" style="width:100%">Run Performance Test</button>`;
     this.querySelector('#wi-emt').addEventListener('input', () => { this._emtDirty = true; });
     const updateCompanion = () => {
       const anyTwin = this.querySelector('#wi-twin-fetch').checked
@@ -571,7 +579,12 @@ class EventPanel extends HTMLElement {
     }
   }
   async sendWI() {
-    const data = {
+    await apiCall('/api/work-instruction', this._buildWIData());
+    this._advanceWIForm();
+    refreshState();
+  }
+  _buildWIData() {
+    return {
       eventType: this.querySelector('#wi-event-type').value,
       workInstructionId: this.querySelector('#wi-id').value,
       workQueueId: this.querySelector('#wi-queue').value,
@@ -594,8 +607,8 @@ class EventPanel extends HTMLElement {
       freightKind: this.querySelector('#wi-freight-kind').value,
       pinning: this.querySelector('#wi-pinning').value
     };
-    await apiCall('/api/work-instruction', data);
-    // Auto-increment WI ID and update twin companion
+  }
+  _advanceWIForm() {
     const idInput = this.querySelector('#wi-id');
     const newId = parseInt(idInput.value) + 1;
     idInput.value = newId;
@@ -604,9 +617,66 @@ class EventPanel extends HTMLElement {
         || this.querySelector('#wi-twin-carry').checked;
     this.querySelector('#wi-twin-companion').value = anyTwin ? (newId % 2 === 1 ? newId + 1 : newId - 1) : 0;
     this.querySelector('#wi-container-id').value = 'THIVE' + newId;
-    this._emtDirty = false;
-    this._emtOffsetMin += 2;
+    const emtInput = this.querySelector('#wi-emt');
+    const emtDate = new Date(new Date(emtInput.value).getTime() + 2 * 60 * 1000);
+    emtInput.value = emtDate.toISOString().replace('.000Z', 'Z');
+    this._emtDirty = true;
+  }
+  async sendWIBatch(count) {
+    const lines = [];
+    for (let i = 0; i < count; i++) {
+      lines.push(JSON.stringify(this._buildWIData()));
+      this._advanceWIForm();
+    }
+    await fetch(API + '/api/work-instruction/batch', {
+      method: 'POST', headers: {'Content-Type': 'text/plain'}, body: lines.join('\n')
+    }).then(r => { if (!r.ok) throw new Error('Batch failed'); });
     refreshState();
+  }
+  async runPerfTest() {
+    const btn = this.querySelector('button[onclick*="runPerfTest"]');
+    btn.disabled = true;
+    const WQ_COUNT = parseInt(this.querySelector('#perf-wq-count').value) || 10;
+    const WI_COUNT = parseInt(this.querySelector('#perf-wi-count').value) || 240;
+    // Capture the base EMT from the form (all WQs start at the same time)
+    const baseEmt = this.querySelector('#wi-emt').value || new Date().toISOString().replace('.000Z', 'Z');
+    const baseWiId = parseInt(this.querySelector('#wi-id').value) || 1;
+    try {
+      for (let wq = 1; wq <= WQ_COUNT; wq++) {
+        btn.textContent = 'WQ ' + wq + '/' + WQ_COUNT + '...';
+        const qcName = 'QCZ' + wq;
+        const rtgName = 'RTZ' + String(wq).padStart(2, '0');
+        // Set form fields for this work queue
+        this.querySelector('#wi-queue').value = wq;
+        this.querySelector('#wi-che').value = qcName;
+        this.querySelector('#wi-put-che').value = rtgName;
+        // Reset EMT to base for each WQ so they all start at the same time
+        this.querySelector('#wi-emt').value = baseEmt;
+        this._emtDirty = true;
+        // Reset WI ID for this WQ
+        this.querySelector('#wi-id').value = baseWiId + (wq - 1) * WI_COUNT;
+        this.querySelector('#wi-container-id').value = 'THIVE' + (baseWiId + (wq - 1) * WI_COUNT);
+        // Send 240 WIs as batch
+        const lines = [];
+        for (let i = 0; i < WI_COUNT; i++) {
+          lines.push(JSON.stringify(this._buildWIData()));
+          this._advanceWIForm();
+        }
+        await fetch(API + '/api/work-instruction/batch', {
+          method: 'POST', headers: {'Content-Type': 'text/plain'}, body: lines.join('\n')
+        }).then(r => { if (!r.ok) throw new Error('Batch failed for WQ ' + wq); });
+        // Send WQ activation
+        this.querySelector('#wq-id').value = wq;
+        this.querySelector('#wq-point-of-work').value = qcName;
+        await this.sendWQ();
+      }
+    } catch (err) {
+      alert('Performance test failed: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Run Performance Test';
+      refreshState();
+    }
   }
   async sendWQ() {
     await apiCall('/api/work-queue', {
@@ -750,6 +820,17 @@ class ScheduleView extends HTMLElement {
 
       // Grid: label column + one column per takt
       const colDefs = takts.map(t => { const d = t.durationSeconds || 120; return 'minmax(' + Math.round(d * scale) + 'px,' + d + 'fr)'; }).join(' ');
+      // Calculate current time line position
+      const currentTime = state.currentTime ? new Date(state.currentTime).getTime() : 0;
+      const firstTaktStart = takts[0].plannedStartTime ? new Date(takts[0].plannedStartTime).getTime() : 0;
+      const totalScheduleSeconds = takts.reduce((sum, t) => sum + (t.durationSeconds || 120), 0);
+      const elapsedSeconds = (currentTime - firstTaktStart) / 1000;
+      const timeLinePx = Math.round(elapsedSeconds * scale) + 56; // 56px for label column
+
+      html += '<div style="position:relative;display:inline-block;min-width:100%">';
+      if (elapsedSeconds >= 0 && elapsedSeconds <= totalScheduleSeconds) {
+        html += '<div style="position:absolute;left:' + timeLinePx + 'px;top:0;bottom:0;width:2px;background:#ef4444;z-index:3;pointer-events:none"></div>';
+      }
       html += '<div style="display:inline-grid;grid-template-columns:56px ' + colDefs + ';gap:1px;min-width:100%">';
 
       // Header row: corner + takt headers
@@ -872,7 +953,7 @@ class ScheduleView extends HTMLElement {
         }
       }
 
-      html += '</div></div>';
+      html += '</div></div></div>';
     }
     container.innerHTML = html;
 

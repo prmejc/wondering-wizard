@@ -7,6 +7,7 @@ import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.events.CheTargetPositionEvent;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -24,37 +25,37 @@ public class TTPositionEventEvaluator implements CompletionConditionEvaluator {
     public static final String CONDITION_TYPE = "TT_POSITION_EVENT";
 
     @Override
-    public List<String> evaluateSatisfied(Event event, Map<UUID, Action> activeActions) {
+    public Map<UUID, List<String>> evaluateSatisfied(Event event, Map<UUID, Action> activeActions) {
         if (!(event instanceof CheTargetPositionEvent positionEvent)) {
-            return List.of();
+            return Map.of();
         }
 
         String instructionId = positionEvent.equipmentInstructionId();
         if (instructionId == null || instructionId.isEmpty()) {
-            return List.of();
+            return Map.of();
         }
 
         UUID actionId;
         try {
             actionId = UUID.fromString(instructionId);
         } catch (IllegalArgumentException e) {
-            return List.of();
+            return Map.of();
         }
 
         Action action = activeActions.get(actionId);
         if (action == null || action.status() != ActionStatus.ACTIVE) {
-            return List.of();
+            return Map.of();
         }
 
         List<String> satisfiedConditionIds = new ArrayList<>();
         for (CompletionCondition condition : action.completionConditions()) {
             if (CONDITION_TYPE.equals(condition.type())) {
-                logger.info("TT position confirmed condition '" + condition.id()
+                logger.fine("TT position confirmed condition '" + condition.id()
                         + "' on action " + actionId + " by " + positionEvent.cheShortName());
                 satisfiedConditionIds.add(condition.id());
             }
         }
 
-        return satisfiedConditionIds;
+        return satisfiedConditionIds.isEmpty() ? Map.of() : Map.of(actionId, satisfiedConditionIds);
     }
 }

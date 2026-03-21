@@ -48,7 +48,7 @@ public class KafkaInfra {
             if (exception != null) {
                 logger.warning("Failed to send JSON to " + topic + ": " + exception.getMessage());
             } else {
-                logger.info("Sent JSON to " + topic + " key=" + key
+                logger.fine("Sent JSON to " + topic + " key=" + key
                         + " (partition=" + metadata.partition() + ", offset=" + metadata.offset() + ")");
             }
         });
@@ -59,7 +59,7 @@ public class KafkaInfra {
             if (exception != null) {
                 logger.warning("Failed to send Avro to " + topic + ": " + exception.getMessage());
             } else {
-                logger.info("Sent Avro to " + topic + " key=" + key
+                logger.fine("Sent Avro to " + topic + " key=" + key
                         + " (partition=" + metadata.partition() + ", offset=" + metadata.offset() + ")");
             }
         });
@@ -72,7 +72,7 @@ public class KafkaInfra {
         avroProducer.close();
     }
 
-    private static KafkaConsumer<String, GenericRecord> createAvroConsumer(Properties config, String groupId) {
+    public static KafkaConsumer<String, GenericRecord> createAvroConsumer(Properties config, String groupId) {
         Properties props = new Properties();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, config.getProperty("kafka.bootstrap-server"));
         props.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);

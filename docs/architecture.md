@@ -223,7 +223,7 @@ com.wonderingwizard
 │   └── TruckUnassigned.java        # Truck unassigned from TT action notification
 ├── processors/
 │   ├── TimeAlarmProcessor.java      # Time alarm handling
-│   ├── WorkQueueProcessor.java      # Work queue schedule and takt generation (with pipeline)
+│   ├── WorkQueueProcessor.java      # Work queue schedule and takt generation (with pipeline + debounced WI recreation)
 │   ├── GraphScheduleBuilder.java    # Graph-based takt generation (supports pipeline steps)
 │   ├── SchedulePipelineStep.java    # Interface for schedule creation pipeline steps
 │   ├── DigitalMapProcessor.java     # Digital map parsing + pathfinding (EventProcessor + SchedulePipelineStep)
@@ -233,6 +233,11 @@ com.wonderingwizard
 │   ├── EventLogProcessor.java      # Records all events for export/import
 │   ├── TTStateProcessor.java       # Terminal truck state management (implements TTAllocationStrategy)
 │   ├── TTAllocationStrategy.java   # Interface for truck allocation to TT actions
+│   ├── CompletionConditionEvaluator.java # Interface for evaluating event-driven completion conditions
+│   ├── QCAssetEventEvaluator.java  # Evaluates QC asset events for completion conditions
+│   ├── TTPositionEventEvaluator.java # Evaluates TT position events for completion conditions
+│   ├── RTGJobOperationEvaluator.java # Evaluates RTG job operation events for completion conditions
+│   ├── ActionCompletedEvaluator.java # Evaluates cross-action completion (e.g., TT arrival completes RTG wait)
 │   ├── ScheduleSubProcessor.java   # Interface for sub-processors registered with ScheduleRunnerProcessor
 │   ├── ScheduleContext.java        # Controlled access to schedule state for sub-processors
 │   ├── TTUnavailableHandler.java   # Handles TT unavailable events (implements ScheduleSubProcessor)
@@ -315,6 +320,21 @@ This is used for the conditional `TT_DRIVE_TO_BUFFER` action in discharge templa
 #### Event Gate Auto-Satisfaction on Reschedule
 
 When a reschedule occurs (e.g., WIs discharged out of order), `transferEventGateState` transfers armed and satisfied gate state from the old schedule to the new one by matching actions via `(actionType, containerIndex, deviceIndex)`. After transferring, it auto-satisfies armed gates whose WorkInstructionEvents already carry the required `eventType`. This handles the case where discharge events were processed against the old schedule (where the WIs didn't match the gates) but the rescheduled actions now reference WIs that have already been discharged.
+
+### Completion Conditions (Auto-Completion)
+
+Actions can define `CompletionCondition` records that are evaluated by registered `CompletionConditionEvaluator` implementations. When all conditions on an action are satisfied, the action is auto-completed.
+
+**Condition types and evaluators:**
+- `QC_ASSET_EVENT` → `QCAssetEventEvaluator` — matches QC asset events by CHE name and operational event
+- `TT_POSITION_EVENT` → `TTPositionEventEvaluator` — matches TT position confirmations by action UUID
+- `RTG_JOB_OPERATION` → `RTGJobOperationEvaluator` — matches RTG job acceptances by CHE + WI + container
+- `ACTION_COMPLETED` → `ActionCompletedEvaluator` — state-based evaluator that checks whether a related action (e.g., `TT_DRIVE_TO_RTG_UNDER`) has completed for the same container, enabling cross-action cascading (e.g., `RTG_WAIT_FOR_TRUCK` auto-completes when TT arrives)
+- `RTG_ASSET_EVENT` → `RTGAssetEventEvaluator` — matches RTG asset events by CHE name (`putChe` for DSCH) and operational event (e.g., `RTGliftedContainerfromTruck` completes `RTG_LIFT_FROM_TT`)
+
+**Fixed-point evaluation:** `evaluateCompletionConditions()` in `ScheduleRunnerProcessor` runs in a fixed-point loop — when an action completes, evaluators are re-run to cascade dependent completions within the same processing cycle.
+
+**Default conditions** are assigned by `GraphScheduleBuilder.defaultCompletionConditions()` based on action type.
 
 ## HTTP Demo Server (F-7)
 

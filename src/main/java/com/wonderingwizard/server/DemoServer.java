@@ -50,6 +50,8 @@ import com.wonderingwizard.events.WorkQueueStatus;
 import com.wonderingwizard.events.CheJobStepState;
 import com.wonderingwizard.events.CheStatus;
 import com.wonderingwizard.events.ContainerHandlingEquipmentEvent;
+import com.wonderingwizard.processors.ActionCompletedEvaluator;
+import com.wonderingwizard.processors.RTGAssetEventEvaluator;
 import com.wonderingwizard.processors.DelayProcessor;
 import com.wonderingwizard.processors.DigitalMapProcessor;
 import com.wonderingwizard.processors.EventLogProcessor;
@@ -284,6 +286,8 @@ public class DemoServer {
         scheduleRunnerProcessor.registerCompletionEvaluator(new QCAssetEventEvaluator());
         scheduleRunnerProcessor.registerCompletionEvaluator(new TTPositionEventEvaluator());
         scheduleRunnerProcessor.registerCompletionEvaluator(new RTGJobOperationEvaluator());
+        scheduleRunnerProcessor.registerCompletionEvaluator(new ActionCompletedEvaluator());
+        scheduleRunnerProcessor.registerCompletionEvaluator(new RTGAssetEventEvaluator());
         engine.register(scheduleRunnerProcessor);
         engine.register(new DelayProcessor());
         // Take initial snapshot so we can always reset to clean state
@@ -312,6 +316,7 @@ public class DemoServer {
         httpServer.createContext("/schedule-viewer", this::handleScheduleViewer);
         httpServer.createContext("/api/state", this::handleGetState);
         httpServer.createContext("/api/work-instruction", this::handleWorkInstruction);
+        httpServer.createContext("/api/work-instruction/batch", this::handleWorkInstructionBatch);
         httpServer.createContext("/api/work-queue", this::handleWorkQueue);
         httpServer.createContext("/api/nuke-work-queue", this::handleNukeWorkQueue);
         httpServer.createContext("/api/tick", this::handleTick);
@@ -753,7 +758,7 @@ public class DemoServer {
     }
 
     private static final int MAX_STEPS_IN_RESPONSE = 300;
-    private static final int DEFAULT_SCHEDULE_PAGE_SIZE = 5;
+    private static final int DEFAULT_SCHEDULE_PAGE_SIZE = 10;
 
     /**
      * Builds the state map. Must only be called from the event processing thread.
@@ -904,11 +909,22 @@ public class DemoServer {
                             : ActionState.PENDING;
                     String reason = action.completionReason() != null
                             ? action.completionReason().displayName() : null;
+                    String cheShortName = action.cheShortName();
+                    if (cheShortName == null
+                            && action.workInstructions() != null && !action.workInstructions().isEmpty()) {
+                        var wi = action.workInstructions().getFirst();
+                        cheShortName = switch (action.deviceType()) {
+                            case QC -> wi.fetchChe();
+                            case RTG -> "LOAD".equalsIgnoreCase(wi.moveKind())
+                                    ? wi.fetchChe() : wi.putChe();
+                            case TT -> null;
+                        };
+                    }
                     actionViews.add(new ActionView(
                             action.id(), action.deviceType(), action.description(),
                             actionState, action.dependsOn(), action.containerIndex(),
                             action.durationSeconds(), action.deviceIndex(), List.of(), cIds,
-                            action.cheShortName(), reason));
+                            cheShortName, reason));
                 }
                 TaktState taktState = scheduleRunnerProcessor != null
                         ? mapTaktState(scheduleRunnerProcessor.getTaktState(wqId, takt.name()))
@@ -2014,6 +2030,68 @@ public class DemoServer {
         }
     }
 
+    private WorkInstructionEvent parseWorkInstructionEvent(Map<String, String> body) {
+        String eventType = body.getOrDefault("eventType", "");
+        long workInstructionId = Long.parseLong(requireField(body, "workInstructionId"));
+        long workQueueId = Long.parseLong(requireField(body, "workQueueId"));
+        String fetchChe = body.getOrDefault("fetchChe", "");
+        String workInstructionMoveStage = body.containsKey("workInstructionMoveStage")
+                ? body.get("workInstructionMoveStage")
+                : body.getOrDefault("status", "Planned");
+        String estimatedMoveTimeStr = body.get("estimatedMoveTime");
+        Instant estimatedMoveTime = estimatedMoveTimeStr != null
+                ? Instant.parse(estimatedMoveTimeStr) : null;
+        int estimatedCycleTimeSeconds = Integer.parseInt(body.getOrDefault("estimatedCycleTimeSeconds", "0"));
+        int estimatedRtgCycleTimeSeconds = Integer.parseInt(body.getOrDefault("estimatedRtgCycleTimeSeconds", "60"));
+        String putChe = body.getOrDefault("putChe", "");
+        boolean isTwinFetch = Boolean.parseBoolean(body.getOrDefault("isTwinFetch", "false"));
+        boolean isTwinPut = Boolean.parseBoolean(body.getOrDefault("isTwinPut", "false"));
+        boolean isTwinCarry = Boolean.parseBoolean(body.getOrDefault("isTwinCarry", "false"));
+        long twinCompanionWorkInstruction = Long.parseLong(body.getOrDefault("twinCompanionWorkInstruction", "0"));
+        String fromPosition = body.getOrDefault("fromPosition", "");
+        String toPosition = body.getOrDefault("toPosition", "");
+        String containerId = body.getOrDefault("containerId", "");
+        String moveKind = body.getOrDefault("moveKind", "");
+        String jobPosition = body.getOrDefault("jobPosition", "FWD");
+        String isoType = body.getOrDefault("isoType", "");
+        String freightKind = body.getOrDefault("freightKind", "");
+        String pinning = body.getOrDefault("pinning", "");
+        return new WorkInstructionEvent(
+                eventType, workInstructionId, workQueueId, fetchChe, workInstructionMoveStage, estimatedMoveTime,
+                estimatedCycleTimeSeconds, estimatedRtgCycleTimeSeconds,
+                putChe, isTwinFetch, isTwinPut, isTwinCarry, twinCompanionWorkInstruction,
+                fromPosition, toPosition, containerId, moveKind, jobPosition,
+                isoType, freightKind, pinning);
+    }
+
+    /**
+     * Accepts newline-delimited JSON: one WI JSON object per line.
+     * Processes all as a single batch step.
+     */
+    private void handleWorkInstructionBatch(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            String[] lines = body.split("\n");
+            int count = 0;
+            for (String line : lines) {
+                line = line.trim();
+                if (line.isEmpty()) continue;
+                Map<String, String> fields = JsonParser.parseObject(line);
+                WorkInstructionEvent event = parseWorkInstructionEvent(fields);
+                demoEventProducer.sendWorkInstruction(event);
+                count++;
+            }
+            sendJsonResponse(exchange, 200, "{\"ok\":true,\"count\":" + count + "}");
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
     private void handleWorkQueue(HttpExchange exchange) throws IOException {
         if (!"POST".equals(exchange.getRequestMethod())) {
             sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
@@ -2110,7 +2188,7 @@ public class DemoServer {
             switch (action) {
                 case "start" -> {
                     String speedStr = body.getOrDefault("speed", "1");
-                    playClockSpeed = Math.max(0.1, Math.min(120, Double.parseDouble(speedStr)));
+                    playClockSpeed = Math.max(0.1, Math.min(600, Double.parseDouble(speedStr)));
                     startPlayClock();
                     sendJsonResponse(exchange, 200, "{\"playing\":true,\"speed\":" + playClockSpeed + "}");
                 }
@@ -2120,7 +2198,7 @@ public class DemoServer {
                 }
                 case "speed" -> {
                     String speedStr = body.getOrDefault("speed", "1");
-                    playClockSpeed = Math.max(0.1, Math.min(120, Double.parseDouble(speedStr)));
+                    playClockSpeed = Math.max(0.1, Math.min(600, Double.parseDouble(speedStr)));
                     sendJsonResponse(exchange, 200, "{\"playing\":" + (playClockThread != null) + ",\"speed\":" + playClockSpeed + "}");
                 }
                 case "toggle" -> {
@@ -2129,7 +2207,7 @@ public class DemoServer {
                         sendJsonResponse(exchange, 200, "{\"playing\":false}");
                     } else {
                         String speedStr = body.getOrDefault("speed", "1");
-                        playClockSpeed = Math.max(0.1, Math.min(120, Double.parseDouble(speedStr)));
+                        playClockSpeed = Math.max(0.1, Math.min(600, Double.parseDouble(speedStr)));
                         startPlayClock();
                         sendJsonResponse(exchange, 200, "{\"playing\":true,\"speed\":" + playClockSpeed + "}");
                     }

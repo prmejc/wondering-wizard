@@ -780,7 +780,20 @@ public class GraphScheduleBuilder {
                             "tt-position-confirmed", TTPositionEventEvaluator.CONDITION_TYPE, "TT position confirmed"));
             // RTG drive completed by job operation "A" (operator accepted)
             case RTG_DRIVE -> List.of(new CompletionCondition(
-                    "rtg-job-accepted", RTGJobOperationEvaluator.CONDITION_TYPE, "RTG job accepted"));
+                    "rtg-job-accepted", RTGJobOperationEvaluator.CONDITION_TYPE, "A"));
+            // RTG place on yard completed by job operation "D" (done) AND RTG asset event
+            case RTG_PLACE_ON_YARD -> List.of(
+                    new CompletionCondition("rtg-job-done", RTGJobOperationEvaluator.CONDITION_TYPE, "D"),
+                    new CompletionCondition("rtg-placed-on-yard", RTGAssetEventEvaluator.CONDITION_TYPE, "RTGplacedContainerOnYard"));
+            // RTG wait for truck completed when TT arrives at RTG under position
+            case RTG_WAIT_FOR_TRUCK -> List.of(new CompletionCondition(
+                    "tt-arrived-at-rtg", ActionCompletedEvaluator.CONDITION_TYPE, "TT_DRIVE_TO_RTG_UNDER"));
+            // RTG lift from truck completed by RTG asset event
+            case RTG_LIFT_FROM_TT -> List.of(new CompletionCondition(
+                    "rtg-lifted-from-truck", RTGAssetEventEvaluator.CONDITION_TYPE, "RTGliftedContainerfromTruck"));
+            // TT handover to RTG completed when RTG_LIFT_FROM_TT completes for same container
+            case TT_HANDOVER_TO_RTG -> List.of(new CompletionCondition(
+                    "rtg-lifted-from-truck", ActionCompletedEvaluator.CONDITION_TYPE, "RTG_LIFT_FROM_TT"));
             default -> List.of();
         };
     }

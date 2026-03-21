@@ -90,6 +90,7 @@
 
 <div class="toolbar">
   <button id="add-truck-btn">Add Truck</button>
+  <button id="add-50-btn">Add 50 Available Trucks</button>
 </div>
 
 <div id="content">
@@ -439,6 +440,45 @@ document.getElementById('add-truck-btn').addEventListener('click', () => {
 
   trucks.set(trimmed, row);
   render();
+});
+
+// Add 50 Available Trucks button
+document.getElementById('add-50-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('add-50-btn');
+  btn.disabled = true;
+  btn.textContent = 'Adding...';
+  try {
+    for (let i = 0; i < 50; i++) {
+      const n = trucks.size + 1;
+      const name = 'TT' + String(n).padStart(2, '0');
+      if (trucks.has(name)) continue;
+
+      const row = {};
+      for (const f of CHE_FIELDS) {
+        if (f.key === 'cheShortName') row[f.key] = name;
+        else if (f.key === 'cheStatus') row[f.key] = 'Working';
+        else if (f.key === 'chePoolId') row[f.key] = 23;
+        else if (f.key === 'cheJobStepState') row[f.key] = 'IDLE';
+        else if (f.key === 'cheId') row[f.key] = n;
+        else if (f.defaultValue) row[f.key] = f.type === 'number' ? Number(f.defaultValue) : f.defaultValue;
+        else row[f.key] = '';
+      }
+      trucks.set(name, row);
+
+      const data = {};
+      for (const f of CHE_FIELDS) {
+        if (f.auto && f.key === 'sourceTsMs') data[f.key] = String(Date.now());
+        else data[f.key] = String(row[f.key] ?? '');
+      }
+      await apiCall(API + '/api/container-handling-equipment', data);
+    }
+    render();
+  } catch (err) {
+    alert('Failed: ' + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Add 50 Available Trucks';
+  }
 });
 
 // --- SSE live connection ---

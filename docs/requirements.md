@@ -1615,3 +1615,110 @@ mvn test -Dtest=WQChangeHandlerTest
 - `src/main/java/com/wonderingwizard/processors/WQChangeHandler.java` (new — WQ Change logic)
 - `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — WQChangeHandler registration)
 - `src/test/java/com/wonderingwizard/processors/WQChangeHandlerTest.java` (new — 7 tests)
+
+### F-29: RTG Wait for TT Auto-Completion
+
+**Status:** Implemented
+
+**Description:**
+Auto-complete `RTG_WAIT_FOR_TRUCK` actions when `TT_DRIVE_TO_RTG_UNDER` completes for the same container. This uses a new `ACTION_COMPLETED` completion condition type and `ActionCompletedEvaluator` that checks action states across work queues, matching by container ID. A fixed-point loop in `evaluateCompletionConditions()` ensures both actions complete in the same processing cycle.
+
+**Requested Behavior:**
+- When `TT_DRIVE_TO_RTG_UNDER` is completed (via TT position confirmation), `RTG_WAIT_FOR_TRUCK` for the same container auto-completes immediately
+- Matching is based on `containerId` from work instructions on both actions
+- No Kafka round-trip required — cascading happens within a single `process()` call
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | TT position event completes TT_DRIVE_TO_RTG_UNDER | RTG_WAIT_FOR_TRUCK for same container auto-completes |
+| 2 | TT_DRIVE_TO_RTG_UNDER still ACTIVE | RTG_WAIT_FOR_TRUCK stays ACTIVE |
+| 3 | Different container IDs | RTG_WAIT_FOR_TRUCK stays ACTIVE |
+| 4 | No TT_DRIVE_TO_RTG_UNDER in schedule | RTG_WAIT_FOR_TRUCK stays ACTIVE |
+
+**Test Execution:**
+```bash
+mvn test -Dtest=ActionCompletedEvaluatorTest
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/processors/ActionCompletedEvaluator.java` (new — state-based evaluator)
+- `src/main/java/com/wonderingwizard/processors/CompletionConditionEvaluator.java` (modified — parameter rename activeActions → allActions)
+- `src/main/java/com/wonderingwizard/processors/ScheduleRunnerProcessor.java` (modified — fixed-point loop, pass all actions)
+- `src/main/java/com/wonderingwizard/processors/GraphScheduleBuilder.java` (modified — default condition for RTG_WAIT_FOR_TRUCK)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — register ActionCompletedEvaluator)
+- `src/test/java/com/wonderingwizard/processors/ActionCompletedEvaluatorTest.java` (new — 5 tests)
+
+### F-30: RTG Lift from TT Auto-Completion + Simulator
+
+**Status:** Implemented
+
+**Description:**
+When an RTG equipment instruction for LIFT (`RTG_LIFT_FROM_TT`) is received, the terminal simulator responds with an RTG asset event (`RTGliftedContainerfromTruck`). On the real system, this event arrives from the `apmt.terminaloperations.assetevent.rubbertyredgantry.topic.confidential.dedicated.v1` Kafka topic. A new `RTGAssetEventEvaluator` matches the asset event by `cheId` (against `putChe`) and `operationalEvent`, auto-completing the `RTG_LIFT_FROM_TT` action.
+
+**Requested Behavior:**
+- RTG simulator receives LIFT equipment instruction → sends RTG asset event with `move: "DSCH"`, `operationalEvent: "RTGliftedContainerfromTruck"`
+- `RTGAssetEventEvaluator` matches incoming RTG asset events against ACTIVE actions with `RTG_ASSET_EVENT` completion conditions
+- `RTG_LIFT_FROM_TT` auto-completes when the matching asset event arrives
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | RTG asset event with matching cheId and operationalEvent | RTG_LIFT_FROM_TT auto-completes |
+| 2 | RTG asset event with different cheId | No effect |
+| 3 | RTG asset event with different operationalEvent | No effect |
+| 4 | Non-AssetEvent | No effect |
+| 5 | Action not ACTIVE | No effect |
+
+**Test Execution:**
+```bash
+mvn test -Dtest=RTGAssetEventEvaluatorTest
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/processors/RTGAssetEventEvaluator.java` (new — RTG asset event evaluator)
+- `src/main/java/com/wonderingwizard/processors/GraphScheduleBuilder.java` (modified — default condition for RTG_LIFT_FROM_TT)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — register RTGAssetEventEvaluator)
+- `src/main/java/com/wonderingwizard/simulator/RTGHandler.java` (modified — handle LIFT instruction with asset event response)
+- `src/main/java/com/wonderingwizard/simulator/TerminalSimulator.java` (modified — pass asset event topic to RTGHandler)
+- `src/test/java/com/wonderingwizard/processors/RTGAssetEventEvaluatorTest.java` (new — 5 tests)
+
+---
+
+### F-31: Debounced Schedule Creation on WI Events
+
+**Status:** Implemented
+
+**Description:**
+In production, work instructions (WIs) arrive one-by-one from Kafka, and the WQ activation may arrive before all WIs are read. This means the initial schedule is created with incomplete WI data. To handle this, when WIs arrive for an active FES4-managed WQ, the schedule is recreated after a 3-second quiet period (no WI changes), using system time from TimeEvent. Recreation stops once the minimum estimated move time (EMT) is less than 5 minutes from the current system time.
+
+**Flow:**
+1. WQ activation → creates schedule immediately (possibly empty/incomplete) — existing behavior unchanged
+2. WI arrives for active FES4 WQ → records `lastWiChangeTime` from TimeEvent
+3. TimeEvent tick → if 3s quiet since last WI change and min EMT > 5 min away → `handleReschedule(wqId)` → new `ScheduleCreated`
+
+**Design Details:**
+- 3-second debounce window uses system time from `TimeEvent`, not wall clock
+- 5-minute cutoff: if `minEMT - currentTime < 5 minutes`, stop recreating (schedule is close to execution)
+- `lastWiChangeTime` is cleared after schedule creation to prevent repeated recreation
+- Only applies to WQs that are ACTIVE and managed by FES4
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | WI arrives, 3s passes (via TimeEvent) | Schedule created via debounce |
+| 2 | WI arrives, another WI arrives within 3s | Debounce resets, schedule created after 3s quiet |
+| 3 | WI arrives but minEMT < 5min from current time | No recreation |
+| 4 | WQ not active or not FES4 | No debounce |
+
+**Test Execution:**
+```bash
+mvn test -Dtest=WorkQueueProcessorTest
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java` (modified — debounce fields, TimeEvent handling, `checkDebouncedScheduleCreation()`)
+- `src/test/java/com/wonderingwizard/processors/WorkQueueProcessorTest.java` (modified — 4 new debounce tests)

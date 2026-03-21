@@ -57,7 +57,7 @@ public class QCHandler implements InstructionHandler {
                 "\"timestamp\":" + Instant.now().getEpochSecond() +
                 "}";
 
-        logger.info("QC: " + cheId + " → " + operationalEvent);
+        logger.fine("QC: " + cheId + " → " + operationalEvent);
         kafka.send(assetEventTopic, cheId, json);
 
         // On LIFT, also send "QC Discharged Container" WI event for each container
@@ -85,7 +85,7 @@ public class QCHandler implements InstructionHandler {
             // Clone the WI record and set eventType to "QC Discharged Container"
             GenericRecord wiEvent = cloneWithEventType(latestWi, "QC Discharged Container");
             if (wiEvent != null) {
-                logger.info("QC: Sending QC Discharged Container for WI " + wiId);
+                logger.fine("QC: Sending QC Discharged Container for WI " + wiId);
                 kafka.sendAvro(wiTopic, String.valueOf(wiId), wiEvent);
             }
         }

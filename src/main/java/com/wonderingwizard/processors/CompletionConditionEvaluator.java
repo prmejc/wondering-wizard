@@ -18,11 +18,12 @@ import java.util.UUID;
 public interface CompletionConditionEvaluator {
 
     /**
-     * Evaluates which completion condition IDs are satisfied by the given event.
+     * Evaluates which completion conditions are satisfied by the given event,
+     * scoped to specific actions.
      *
      * @param event the event to evaluate
-     * @param activeActions map of actionId → Action for all ACTIVE actions across all schedules
-     * @return list of completion condition IDs that are now satisfied
+     * @param allActions map of actionId → Action for all actions across all schedules (any status)
+     * @return map of actionId → list of satisfied condition IDs on that action
      */
-    List<String> evaluateSatisfied(Event event, Map<UUID, Action> activeActions);
+    Map<UUID, List<String>> evaluateSatisfied(Event event, Map<UUID, Action> allActions);
 }

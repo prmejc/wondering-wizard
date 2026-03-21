@@ -53,7 +53,9 @@ public class EventProcessingEngine implements Engine {
     }
 
     public List<SideEffect> processEvent(Event event) {
-        logger.info("Processing event: " + event);
+        if (logger.isLoggable(java.util.logging.Level.FINE)) {
+            logger.fine("Processing event: " + event);
+        }
 
         long startNs = metrics != null ? System.nanoTime() : 0;
 
@@ -68,11 +70,13 @@ public class EventProcessingEngine implements Engine {
             metrics.recordEngineProcessing(event.getClass().getSimpleName(), System.nanoTime() - startNs);
         }
 
-        if (allSideEffects.isEmpty()) {
-            logger.info("No side effects produced");
-        } else {
-            for (SideEffect sideEffect : allSideEffects) {
-                logger.info("Side effect: " + sideEffect);
+        if (logger.isLoggable(java.util.logging.Level.FINE)) {
+            if (allSideEffects.isEmpty()) {
+                logger.fine("No side effects produced");
+            } else {
+                for (SideEffect sideEffect : allSideEffects) {
+                    logger.fine("Side effect: " + sideEffect);
+                }
             }
         }
 

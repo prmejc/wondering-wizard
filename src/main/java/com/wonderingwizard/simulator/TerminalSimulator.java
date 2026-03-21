@@ -54,32 +54,58 @@ public class TerminalSimulator {
                 startWiConsumer(kafka, wiTopic);
             }
 
-            // Subscribe equipment instruction consumer
-            List<String> topics = List.copyOf(handlers.keySet());
-            kafka.consumer().subscribe(topics, new org.apache.kafka.clients.consumer.ConsumerRebalanceListener() {
-                @Override
-                public void onPartitionsRevoked(java.util.Collection<org.apache.kafka.common.TopicPartition> partitions) {}
+            // Start one consumer thread per equipment instruction topic for parallel processing
+            int threadIndex = 0;
+            for (Map.Entry<String, InstructionHandler> entry : handlers.entrySet()) {
+                String topic = entry.getKey();
+                InstructionHandler handler = entry.getValue();
+                int idx = threadIndex++;
+                Thread.ofVirtual().name("sim-consumer-" + idx + "-" + topic.substring(topic.lastIndexOf('.') + 1)).start(() -> {
+                    // Each thread gets its own consumer (Kafka consumers are not thread-safe)
+                    var consumer = KafkaInfra.createAvroConsumer(config,
+                            config.getProperty("kafka.consumer.group-id", "terminal-simulator") + "-" + idx);
+                    consumer.subscribe(List.of(topic), new org.apache.kafka.clients.consumer.ConsumerRebalanceListener() {
+                        @Override
+                        public void onPartitionsRevoked(java.util.Collection<org.apache.kafka.common.TopicPartition> partitions) {}
 
-                @Override
-                public void onPartitionsAssigned(java.util.Collection<org.apache.kafka.common.TopicPartition> partitions) {
-                    logger.info("Equipment instruction consumer: seeking to end on " + partitions.size() + " partitions");
-                    kafka.consumer().seekToEnd(partitions);
-                }
-            });
-            logger.info("Terminal Simulator started — consuming instructions from " + topics);
+                        @Override
+                        public void onPartitionsAssigned(java.util.Collection<org.apache.kafka.common.TopicPartition> partitions) {
+                            logger.info("Simulator consumer " + idx + ": seeking to end on " + partitions.size() + " partitions for " + topic);
+                            consumer.seekToEnd(partitions);
+                        }
+                    });
+                    logger.info("Simulator consumer " + idx + " started — consuming from " + topic);
 
-            while (running) {
-                ConsumerRecords<String, GenericRecord> records = kafka.consumer().poll(Duration.ofSeconds(1));
-                records.forEach(record -> {
-                    InstructionHandler handler = handlers.get(record.topic());
-                    if (handler != null) {
+                    while (running) {
                         try {
-                            handler.handle(record.value(), kafka);
+                            ConsumerRecords<String, GenericRecord> records = consumer.poll(Duration.ofMillis(100));
+                            records.forEach(record -> {
+                                try {
+                                    handler.handle(record.value(), kafka);
+                                } catch (Exception e) {
+                                    logger.warning("Error handling message from " + topic + ": " + e.getMessage());
+                                }
+                            });
                         } catch (Exception e) {
-                            logger.warning("Error handling message from " + record.topic() + ": " + e.getMessage());
+                            if (running) {
+                                logger.warning("Simulator consumer error on " + topic + ": " + e.getMessage());
+                            }
                         }
                     }
+                    consumer.close();
                 });
+            }
+
+            logger.info("Terminal Simulator started — " + handlers.size() + " consumer threads");
+
+            // Main thread waits until shutdown
+            while (running) {
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
         } finally {
             kafka.close();
@@ -93,7 +119,7 @@ public class TerminalSimulator {
 
             while (running) {
                 try {
-                    ConsumerRecords<String, GenericRecord> records = kafka.wiConsumer().poll(Duration.ofSeconds(1));
+                    ConsumerRecords<String, GenericRecord> records = kafka.wiConsumer().poll(Duration.ofMillis(100));
                     records.forEach(record -> wiTracker.update(record.value()));
                 } catch (Exception e) {
                     if (running) {
@@ -152,7 +178,10 @@ public class TerminalSimulator {
         // Register RTG handler
         simulator.registerHandler(
                 config.getProperty("topic.equipment-instruction.rtg"),
-                new RTGHandler(config.getProperty("topic.job-operation")));
+                new RTGHandler(
+                        config.getProperty("topic.job-operation"),
+                        config.getProperty("topic.asset-event.rtg"),
+                        terminalCode));
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             logger.info("Shutting down Terminal Simulator...");

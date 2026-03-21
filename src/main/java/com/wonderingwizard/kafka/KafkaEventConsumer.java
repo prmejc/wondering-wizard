@@ -36,7 +36,7 @@ import java.util.logging.Logger;
 public class KafkaEventConsumer<E extends Event> {
 
     private static final Logger logger = Logger.getLogger(KafkaEventConsumer.class.getName());
-    private static final Duration POLL_TIMEOUT = Duration.ofMillis(500);
+    private static final Duration POLL_TIMEOUT = Duration.ofMillis(100);
 
     private final KafkaConfiguration kafkaConfig;
     private final ConsumerConfiguration consumerConfig;

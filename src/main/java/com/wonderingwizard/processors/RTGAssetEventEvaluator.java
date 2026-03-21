@@ -14,19 +14,19 @@ import java.util.UUID;
 import java.util.logging.Logger;
 
 /**
- * Evaluates QC asset events against active QC action completion conditions.
+ * Evaluates RTG asset events against active RTG action completion conditions.
  * <p>
- * Matches by cheID (from the asset event) against the QC name on the action's
- * work instructions (fetchChe), and by operationalEvent against the condition type.
+ * Matches by cheID (from the asset event) against the RTG name on the action's
+ * work instructions (putChe for DSCH mode), and by operationalEvent against the condition description.
  */
-public class QCAssetEventEvaluator implements CompletionConditionEvaluator {
+public class RTGAssetEventEvaluator implements CompletionConditionEvaluator {
 
-    private static final Logger logger = Logger.getLogger(QCAssetEventEvaluator.class.getName());
+    private static final Logger logger = Logger.getLogger(RTGAssetEventEvaluator.class.getName());
 
-    public static final String CONDITION_TYPE = "QC_ASSET_EVENT";
+    public static final String CONDITION_TYPE = "RTG_ASSET_EVENT";
 
     @Override
-    public Map<UUID, List<String>> evaluateSatisfied(Event event, Map<UUID, Action> activeActions) {
+    public Map<UUID, List<String>> evaluateSatisfied(Event event, Map<UUID, Action> allActions) {
         if (!(event instanceof AssetEvent assetEvent)) {
             return Map.of();
         }
@@ -39,19 +39,18 @@ public class QCAssetEventEvaluator implements CompletionConditionEvaluator {
 
         Map<UUID, List<String>> result = new HashMap<>();
 
-        for (Map.Entry<UUID, Action> entry : activeActions.entrySet()) {
+        for (Map.Entry<UUID, Action> entry : allActions.entrySet()) {
             Action action = entry.getValue();
             if (action.status() != ActionStatus.ACTIVE) continue;
             if (action.completionConditions() == null || action.completionConditions().isEmpty()) continue;
 
-            // Match cheID against the QC name from work instructions
-            String actionQc = resolveQcName(action);
-            if (actionQc == null || !actionQc.equals(cheId)) continue;
+            String actionRtg = resolveRtgName(action);
+            if (actionRtg == null || !actionRtg.equals(cheId)) continue;
 
             List<String> satisfiedConditionIds = new ArrayList<>();
             for (CompletionCondition condition : action.completionConditions()) {
                 if (CONDITION_TYPE.equals(condition.type()) && operationalEvent.equals(condition.description())) {
-                    logger.fine("QC asset event satisfied condition '" + condition.id()
+                    logger.fine("RTG asset event satisfied condition '" + condition.id()
                             + "' on action " + entry.getKey() + ": " + operationalEvent + " from " + cheId);
                     satisfiedConditionIds.add(condition.id());
                 }
@@ -64,10 +63,10 @@ public class QCAssetEventEvaluator implements CompletionConditionEvaluator {
         return result;
     }
 
-    private String resolveQcName(Action action) {
+    private String resolveRtgName(Action action) {
         if (action.workInstructions() == null || action.workInstructions().isEmpty()) {
             return null;
         }
-        return action.workInstructions().getFirst().fetchChe();
+        return action.workInstructions().getFirst().putChe();
     }
 }

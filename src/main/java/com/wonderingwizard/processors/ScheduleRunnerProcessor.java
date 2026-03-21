@@ -20,6 +20,9 @@ import com.wonderingwizard.engine.Event;
 import com.wonderingwizard.engine.EventProcessor;
 import com.wonderingwizard.engine.SideEffect;
 import com.wonderingwizard.events.ActionCompletedEvent;
+import com.wonderingwizard.events.AssetEvent;
+import com.wonderingwizard.events.CheTargetPositionEvent;
+import com.wonderingwizard.events.JobOperationEvent;
 import com.wonderingwizard.events.NukeWorkQueueEvent;
 import com.wonderingwizard.events.OverrideActionConditionEvent;
 import com.wonderingwizard.events.OverrideConditionEvent;
@@ -137,6 +140,22 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
 
         /**
+         * Returns actions from non-COMPLETED takts only. This avoids iterating
+         * the thousands of COMPLETED actions that accumulate over time.
+         */
+        List<ActionInfo> getActiveAndWaitingTaktActions() {
+            List<ActionInfo> result = new ArrayList<>();
+            for (Takt takt : takts) {
+                if (taktStates.get(takt.name()) == TaktState.COMPLETED) continue;
+                for (Action action : takt.actions()) {
+                    ActionInfo info = actionLookup.get(action.id());
+                    if (info != null) result.add(info);
+                }
+            }
+            return result;
+        }
+
+        /**
          * Gets all actions in a given takt that are eligible for activation.
          * An action is eligible when it is not yet active or completed,
          * and all its dependencies are completed.
@@ -147,10 +166,15 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
         List<UUID> getActivatableActionsInTakt(String taktName, Set<String> occupiedPositions) {
             List<UUID> result = new ArrayList<>();
-            for (ActionInfo info : actionLookup.values()) {
-                if (!info.taktName().equals(taktName)) {
-                    continue;
-                }
+            // Find the takt and iterate only its actions (not all actions in the schedule)
+            Takt targetTakt = null;
+            for (Takt t : takts) {
+                if (t.name().equals(taktName)) { targetTakt = t; break; }
+            }
+            if (targetTakt == null) return result;
+            for (Action taktAction : targetTakt.actions()) {
+                ActionInfo info = actionLookup.get(taktAction.id());
+                if (info == null) continue;
                 UUID actionId = info.action().id();
                 if (info.action().status() != ActionStatus.PENDING) {
                     continue;
@@ -186,7 +210,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             for (LocationFreeCondition cond : action.locationSkipConditions()) {
                 if (cond.conditionMode() != ConditionMode.ACTIVATE) continue;
                 if (overrides.contains(cond.id())) continue;
-                if (isPositionOccupied(cond, occupiedPositions)) return true;
+                if (isPositionOccupied(cond, action, occupiedPositions)) return true;
             }
             return false;
         }
@@ -201,18 +225,33 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 if (cond.conditionMode() != ConditionMode.SKIP) continue;
                 if (overrides.contains(cond.id())) continue;
                 hasSkipConditions = true;
-                if (isPositionOccupied(cond, occupiedPositions)) return false; // occupied → don't skip
+                if (isPositionOccupied(cond, action, occupiedPositions)) return false; // occupied → don't skip
             }
             return hasSkipConditions; // all free → skip
         }
 
-        private boolean isPositionOccupied(LocationFreeCondition cond, Set<String> occupiedPositions) {
+        private boolean isPositionOccupied(LocationFreeCondition cond, Action action, Set<String> occupiedPositions) {
+            String equipmentName = resolveEquipmentName(cond.deviceType(), action);
+            if (equipmentName != null) {
+                // Exact match: e.g., "QC:QCZ1:STANDBY"
+                String exactKey = cond.deviceType().name() + ":" + equipmentName + ":" + cond.position().name();
+                return occupiedPositions.contains(exactKey);
+            }
+            // Fallback to prefix/suffix match when equipment name is unknown
             String suffix = ":" + cond.position().name();
             String prefix = cond.deviceType().name() + ":";
             for (String key : occupiedPositions) {
                 if (key.startsWith(prefix) && key.endsWith(suffix)) return true;
             }
             return false;
+        }
+
+        private String resolveEquipmentName(DeviceType deviceType, Action action) {
+            return switch (deviceType) {
+                case QC -> resolveQCName(action);
+                case RTG -> resolveRTGName(action);
+                case TT -> null;
+            };
         }
 
         boolean areDependenciesCompleted(Set<UUID> dependencies) {
@@ -259,11 +298,16 @@ public class ScheduleRunnerProcessor implements EventProcessor {
          * Checks whether all actions in a takt are completed.
          */
         boolean isTaktFullyCompleted(String taktName) {
-            for (ActionInfo info : actionLookup.values()) {
-                if (info.taktName().equals(taktName)) {
-                    if (info.action().status() != ActionStatus.COMPLETED) {
-                        return false;
+            // Find the takt by name and check its actions directly (avoids iterating all actions)
+            for (Takt takt : takts) {
+                if (takt.name().equals(taktName)) {
+                    for (Action action : takt.actions()) {
+                        ActionInfo info = actionLookup.get(action.id());
+                        if (info != null && info.action().status() != ActionStatus.COMPLETED) {
+                            return false;
+                        }
                     }
+                    return true;
                 }
             }
             return true;
@@ -399,9 +443,10 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             long workQueueId = entry.getKey();
             ScheduleState state = entry.getValue();
 
-            // Group TT actions by containerIndex, multiple actions per type (twins)
+            // Group TT actions by containerIndex — only from non-COMPLETED takts
+            // (completed takts can't have occupied positions)
             Map<Integer, Map<ActionType, List<Action>>> ttByContainer = new LinkedHashMap<>();
-            for (ActionInfo info : state.actionLookup.values()) {
+            for (ActionInfo info : state.getActiveAndWaitingTaktActions()) {
                 Action action = info.action();
                 if (action.deviceType() == DeviceType.TT && action.cheShortName() != null) {
                     ttByContainer.computeIfAbsent(action.containerIndex(), k -> new LinkedHashMap<>())
@@ -686,12 +731,11 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     private Set<String> collectAssignedTrucks() {
         Set<String> assigned = new HashSet<>();
         for (ScheduleState state : scheduleStates.values()) {
-            for (ActionInfo info : state.actionLookup.values()) {
+            // Only scan non-COMPLETED takts — completed actions have released their trucks
+            for (ActionInfo info : state.getActiveAndWaitingTaktActions()) {
                 Action action = info.action();
                 if (action.cheShortName() != null
                         && action.status() != ActionStatus.COMPLETED
-                        // Don't count skipWhenGatesSatisfied actions (e.g., drive to buffer) —
-                        // they auto-complete instantly and shouldn't hold a truck reservation
                         && !action.skipWhenGatesSatisfied()) {
                     assigned.add(action.cheShortName());
                 }
@@ -702,6 +746,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
     @Override
     public List<SideEffect> process(Event event) {
+        long t0 = System.nanoTime();
         List<SideEffect> sideEffects = new ArrayList<>();
 
         if (event instanceof WorkQueueMessage message) {
@@ -721,6 +766,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         } else if (event instanceof NukeWorkQueueEvent nuke) {
             scheduleStates.remove(nuke.workQueueId());
         }
+        long t1 = System.nanoTime();
 
         // Delegate to sub-processors
         if (!subProcessors.isEmpty()) {
@@ -729,14 +775,33 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 sideEffects.addAll(sub.process(event, context));
             }
         }
+        long t2 = System.nanoTime();
 
-        // Evaluate completion conditions
-        sideEffects.addAll(evaluateCompletionConditions(event));
+        // Evaluate completion conditions — only when the event or prior side effects
+        // could actually satisfy a condition. Skips expensive all-actions iteration
+        // for events like TimeEvent, WorkInstructionEvent, etc.
+        if (canSatisfyCompletionConditions(event, sideEffects)) {
+            sideEffects.addAll(evaluateCompletionConditions(event));
+        }
+        long t3 = System.nanoTime();
 
         // Final activation pass: always run after all state mutations.
         // This consolidates all activation logic into one place and ensures
         // takts are always processed in sequence order for TT allocation priority.
         sideEffects.addAll(reactivateAllSchedules());
+        long t4 = System.nanoTime();
+
+        long totalMs = (t4 - t0) / 1_000_000;
+        if (totalMs > 5 && logger.isLoggable(java.util.logging.Level.FINE)) {
+            logger.fine("PERF " + event.getClass().getSimpleName()
+                    + " total=" + totalMs + "ms"
+                    + " handler=" + (t1 - t0) / 1_000_000 + "ms"
+                    + " subProc=" + (t2 - t1) / 1_000_000 + "ms"
+                    + " evalCC=" + (t3 - t2) / 1_000_000 + "ms"
+                    + " reactivate=" + (t4 - t3) / 1_000_000 + "ms"
+                    + " schedules=" + scheduleStates.size()
+                    + " effects=" + sideEffects.size());
+        }
 
         return sideEffects;
     }
@@ -1238,65 +1303,127 @@ public class ScheduleRunnerProcessor implements EventProcessor {
      * force-activation of overridden actions, and cross-schedule truck reallocation.
      */
     /**
-     * Evaluates completion condition evaluators against all active actions.
+     * Checks whether the event or prior side effects could possibly satisfy a completion condition.
+     * Only CheTargetPositionEvent, AssetEvent, JobOperationEvent can directly satisfy conditions.
+     * ActionCompletedEvaluator needs newly completed actions, which are signaled by ActionCompleted
+     * side effects from earlier in this process() call.
+     */
+    private boolean canSatisfyCompletionConditions(Event event, List<SideEffect> priorEffects) {
+        if (event instanceof CheTargetPositionEvent
+                || event instanceof AssetEvent
+                || event instanceof JobOperationEvent) {
+            return true;
+        }
+        for (SideEffect effect : priorEffects) {
+            if (effect instanceof ActionCompleted) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Evaluates completion condition evaluators against all actions.
      * When all completion conditions on an action are satisfied, the action is auto-completed.
+     * Uses a fixed-point loop to cascade completions within a single processing cycle
+     * (e.g., TT_DRIVE_TO_RTG_UNDER completing triggers RTG_WAIT_FOR_TRUCK completion).
      */
     private List<SideEffect> evaluateCompletionConditions(Event event) {
         if (completionEvaluators.isEmpty()) return List.of();
 
-        // Collect all active actions across all schedules
-        Map<UUID, Action> activeActions = new HashMap<>();
-        Map<UUID, Long> actionToWorkQueue = new HashMap<>();
-        for (Map.Entry<Long, ScheduleState> entry : scheduleStates.entrySet()) {
-            for (Map.Entry<UUID, ActionInfo> actionEntry : entry.getValue().actionLookup.entrySet()) {
-                Action action = actionEntry.getValue().action();
-                if (action.status() == ActionStatus.ACTIVE
-                        && action.completionConditions() != null
-                        && !action.completionConditions().isEmpty()) {
-                    activeActions.put(actionEntry.getKey(), action);
-                    actionToWorkQueue.put(actionEntry.getKey(), entry.getKey());
+        List<SideEffect> allSideEffects = new ArrayList<>();
+        boolean progress = true;
+        boolean firstIteration = true;
+
+        while (progress) {
+            progress = false;
+
+            // Build action maps: ACTIVE actions for event-based evaluators,
+            // ACTIVE+COMPLETED for ActionCompletedEvaluator (cascading only).
+            // ACTIVE is typically ~10-30 actions vs ~3000+ COMPLETED.
+            Map<UUID, Action> activeActions = new HashMap<>();
+            Map<UUID, Action> allNonPending = null; // lazy — only built if needed
+            Map<UUID, Long> actionToWorkQueue = new HashMap<>();
+            for (Map.Entry<Long, ScheduleState> entry : scheduleStates.entrySet()) {
+                for (Map.Entry<UUID, ActionInfo> actionEntry : entry.getValue().actionLookup.entrySet()) {
+                    Action action = actionEntry.getValue().action();
+                    if (action.status() == ActionStatus.ACTIVE) {
+                        activeActions.put(actionEntry.getKey(), action);
+                        actionToWorkQueue.put(actionEntry.getKey(), entry.getKey());
+                    } else if (action.status() == ActionStatus.COMPLETED) {
+                        actionToWorkQueue.put(actionEntry.getKey(), entry.getKey());
+                    }
+                }
+            }
+
+            if (activeActions.isEmpty()) break;
+
+            // Evaluate event-based evaluators with ACTIVE-only map (first iteration)
+            // or all evaluators including ActionCompletedEvaluator (cascading iterations)
+            Map<UUID, Set<String>> newlySatisfiedByAction = new HashMap<>();
+            for (CompletionConditionEvaluator evaluator : completionEvaluators) {
+                // ActionCompletedEvaluator only matters on cascading (non-first) iterations
+                // when actions were just completed by other evaluators
+                if (evaluator instanceof ActionCompletedEvaluator) {
+                    if (firstIteration) continue;
+                    // Build full non-pending map lazily for ActionCompletedEvaluator
+                    if (allNonPending == null) {
+                        allNonPending = new HashMap<>(activeActions);
+                        for (Map.Entry<Long, ScheduleState> entry : scheduleStates.entrySet()) {
+                            for (Map.Entry<UUID, ActionInfo> actionEntry : entry.getValue().actionLookup.entrySet()) {
+                                if (actionEntry.getValue().action().status() == ActionStatus.COMPLETED) {
+                                    allNonPending.put(actionEntry.getKey(), actionEntry.getValue().action());
+                                }
+                            }
+                        }
+                    }
+                    Map<UUID, List<String>> evaluated = evaluator.evaluateSatisfied(event, allNonPending);
+                    for (Map.Entry<UUID, List<String>> evalEntry : evaluated.entrySet()) {
+                        newlySatisfiedByAction.computeIfAbsent(evalEntry.getKey(), k -> new HashSet<>())
+                                .addAll(evalEntry.getValue());
+                    }
+                } else {
+                    Map<UUID, List<String>> evaluated = evaluator.evaluateSatisfied(event, activeActions);
+                    for (Map.Entry<UUID, List<String>> evalEntry : evaluated.entrySet()) {
+                        newlySatisfiedByAction.computeIfAbsent(evalEntry.getKey(), k -> new HashSet<>())
+                                .addAll(evalEntry.getValue());
+                    }
+                }
+            }
+            firstIteration = false;
+
+            if (newlySatisfiedByAction.isEmpty()) break;
+
+            // Track satisfied conditions and check for fully satisfied actions
+            for (Map.Entry<UUID, Set<String>> entry : newlySatisfiedByAction.entrySet()) {
+                UUID actionId = entry.getKey();
+                Set<String> newCondIds = entry.getValue();
+                Action action = activeActions.get(actionId);
+                if (action == null || action.status() != ActionStatus.ACTIVE) continue;
+                if (action.completionConditions() == null || action.completionConditions().isEmpty()) continue;
+
+                Set<String> satisfied = satisfiedCompletionConditions.computeIfAbsent(actionId, k -> new HashSet<>());
+                boolean changed = false;
+                for (String condId : newCondIds) {
+                    changed |= satisfied.add(condId);
+                }
+
+                if (changed && allConditionsSatisfied(action, satisfied)) {
+                    long wqId = actionToWorkQueue.get(actionId);
+                    ScheduleState state = scheduleStates.get(wqId);
+                    if (state != null) {
+                        String taktName = state.actionLookup.get(actionId).taktName();
+                        state.setActionStatus(actionId, ActionStatus.COMPLETED);
+                        satisfiedCompletionConditions.remove(actionId);
+                        allSideEffects.add(new ActionCompleted(actionId, wqId, taktName,
+                                action.description(), this.currentTime));
+                        progress = true;
+                    }
                 }
             }
         }
 
-        if (activeActions.isEmpty()) return List.of();
-
-        // Evaluate all evaluators
-        Set<String> newlySatisfied = new HashSet<>();
-        for (CompletionConditionEvaluator evaluator : completionEvaluators) {
-            newlySatisfied.addAll(evaluator.evaluateSatisfied(event, activeActions));
-        }
-
-        if (newlySatisfied.isEmpty()) return List.of();
-
-        // Track satisfied conditions and check for fully satisfied actions
-        List<SideEffect> sideEffects = new ArrayList<>();
-        for (Map.Entry<UUID, Action> entry : activeActions.entrySet()) {
-            UUID actionId = entry.getKey();
-            Action action = entry.getValue();
-
-            Set<String> satisfied = satisfiedCompletionConditions.computeIfAbsent(actionId, k -> new HashSet<>());
-            boolean changed = false;
-            for (CompletionCondition cond : action.completionConditions()) {
-                if (newlySatisfied.contains(cond.id())) {
-                    changed |= satisfied.add(cond.id());
-                }
-            }
-
-            if (changed && allConditionsSatisfied(action, satisfied)) {
-                long wqId = actionToWorkQueue.get(actionId);
-                ScheduleState state = scheduleStates.get(wqId);
-                if (state != null) {
-                    String taktName = state.actionLookup.get(actionId).taktName();
-                    state.setActionStatus(actionId, ActionStatus.COMPLETED);
-                    satisfiedCompletionConditions.remove(actionId);
-                    sideEffects.add(new ActionCompleted(actionId, wqId, taktName,
-                            action.description(), this.currentTime));
-                }
-            }
-        }
-
-        return sideEffects;
+        return allSideEffects;
     }
 
     private boolean allConditionsSatisfied(Action action, Set<String> satisfied) {
@@ -1310,63 +1437,103 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         List<SideEffect> allEffects = new ArrayList<>();
 
         boolean progress = true;
+        int iterations = 0;
+        long occupiedNs = 0, trucksNs = 0, taktsNs = 0, actionsNs = 0, gatedNs = 0, forceNs = 0, completeNs = 0;
 
         while (progress) {
             progress = false;
+            iterations++;
+
+            // Compute occupied positions and assigned trucks once per iteration.
+            // These are invalidated when progress=true (actions changed status).
+            long ot0 = System.nanoTime();
+            Set<String> occupiedPositions = getOccupiedPositionKeys();
+            long ot1 = System.nanoTime();
+            Set<String> assignedTrucks = collectAssignedTrucks();
+            long ot2 = System.nanoTime();
+            occupiedNs += ot1 - ot0;
+            trucksNs += ot2 - ot1;
 
             for (Map.Entry<Long, ScheduleState> entry : scheduleStates.entrySet()) {
                 long wqId = entry.getKey();
                 ScheduleState state = entry.getValue();
 
                 // 1. Try activating WAITING takts (condition checks)
+                long st0 = System.nanoTime();
                 List<SideEffect> taktEffects = tryActivateTakts(wqId, state);
+                taktsNs += System.nanoTime() - st0;
                 if (!taktEffects.isEmpty()) {
                     allEffects.addAll(taktEffects);
                     progress = true;
                 }
 
                 // 2. Activate eligible actions in ACTIVE takts, sorted by sequence
+                long st1 = System.nanoTime();
                 List<Takt> sortedTakts = state.takts.stream()
                         .sorted(Comparator.comparingInt(Takt::sequence))
                         .toList();
                 for (Takt takt : sortedTakts) {
                     if (state.taktStates.get(takt.name()) == TaktState.ACTIVE) {
-                        List<SideEffect> actionEffects = activateEligibleActions(wqId, state, takt.name());
+                        List<SideEffect> actionEffects = activateEligibleActions(
+                                wqId, state, takt.name(), occupiedPositions, assignedTrucks);
                         if (!actionEffects.isEmpty()) {
                             allEffects.addAll(actionEffects);
                             progress = true;
                         }
                     }
                 }
+                actionsNs += System.nanoTime() - st1;
 
                 // 3. Auto-complete gated actions (skipWhenGatesSatisfied)
+                long st2 = System.nanoTime();
                 List<SideEffect> autoEffects = autoCompleteGatedActions(wqId, state);
+                gatedNs += System.nanoTime() - st2;
                 if (!autoEffects.isEmpty()) {
                     allEffects.addAll(autoEffects);
                     progress = true;
                 }
 
                 // 4. Force-activate actions in WAITING takts with all conditions overridden
-                for (ActionInfo info : state.actionLookup.values()) {
-                    if (state.taktStates.get(info.taktName()) == TaktState.WAITING) {
-                        UUID actionId = info.action().id();
-                        if (info.action().status() == ActionStatus.PENDING) {
-                            List<SideEffect> forceEffects = tryForceActivateAction(wqId, state, actionId, info);
-                            if (!forceEffects.isEmpty()) {
-                                allEffects.addAll(forceEffects);
-                                progress = true;
+                //    Skip entirely when no overrides exist (the common case)
+                long st3 = System.nanoTime();
+                if (!state.overriddenActionConditions.isEmpty()) {
+                    for (ActionInfo info : state.getActiveAndWaitingTaktActions()) {
+                        if (state.taktStates.get(info.taktName()) == TaktState.WAITING) {
+                            UUID actionId = info.action().id();
+                            if (info.action().status() == ActionStatus.PENDING) {
+                                List<SideEffect> forceEffects = tryForceActivateAction(wqId, state, actionId, info);
+                                if (!forceEffects.isEmpty()) {
+                                    allEffects.addAll(forceEffects);
+                                    progress = true;
+                                }
                             }
                         }
                     }
                 }
+                forceNs += System.nanoTime() - st3;
 
                 // 5. Try completing fully-completed takts
+                long st4 = System.nanoTime();
                 List<SideEffect> completionEffects = tryCompletePendingTakts(wqId, state);
+                completeNs += System.nanoTime() - st4;
                 if (!completionEffects.isEmpty()) {
                     allEffects.addAll(completionEffects);
                     progress = true;
                 }
             }
+        }
+
+        long totalNs = occupiedNs + trucksNs + taktsNs + actionsNs + gatedNs + forceNs + completeNs;
+        if (totalNs / 1_000_000 > 2 && logger.isLoggable(java.util.logging.Level.FINE)) {
+            logger.fine("PERF reactivate iters=" + iterations
+                    + " occupied=" + occupiedNs / 1_000_000 + "ms"
+                    + " trucks=" + trucksNs / 1_000_000 + "ms"
+                    + " takts=" + taktsNs / 1_000_000 + "ms"
+                    + " actions=" + actionsNs / 1_000_000 + "ms"
+                    + " gated=" + gatedNs / 1_000_000 + "ms"
+                    + " force=" + forceNs / 1_000_000 + "ms"
+                    + " complete=" + completeNs / 1_000_000 + "ms"
+                    + " effects=" + allEffects.size());
         }
 
         return allEffects;
@@ -1503,14 +1670,13 @@ public class ScheduleRunnerProcessor implements EventProcessor {
     /**
      * Activates all actions in the given takt that have their dependencies satisfied.
      */
-    private List<SideEffect> activateEligibleActions(long workQueueId, ScheduleState state, String taktName) {
+    private List<SideEffect> activateEligibleActions(long workQueueId, ScheduleState state, String taktName,
+                                                       Set<String> occupiedPositions, Set<String> assignedTrucks) {
         List<SideEffect> sideEffects = new ArrayList<>();
 
         boolean progress = true;
         while (progress) {
             progress = false;
-            // Compute occupied positions fresh each iteration (may change as actions activate)
-            Set<String> occupiedPositions = getOccupiedPositionKeys();
             List<UUID> actionsToActivate = state.getActivatableActionsInTakt(taktName, occupiedPositions);
             // Process TT actions first so truck allocation + targetChe propagation
             // happens before QC/RTG actions activate in the same pass
@@ -1541,14 +1707,14 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 // TT allocation: if this is a TT action without a truck assigned, try to allocate one
                 if (action.deviceType() == DeviceType.TT && action.cheShortName() == null
                         && ttAllocationStrategy != null) {
-                    Set<String> assigned = collectAssignedTrucks();
-                    var allocation = ttAllocationStrategy.allocateFreeTruck(assigned);
+                    var allocation = ttAllocationStrategy.allocateFreeTruck(assignedTrucks);
                     if (allocation.isEmpty()) {
                         // No truck available — action stays pending
                         continue;
                     }
                     String truckName = allocation.get().cheShortName();
                     Long truckCheId = allocation.get().cheId();
+                    assignedTrucks.add(truckName);
 
                     Action assignedAction = action.withTruckAssignment(truckCheId, truckName);
                     state.actionLookup.put(actionId, new ActionInfo(actionInfo.taktName(), assignedAction));
@@ -1616,7 +1782,7 @@ public class ScheduleRunnerProcessor implements EventProcessor {
      */
     private List<SideEffect> autoCompleteGatedActions(long workQueueId, ScheduleState state) {
         List<SideEffect> sideEffects = new ArrayList<>();
-        for (ActionInfo info : List.copyOf(state.actionLookup.values())) {
+        for (ActionInfo info : state.getActiveAndWaitingTaktActions()) {
             Action action = info.action();
             if (action.status() != ActionStatus.ACTIVE) continue;
             if (!action.skipWhenGatesSatisfied()) continue;

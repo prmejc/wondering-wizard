@@ -41,21 +41,33 @@ public class EventPropagatingEngine implements Engine {
 
     @Override
     public List<SideEffect> processEvent(Event event) {
+        long t0 = System.nanoTime();
         List<SideEffect> allSideEffects = new ArrayList<>();
         Queue<Event> eventQueue = new ArrayDeque<>();
         eventQueue.add(event);
+        int rounds = 0;
 
         while (!eventQueue.isEmpty()) {
+            rounds++;
             Event currentEvent = eventQueue.poll();
             List<SideEffect> sideEffects = delegate.processEvent(currentEvent);
             allSideEffects.addAll(sideEffects);
 
             for (SideEffect sideEffect : sideEffects) {
                 if (sideEffect instanceof Event eventSideEffect) {
-                    logger.info("Side effect implements Event, queuing for processing: " + sideEffect);
+                    if (logger.isLoggable(java.util.logging.Level.FINE)) {
+                        logger.fine("Side effect implements Event, queuing for processing: " + sideEffect);
+                    }
                     eventQueue.add(eventSideEffect);
                 }
             }
+        }
+
+        long totalMs = (System.nanoTime() - t0) / 1_000_000;
+        if (totalMs > 10 && logger.isLoggable(java.util.logging.Level.FINE)) {
+            logger.fine("PERF propagate " + event.getClass().getSimpleName()
+                    + " total=" + totalMs + "ms rounds=" + rounds
+                    + " effects=" + allSideEffects.size());
         }
 
         return allSideEffects;

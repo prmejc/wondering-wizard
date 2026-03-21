@@ -10,8 +10,8 @@ Tracking implementation progress for all Kafka topics used by the system.
 | 1 | `APMT.terminalOperations.workQueue.topic.confidential.dedicated.v1`                    | WorkQueue |     Yes     |     No      |
 | 2 | `APMT.terminalOperations.containerHandlingEquipment.topic.confidential.dedicated.v1`   | ContainerHandlingEquipment |     Yes     |     Yes     |
 | 3 | `apmt.terminaloperations.digitalmap.topic.confidential.dedicated.v1`                   | TerminalLayout |     Yes     |     Yes     |
-| 4 | `apmt.terminaloperations.joboperation.topic.confidential.dedicated.v1`                 | JobOperation |     No      |     No      |
-| 5 | `apmt.terminaloperations.chetargetposition.topic.confidential.dedicated.v1`            | CheTargetPositionConfirmation |     No      |     No      |
+| 4 | `apmt.terminaloperations.joboperation.topic.confidential.dedicated.v1`                 | JobOperation |     Yes      |     No      |
+| 5 | `apmt.terminaloperations.chetargetposition.topic.confidential.dedicated.v1`            | CheTargetPositionConfirmation |     Yes      |     No      |
 | 6 | `apmt.terminaloperations.assetevent.rubbertyredgantry.topic.confidential.dedicated.v1` | AssetEvent (RTG) |     Yes     |     No      |
 | 7 | `apmt.terminaloperations.assetevent.quaycrane.topic.confidential.dedicated.v1`         | AssetEvent (QC) |     Yes     |     No      |
 | 8 | `apmt.terminaloperations.assetevent.emptyhandler.topic.confidential.dedicated.v1`      | AssetEvent (EH) |     Yes     |     No      |
@@ -45,4 +45,4 @@ Tracking implementation progress for all Kafka topics used by the system.
 |-----------|:-----:|:-----------:|:-----------------------:|
 | Consumer  | 16    |     13      |            7            |
 | Producer  | 11    |      4      |            1            |
-| **Total** | **27**|   **17**    |          **8**          |
+| **Total** | **27**|   **19**    |          **8**          |
