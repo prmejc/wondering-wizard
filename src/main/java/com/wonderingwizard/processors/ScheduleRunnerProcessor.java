@@ -1351,64 +1351,43 @@ public class ScheduleRunnerProcessor implements EventProcessor {
 
         List<SideEffect> allSideEffects = new ArrayList<>();
         boolean progress = true;
-        boolean firstIteration = true;
 
         while (progress) {
             progress = false;
 
-            // Build action maps: ACTIVE actions for event-based evaluators,
-            // ACTIVE+COMPLETED for ActionCompletedEvaluator (cascading only).
-            // ACTIVE is typically ~10-30 actions vs ~3000+ COMPLETED.
+            // Build action maps from non-completed takts only:
+            // - ACTIVE actions for event-based evaluators (TTPosition, QCAsset, etc.)
+            // - ACTIVE+COMPLETED for ActionCompletedEvaluator (needs completed triggers)
+            // Using getActiveAndWaitingTaktActions() keeps this O(active_takts) not O(all_actions).
             Map<UUID, Action> activeActions = new HashMap<>();
-            Map<UUID, Action> allNonPending = null; // lazy — only built if needed
+            Map<UUID, Action> nonCompletedTaktActions = new HashMap<>();
             Map<UUID, Long> actionToWorkQueue = new HashMap<>();
             for (Map.Entry<Long, ScheduleState> entry : scheduleStates.entrySet()) {
-                for (Map.Entry<UUID, ActionInfo> actionEntry : entry.getValue().actionLookup.entrySet()) {
-                    Action action = actionEntry.getValue().action();
+                for (ActionInfo info : entry.getValue().getActiveAndWaitingTaktActions()) {
+                    Action action = info.action();
+                    actionToWorkQueue.put(action.id(), entry.getKey());
+                    nonCompletedTaktActions.put(action.id(), action);
                     if (action.status() == ActionStatus.ACTIVE) {
-                        activeActions.put(actionEntry.getKey(), action);
-                        actionToWorkQueue.put(actionEntry.getKey(), entry.getKey());
-                    } else if (action.status() == ActionStatus.COMPLETED) {
-                        actionToWorkQueue.put(actionEntry.getKey(), entry.getKey());
+                        activeActions.put(action.id(), action);
                     }
                 }
             }
 
             if (activeActions.isEmpty()) break;
 
-            // Evaluate event-based evaluators with ACTIVE-only map (first iteration)
-            // or all evaluators including ActionCompletedEvaluator (cascading iterations)
+            // Evaluate all evaluators:
+            // - Event-based evaluators get ACTIVE-only map
+            // - ActionCompletedEvaluator gets ACTIVE+COMPLETED from non-completed takts
             Map<UUID, Set<String>> newlySatisfiedByAction = new HashMap<>();
             for (CompletionConditionEvaluator evaluator : completionEvaluators) {
-                // ActionCompletedEvaluator only matters on cascading (non-first) iterations
-                // when actions were just completed by other evaluators
-                if (evaluator instanceof ActionCompletedEvaluator) {
-                    if (firstIteration) continue;
-                    // Build full non-pending map lazily for ActionCompletedEvaluator
-                    if (allNonPending == null) {
-                        allNonPending = new HashMap<>(activeActions);
-                        for (Map.Entry<Long, ScheduleState> entry : scheduleStates.entrySet()) {
-                            for (Map.Entry<UUID, ActionInfo> actionEntry : entry.getValue().actionLookup.entrySet()) {
-                                if (actionEntry.getValue().action().status() == ActionStatus.COMPLETED) {
-                                    allNonPending.put(actionEntry.getKey(), actionEntry.getValue().action());
-                                }
-                            }
-                        }
-                    }
-                    Map<UUID, List<String>> evaluated = evaluator.evaluateSatisfied(event, allNonPending);
-                    for (Map.Entry<UUID, List<String>> evalEntry : evaluated.entrySet()) {
-                        newlySatisfiedByAction.computeIfAbsent(evalEntry.getKey(), k -> new HashSet<>())
-                                .addAll(evalEntry.getValue());
-                    }
-                } else {
-                    Map<UUID, List<String>> evaluated = evaluator.evaluateSatisfied(event, activeActions);
-                    for (Map.Entry<UUID, List<String>> evalEntry : evaluated.entrySet()) {
-                        newlySatisfiedByAction.computeIfAbsent(evalEntry.getKey(), k -> new HashSet<>())
-                                .addAll(evalEntry.getValue());
-                    }
+                Map<UUID, Action> actionsForEvaluator = (evaluator instanceof ActionCompletedEvaluator)
+                        ? nonCompletedTaktActions : activeActions;
+                Map<UUID, List<String>> evaluated = evaluator.evaluateSatisfied(event, actionsForEvaluator);
+                for (Map.Entry<UUID, List<String>> evalEntry : evaluated.entrySet()) {
+                    newlySatisfiedByAction.computeIfAbsent(evalEntry.getKey(), k -> new HashSet<>())
+                            .addAll(evalEntry.getValue());
                 }
             }
-            firstIteration = false;
 
             if (newlySatisfiedByAction.isEmpty()) break;
 
