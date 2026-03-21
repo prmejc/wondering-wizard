@@ -757,7 +757,7 @@ class ScheduleView extends HTMLElement {
       btn.disabled = true;
       btn.style.opacity = '0.4';
       btn.textContent = 'Sent';
-      setTimeout(() => { btn.disabled = false; btn.style.opacity = ''; }, 10000);
+      setTimeout(() => { btn.disabled = false; btn.style.opacity = ''; }, 5000);
       await apiCall('/api/simulate-rtg-asset-event', {
         actionId: btn.dataset.actionId,
         workQueueId: btn.dataset.wq
@@ -772,7 +772,7 @@ class ScheduleView extends HTMLElement {
       btn.disabled = true;
       btn.style.opacity = '0.4';
       btn.textContent = 'Sent';
-      setTimeout(() => { btn.disabled = false; btn.style.opacity = ''; }, 10000);
+      setTimeout(() => { btn.disabled = false; btn.style.opacity = ''; }, 5000);
       await apiCall('/api/simulate-rtg-job-operation', {
         actionId: btn.dataset.actionId,
         workQueueId: btn.dataset.wq
@@ -838,30 +838,81 @@ class ScheduleView extends HTMLElement {
     const deviceColors = { RTG: 'var(--rtg-color)', TT: 'var(--tt-color)', QC: 'var(--qc-color)' };
     const scale = this._pxPerSec || 3;
 
-    let html = '';
+    // Group schedules by pointOfWorkName for continuous timeline rendering
+    const groups = [];
+    const byPoW = {};
     for (const schedule of schedules) {
-      html += '<div style="margin-bottom:20px">';
-      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">';
-      html += '<strong>' + schedule.workQueueId + '</strong>';
-      if (schedule.estimatedMoveTime) {
-        html += '<span style="font-size:12px;color:var(--text-muted)">EMT: ' + schedule.estimatedMoveTime + '</span>';
-      }
-      const totalDelay = schedule.totalDelaySeconds || 0;
-      if (totalDelay > 0) {
-        html += '<span style="font-size:12px;font-weight:600;color:#ef4444;background:rgba(239,68,68,0.15);padding:2px 8px;border-radius:4px">DELAY: +' + totalDelay + 's</span>';
+      const pow = schedule.pointOfWorkName;
+      if (pow) {
+        if (!byPoW[pow]) { byPoW[pow] = []; groups.push({ pow, schedules: byPoW[pow] }); }
+        byPoW[pow].push(schedule);
       } else {
-        html += '<span style="font-size:12px;font-weight:600;color:var(--completed);background:rgba(34,197,94,0.15);padding:2px 8px;border-radius:4px">ON TIME</span>';
+        groups.push({ pow: null, schedules: [schedule] });
+      }
+    }
+    // Sort within each group by estimatedMoveTime
+    for (const g of groups) {
+      g.schedules.sort((a, b) => {
+        const ea = a.estimatedMoveTime ? new Date(a.estimatedMoveTime).getTime() : Infinity;
+        const eb = b.estimatedMoveTime ? new Date(b.estimatedMoveTime).getTime() : Infinity;
+        return ea - eb;
+      });
+    }
+
+    let html = '';
+    for (const group of groups) {
+      // Build combined takt array with wqId on each takt, sorted by planned start time
+      const allTakts = [];
+      for (const schedule of group.schedules) {
+        for (const takt of (schedule.takts || [])) {
+          allTakts.push({ ...takt, _wqId: schedule.workQueueId, _wqIdx: group.schedules.indexOf(schedule) });
+        }
+      }
+      allTakts.sort((a, b) => {
+        const ta = a.plannedStartTime ? new Date(a.plannedStartTime).getTime() : 0;
+        const tb = b.plannedStartTime ? new Date(b.plannedStartTime).getTime() : 0;
+        return ta - tb;
+      });
+
+      // Header line
+      html += '<div style="margin-bottom:20px">';
+      html += '<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">';
+      if (group.pow) {
+        html += '<strong style="color:var(--qc-color)">' + group.pow + '</strong>';
+      }
+      for (const schedule of group.schedules) {
+        html += '<span style="font-size:12px;background:var(--surface2);padding:2px 8px;border-radius:4px;border:1px solid var(--border)">';
+        html += '<strong>' + schedule.workQueueId + '</strong>';
+        if (schedule.estimatedMoveTime) {
+          html += ' <span style="color:var(--text-muted)">EMT: ' + schedule.estimatedMoveTime + '</span>';
+        }
+        const totalDelay = schedule.totalDelaySeconds || 0;
+        if (totalDelay > 0) {
+          html += ' <span style="font-weight:600;color:#ef4444">+' + totalDelay + 's</span>';
+        } else {
+          html += ' <span style="font-weight:600;color:var(--completed)">ON TIME</span>';
+        }
+        html += '</span>';
       }
       html += '</div>';
 
-      const takts = schedule.takts || [];
+      const takts = allTakts;
       if (takts.length === 0) { html += '</div>'; continue; }
 
-      // 7 double-rows: each has RTG sub-row on top, TT sub-row on bottom
-      // Containers assigned round-robin: container 0→slot 0, ..., container 6→slot 6, container 7→slot 0, ...
-      const LANE_COUNT = 7;
+      // Compute absolute positions from planned start times
+      const LABEL_W = 56;
+      const timelineStartMs = Math.min(...takts.map(t => t.plannedStartTime ? new Date(t.plannedStartTime).getTime() : Infinity));
+      const taktPos = takts.map(t => {
+        const startMs = t.plannedStartTime ? new Date(t.plannedStartTime).getTime() : timelineStartMs;
+        const dur = t.durationSeconds || 120;
+        const leftPx = Math.round((startMs - timelineStartMs) / 1000 * scale);
+        const widthPx = Math.round(dur * scale);
+        return { leftPx, widthPx };
+      });
+      const totalTimelinePx = Math.max(...taktPos.map(p => p.leftPx + p.widthPx));
 
-      // Collect all container indices and assign round-robin slots
+      // Container lane setup
+      const LANE_COUNT = 7;
       const containerIndices = new Set();
       for (const takt of takts) {
         for (const action of takt.actions || []) {
@@ -875,47 +926,84 @@ class ScheduleView extends HTMLElement {
       sortedContainers.forEach((ci, i) => { containerSlot[ci] = i % LANE_COUNT; });
       const actualLanes = Math.min(LANE_COUNT, sortedContainers.length);
 
-      // Grid: label column + one column per takt
-      const colDefs = takts.map(t => { const d = t.durationSeconds || 120; return 'minmax(' + Math.round(d * scale) + 'px,' + d + 'fr)'; }).join(' ');
-      // Find which takt column the current time falls in, and the fraction within it
+      // RTG device detection
+      const rtgDeviceIndices = new Set();
+      for (const takt of takts) {
+        for (const action of takt.actions || []) {
+          if (action.deviceType === 'RTG') rtgDeviceIndices.add(action.deviceIndex != null ? action.deviceIndex : 0);
+        }
+      }
+      const hasMultipleRtgDevices = rtgDeviceIndices.size > 1;
+
+      const HEADER_H = 140;
+      const QC_H = 70;
+      const SRH = 60;
+      const rtgSubRows = hasMultipleRtgDevices ? 2 : 1;
+      const subRowCount = rtgSubRows + 1;
+      const laneHeight = SRH * subRowCount + (subRowCount - 1);
+
+      // Red time line
       const currentTimeMs = state.currentTime ? new Date(state.currentTime).getTime() : 0;
-      let timeLineTaktIdx = -1;
-      let timeLineFraction = 0;
-      if (currentTimeMs > 0) {
+      let timeLinePx = -1;
+      if (currentTimeMs > 0 && timelineStartMs < Infinity) {
+        timeLinePx = Math.round((currentTimeMs - timelineStartMs) / 1000 * scale);
+      }
+
+      // Helper to render a row of absolutely positioned takt cells
+      const renderRow = (rowH, cellFn) => {
+        let r = '<div style="position:relative;height:' + rowH + 'px;width:' + totalTimelinePx + 'px">';
         for (let ti = 0; ti < takts.length; ti++) {
-          const t = takts[ti];
-          const tStart = t.plannedStartTime ? new Date(t.plannedStartTime).getTime() : 0;
-          const tEnd = tStart + (t.durationSeconds || 120) * 1000;
-          if (currentTimeMs < tStart) {
-            timeLineTaktIdx = ti;
-            timeLineFraction = 0;
-            break;
-          } else if (currentTimeMs <= tEnd) {
-            timeLineTaktIdx = ti;
-            timeLineFraction = (currentTimeMs - tStart) / (tEnd - tStart);
-            break;
+          const p = taktPos[ti];
+          r += '<div style="position:absolute;left:' + p.leftPx + 'px;width:' + p.widthPx + 'px;top:0;height:100%;z-index:' + (takts.length - ti) + '">';
+          r += '<div style="position:absolute;right:0;top:0;bottom:0;width:1px;background:var(--border);pointer-events:none;z-index:-1"></div>';
+          r += cellFn(takts[ti], ti);
+          r += '</div>';
+        }
+        r += '</div>';
+        return r;
+      };
+
+      html += '<div style="position:relative;display:inline-block;min-width:100%">';
+
+      // Red time line
+      if (timeLinePx >= 0) {
+        html += '<div style="position:absolute;left:' + (LABEL_W + timeLinePx) + 'px;top:0;bottom:0;width:2px;background:#ef4444;z-index:3;pointer-events:none"></div>';
+      }
+
+      // WQ boundary markers (transparent orange stripes between work queues)
+      if (group.schedules.length > 1) {
+        for (let ti = 1; ti < takts.length; ti++) {
+          if (takts[ti]._wqIdx !== takts[ti - 1]._wqIdx) {
+            const prevEnd = taktPos[ti - 1].leftPx + taktPos[ti - 1].widthPx;
+            const nextStart = taktPos[ti].leftPx;
+            const center = Math.round((prevEnd + nextStart) / 2);
+            html += '<div style="position:absolute;left:' + (LABEL_W + center - 15) + 'px;top:0;bottom:0;width:30px;z-index:2;pointer-events:none;background:repeating-linear-gradient(135deg,transparent,transparent 3px,rgba(234,88,12,0.25) 3px,rgba(234,88,12,0.25) 6px)"></div>';
           }
         }
       }
 
-      html += '<div style="position:relative;display:inline-block;min-width:100%">';
-      if (timeLineTaktIdx >= 0) {
-        html += '<div data-time-line-takt="' + timeLineTaktIdx + '" data-time-line-fraction="' + timeLineFraction.toFixed(6) + '" style="position:absolute;left:0;top:0;bottom:0;width:2px;background:#ef4444;z-index:3;pointer-events:none"></div>';
-      }
-      html += '<div data-time-line-grid="1" style="display:inline-grid;grid-template-columns:56px ' + colDefs + ';gap:1px;min-width:100%">';
-
-      // Header row: corner + takt headers
-      html += '<div style="background:var(--surface2);padding:4px;position:sticky;left:0;z-index:2"></div>';
-      for (const takt of takts) {
+      // Header row
+      html += '<div style="display:flex">';
+      html += '<div style="width:' + LABEL_W + 'px;min-width:' + LABEL_W + 'px;background:var(--surface2);padding:4px;position:sticky;left:0;z-index:2;box-sizing:border-box"></div>';
+      html += '<div style="position:relative;width:' + totalTimelinePx + 'px;height:' + HEADER_H + 'px">';
+      let prevWqIdx = -1;
+      for (let ti = 0; ti < takts.length; ti++) {
+        const takt = takts[ti];
+        const p = taktPos[ti];
         const ts = takt.status || 'WAITING';
         const tc = ts === 'ACTIVE' ? 'var(--active)' : ts === 'COMPLETED' ? 'var(--completed)' : 'var(--pending)';
-        html += '<div style="background:var(--surface2);padding:4px 6px;text-align:center;border-bottom:2px solid ' + tc + '">';
+        const wqBoundary = takt._wqIdx !== prevWqIdx && prevWqIdx >= 0;
+        prevWqIdx = takt._wqIdx;
+        html += '<div style="position:absolute;left:' + p.leftPx + 'px;width:' + p.widthPx + 'px;top:0;height:100%;background:var(--surface2);padding:4px 6px;text-align:center;border-bottom:2px solid ' + tc + ';box-sizing:border-box;overflow:hidden' + (wqBoundary ? ';border-left:3px solid var(--qc-color)' : '') + '">';
+        if (group.schedules.length > 1) {
+          html += '<div style="font-size:8px;color:var(--qc-color);font-weight:600;margin-bottom:1px">WQ ' + takt._wqId + '</div>';
+        }
         html += '<div style="font-size:11px;color:var(--text-muted)">' + takt.name;
         const conditions = takt.conditions || [];
         const unsatisfied = conditions.filter(c => !c.satisfied);
         if (ts === 'WAITING' && conditions.length > 0) {
           const condColor = unsatisfied.length > 0 ? '#ef4444' : 'var(--completed)';
-          html += ' <span class="conditions-btn" data-takt="' + takt.name + '" data-wq="' + schedule.workQueueId + '" data-conditions="' + encodeURIComponent(JSON.stringify(conditions)) + '" style="cursor:pointer;font-size:12px;vertical-align:middle;color:' + condColor + '" title="' + unsatisfied.length + ' condition(s) blocking">&#9881;</span>';
+          html += ' <span class="conditions-btn" data-takt="' + takt.name + '" data-wq="' + takt._wqId + '" data-conditions="' + encodeURIComponent(JSON.stringify(conditions)) + '" style="cursor:pointer;font-size:12px;vertical-align:middle;color:' + condColor + '" title="' + unsatisfied.length + ' condition(s) blocking">&#9881;</span>';
         }
         html += '</div>';
         html += '<div style="font-size:9px;font-weight:600;color:' + tc + '">' + ts + '</div>';
@@ -941,47 +1029,31 @@ class ScheduleView extends HTMLElement {
           }
           html += '</div>';
         }
+        html += '<div style="position:absolute;right:0;top:0;bottom:0;width:1px;background:var(--border);pointer-events:none"></div>';
         html += '</div>';
       }
+      html += '</div></div>';
 
-      // QC row (unchanged — single row)
-      html += '<div style="background:var(--surface2);padding:4px;display:flex;align-items:center;justify-content:center;position:sticky;left:0;z-index:1">';
-      html += '<span style="background:' + deviceColors.QC + ';color:white;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600">QC</span>';
+      // QC row
+      html += '<div style="display:flex">';
+      html += '<div style="width:' + LABEL_W + 'px;min-width:' + LABEL_W + 'px;background:var(--surface2);padding:4px;display:flex;align-items:center;justify-content:center;position:sticky;left:0;z-index:1;box-sizing:border-box">';
+      html += '<span style="background:' + deviceColors.QC + ';color:white;font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600">QC</span></div>';
+      html += renderRow(QC_H, (takt) => {
+        let c = '<div style="display:flex;flex-direction:row;gap:0;height:100%;align-items:stretch">';
+        for (const action of (takt.actions || []).filter(a => a.deviceType === 'QC')) {
+          c += this._renderAction(action, takt._wqId, scale);
+        }
+        return c + '</div>';
+      });
       html += '</div>';
-      for (const takt of takts) {
-        const cellActions = (takt.actions || []).filter(a => a.deviceType === 'QC');
-        html += '<div style="background:var(--bg);padding:0;display:flex;flex-direction:row;gap:0;min-height:28px;align-items:stretch">';
-        for (const action of cellActions) {
-          html += this._renderAction(action, schedule.workQueueId, scale);
-        }
-        html += '</div>';
-      }
 
-      // Detect distinct RTG deviceIndex values to determine if we need split RTG rows
-      const rtgDeviceIndices = new Set();
-      for (const takt of takts) {
-        for (const action of takt.actions || []) {
-          if (action.deviceType === 'RTG') {
-            rtgDeviceIndices.add(action.deviceIndex != null ? action.deviceIndex : 0);
-          }
-        }
-      }
-      const hasMultipleRtgDevices = rtgDeviceIndices.size > 1;
-      const sortedRtgDeviceIndices = [...rtgDeviceIndices].sort((a, b) => a - b);
-      const rtgDeviceA = sortedRtgDeviceIndices[0] ?? 0;
-      const rtgDeviceB = sortedRtgDeviceIndices[1] ?? -1;
-
-      const SRH = 60; // sub-row height
-      const rtgSubRows = hasMultipleRtgDevices ? 2 : 1;
-      const subRowCount = rtgSubRows + 1; // +1 for TT
-      const laneHeight = SRH * subRowCount + (subRowCount - 1); // height + borders
-
+      // Lane rows (RTG + TT)
       for (let lane = 0; lane < actualLanes; lane++) {
-        const laneSlot = lane;
-        const matchLane = a => containerSlot[a.containerIndex != null ? a.containerIndex : 0] === laneSlot;
+        const matchLane = a => containerSlot[a.containerIndex != null ? a.containerIndex : 0] === lane;
 
-        // Label spanning all sub-rows
-        html += '<div style="background:var(--surface2);padding:2px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:sticky;left:0;z-index:1;gap:1px;height:' + laneHeight + 'px">';
+        html += '<div style="display:flex">';
+        // Label
+        html += '<div style="width:' + LABEL_W + 'px;min-width:' + LABEL_W + 'px;background:var(--surface2);padding:2px 4px;display:flex;flex-direction:column;align-items:center;justify-content:center;position:sticky;left:0;z-index:1;gap:1px;height:' + laneHeight + 'px;box-sizing:border-box">';
         if (hasMultipleRtgDevices) {
           html += '<span style="background:' + deviceColors.RTG + ';color:white;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600">RTG A</span>';
           html += '<span style="background:' + deviceColors.RTG + ';color:white;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600">RTG B</span>';
@@ -991,62 +1063,43 @@ class ScheduleView extends HTMLElement {
         html += '<span style="background:' + deviceColors.TT + ';color:white;font-size:9px;padding:1px 5px;border-radius:3px;font-weight:600">TT</span>';
         html += '</div>';
 
-        for (const takt of takts) {
+        html += renderRow(laneHeight, (takt) => {
           const laneActions = (takt.actions || []).filter(matchLane);
           const ttActions = laneActions.filter(a => a.deviceType === 'TT');
-
-          html += '<div style="background:var(--bg);display:flex;flex-direction:column;gap:0;height:' + laneHeight + 'px">';
+          let c = '<div style="display:flex;flex-direction:column;gap:0;height:100%">';
 
           if (hasMultipleRtgDevices) {
-            // Split RTG actions by deviceIndex — first distinct index → row A, rest → row B
             const allRtg = laneActions.filter(a => a.deviceType === 'RTG');
             const cellRtgIndices = [...new Set(allRtg.map(a => a.deviceIndex != null ? a.deviceIndex : 0))].sort((a, b) => a - b);
             const cellFirstIdx = cellRtgIndices[0];
             const rtgA = allRtg.filter(a => (a.deviceIndex != null ? a.deviceIndex : 0) === cellFirstIdx);
             const rtgB = allRtg.filter(a => (a.deviceIndex != null ? a.deviceIndex : 0) !== cellFirstIdx);
-            // RTG-A sub-row
-            html += '<div style="display:flex;flex-direction:row;gap:0;height:' + SRH + 'px;align-items:stretch;border-bottom:1px solid var(--surface2)">';
-            for (const action of rtgA) html += this._renderAction(action, schedule.workQueueId, scale);
-            html += '</div>';
-            // RTG-B sub-row
-            html += '<div style="display:flex;flex-direction:row;gap:0;height:' + SRH + 'px;align-items:stretch;border-bottom:1px solid var(--surface2)">';
-            for (const action of rtgB) html += this._renderAction(action, schedule.workQueueId, scale);
-            html += '</div>';
+            c += '<div style="display:flex;flex-direction:row;gap:0;height:' + SRH + 'px;align-items:stretch;border-bottom:1px solid var(--surface2)">';
+            for (const action of rtgA) c += this._renderAction(action, takt._wqId, scale);
+            c += '</div>';
+            c += '<div style="display:flex;flex-direction:row;gap:0;height:' + SRH + 'px;align-items:stretch;border-bottom:1px solid var(--surface2)">';
+            for (const action of rtgB) c += this._renderAction(action, takt._wqId, scale);
+            c += '</div>';
           } else {
-            // Single RTG sub-row
             const rtgActions = laneActions.filter(a => a.deviceType === 'RTG');
-            html += '<div style="display:flex;flex-direction:row;gap:0;height:' + SRH + 'px;align-items:stretch;border-bottom:1px solid var(--surface2)">';
-            for (const action of rtgActions) html += this._renderAction(action, schedule.workQueueId, scale);
-            html += '</div>';
+            c += '<div style="display:flex;flex-direction:row;gap:0;height:' + SRH + 'px;align-items:stretch;border-bottom:1px solid var(--surface2)">';
+            for (const action of rtgActions) c += this._renderAction(action, takt._wqId, scale);
+            c += '</div>';
           }
 
-          // TT sub-row
-          html += '<div style="display:flex;flex-direction:row;gap:0;height:' + SRH + 'px;align-items:stretch">';
-          for (const action of ttActions) html += this._renderAction(action, schedule.workQueueId, scale);
-          html += '</div>';
-          html += '</div>';
-        }
+          c += '<div style="display:flex;flex-direction:row;gap:0;height:' + SRH + 'px;align-items:stretch">';
+          for (const action of ttActions) c += this._renderAction(action, takt._wqId, scale);
+          c += '</div>';
+          return c + '</div>';
+        });
+        html += '</div>';
       }
 
-      html += '</div></div></div>';
+      html += '</div>';
     }
     container.innerHTML = html;
 
-    // Position time line markers using actual rendered grid column positions (after layout)
-    requestAnimationFrame(() => container.querySelectorAll('[data-time-line-takt]').forEach(marker => {
-      const taktIdx = parseInt(marker.dataset.timeLineTakt);
-      const fraction = parseFloat(marker.dataset.timeLineFraction);
-      const grid = marker.parentElement.querySelector('[data-time-line-grid]');
-      if (!grid) { console.log('ERROR: grid not found'); return; }
-      const gridRect = grid.getBoundingClientRect();
-      const colCount = grid.style.gridTemplateColumns.split(/\s+/).length;
-      const headerCells = Array.from(grid.children).slice(0, colCount);
-      const cellIdx = taktIdx + 1;
-      const headerCell = headerCells[cellIdx];
-      if (!headerCell) return;
-      const cellRect = headerCell.getBoundingClientRect();
-      marker.style.left = (cellRect.left - gridRect.left + fraction * cellRect.width) + 'px';
-    }));
+
 
     // Bind click popups for narrow actions
     const self = this;
@@ -1319,7 +1372,7 @@ class ScheduleView extends HTMLElement {
       if (ttDriveTypes.indexOf(action.actionType) >= 0) {
         innerHtml += '<button class="tt-position-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Confirm Position</button>';
       } else if (action.actionType === 'RTG_PLACE_ON_YARD') {
-        innerHtml += '<div style="display:flex;gap:3px;margin-top:2px"><button class="rtg-job-btn" style="font-size:9px;padding:1px 4px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Job Done</button><button class="rtg-asset-btn" style="font-size:9px;padding:1px 4px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Placed</button></div>';
+        innerHtml += '<div style="display:flex;gap:3px;margin-top:2px"><button class="rtg-job-btn" style="font-size:10px;padding:3px 6px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Job Done</button><button class="rtg-asset-btn" style="font-size:10px;padding:3px 6px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Placed</button></div>';
       } else if (action.actionType === 'RTG_DRIVE') {
         innerHtml += '<button class="rtg-job-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Job Accept</button>';
       } else if (action.actionType === 'RTG_LIFT_FROM_TT') {

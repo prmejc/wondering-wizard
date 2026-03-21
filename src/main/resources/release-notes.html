@@ -72,6 +72,28 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.42">
+  <h2>v4.0.42</h2>
+  <div class="date">2026-03-21</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>Multi-WQ per QC continuous timeline &mdash; schedules sharing the same <code>pointOfWorkName</code> are grouped and rendered in a single continuous view, ordered by earliest estimated move time</li>
+    <li>Absolute time-based positioning &mdash; takt columns are positioned by their <code>plannedStartTime</code>, so overlapping WQ schedules visually overlap, making timing conflicts immediately visible</li>
+    <li>WQ boundary markers &mdash; diagonal orange stripe overlay (30px) between work queues in the same QC group</li>
+    <li>WQ labels on takt headers when multiple WQs share a QC</li>
+    <li>Actions overflow across takt boundaries &mdash; long-running actions (e.g. TT drives) visually extend into adjacent takts with correct z-ordering</li>
+    <li>Takt border lines &mdash; 1px vertical line at each takt&rsquo;s right edge for visual separation</li>
+  </ul>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li>RTG Place on Yard buttons (Job Done / Placed) enlarged for easier clicking</li>
+    <li>Button disable timeout reduced from 10s to 5s</li>
+    <li>Red current-time marker now uses direct pixel calculation from planned times &mdash; no post-render measurement needed</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.41">
   <h2>v4.0.41</h2>
   <div class="date">2026-03-21</div>
