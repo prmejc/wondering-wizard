@@ -32,5 +32,5 @@ COPY --from=build /app/target/libs/ libs/
 
 # Set RUN_MODE=simulator to run the terminal simulator instead of the FES service
 ENV RUN_MODE=service
-ENV JAVA_OPTS="--add-reads com.wonderingwizard=ALL-UNNAMED --add-reads io.opentelemetry.exporter.prometheus=ALL-UNNAMED --add-reads io.opentelemetry.sdk=ALL-UNNAMED"
+ENV JAVA_OPTS="-Xmx5g -Xms512m --add-reads com.wonderingwizard=ALL-UNNAMED --add-reads io.opentelemetry.exporter.prometheus=ALL-UNNAMED --add-reads io.opentelemetry.sdk=ALL-UNNAMED"
 ENTRYPOINT ["sh", "-c", "if [ \"$RUN_MODE\" = 'simulator' ]; then exec java $JAVA_OPTS -cp app.jar:libs/* com.wonderingwizard.simulator.TerminalSimulator; else exec java $JAVA_OPTS -cp app.jar:libs/* com.wonderingwizard.Main; fi"]
