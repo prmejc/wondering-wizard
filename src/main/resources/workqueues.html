@@ -125,24 +125,18 @@ async function apiCall(path, body) {
 
 function extractWorkQueues(state) {
   const wqMap = new Map();
-  const steps = state.steps || [];
-  for (const step of steps) {
-    const evt = step.event;
-    if (evt && evt.type === 'WorkQueueMessage') {
-      const id = evt.workQueueId;
-      const row = {};
-      for (const f of WQ_FIELDS) {
-        if (f.type === 'number') {
-          row[f.key] = evt[f.key] != null ? Number(evt[f.key]) : 0;
-        } else {
-          row[f.key] = evt[f.key] != null ? String(evt[f.key]) : '';
-        }
+  // Use the server's authoritative workQueues cache (survives step truncation)
+  const serverWqs = state.workQueues || {};
+  for (const [id, evt] of Object.entries(serverWqs)) {
+    const row = {};
+    for (const f of WQ_FIELDS) {
+      if (f.type === 'number') {
+        row[f.key] = evt[f.key] != null ? Number(evt[f.key]) : 0;
+      } else {
+        row[f.key] = evt[f.key] != null ? String(evt[f.key]) : '';
       }
-      wqMap.set(id, row);
     }
-    if (evt && evt.type === 'NukeWorkQueueEvent') {
-      wqMap.delete(evt.workQueueId);
-    }
+    wqMap.set(Number(id), row);
   }
   return wqMap;
 }

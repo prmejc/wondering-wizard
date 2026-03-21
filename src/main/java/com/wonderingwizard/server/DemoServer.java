@@ -819,6 +819,9 @@ public class DemoServer {
             state.put("kafkaStatus", kafkaConsumerManager.getStatus());
         }
 
+        // Include all known work queues (survives step truncation)
+        state.put("workQueues", new HashMap<>(wqMessageCache));
+
         // Include play clock status
         state.put("playStatus", Map.of(
                 "playing", playClockThread != null,

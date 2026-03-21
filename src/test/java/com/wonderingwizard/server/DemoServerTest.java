@@ -362,7 +362,7 @@ class DemoServerTest {
             assertEquals("text/html; charset=UTF-8", conn.getHeaderField("Content-Type"));
             String body = new String(conn.getInputStream().readAllBytes());
             assertTrue(body.contains("Work Queues"));
-            assertTrue(body.contains("WorkQueueMessage"));
+            assertTrue(body.contains("workQueues"));
         }
         @Test
         @DisplayName("Should return version from release-notes.html via /api/version")
