@@ -734,6 +734,21 @@ class ScheduleView extends HTMLElement {
       if (popup) popup.remove();
       refreshState();
     });
+    // TT position confirmation button (drive actions)
+    this.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.tt-position-btn');
+      if (!btn || btn.disabled) return;
+      e.stopPropagation();
+      btn.disabled = true;
+      btn.style.opacity = '0.4';
+      btn.textContent = 'Sent';
+      setTimeout(() => { btn.disabled = false; btn.style.opacity = ''; }, 10000);
+      await apiCall('/api/simulate-tt-position', {
+        actionId: btn.dataset.actionId,
+        workQueueId: btn.dataset.wq
+      });
+      refreshState();
+    });
     // RTG asset event button (RTG_LIFT_FROM_TT, RTG_PLACE_ON_YARD "Placed")
     this.addEventListener('click', async (e) => {
       const btn = e.target.closest('.rtg-asset-btn');
@@ -1266,7 +1281,10 @@ class ScheduleView extends HTMLElement {
     const truckLabel = action.cheShortName ? ' <span style="font-size:9px;color:#9a3412;font-weight:600" title="Assigned truck">' + action.cheShortName + '</span>' : '';
     let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600;min-width:0">' + statusLabel + ' <span title="' + containerLabel + '" style="color:' + containerColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + containerLabel + '</span>' + truckLabel + conditionsIcon + '</div><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + action.description + '</div>';
     if (action.status === 'ACTIVE') {
-      if (action.actionType === 'RTG_PLACE_ON_YARD') {
+      var ttDriveTypes = ['TT_DRIVE_TO_QC_PULL','TT_DRIVE_TO_QC_STANDBY','TT_DRIVE_UNDER_QC','TT_DRIVE_TO_RTG_PULL','TT_DRIVE_TO_RTG_STANDBY','TT_DRIVE_TO_RTG_UNDER'];
+      if (ttDriveTypes.indexOf(action.actionType) >= 0) {
+        innerHtml += '<button class="tt-position-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Confirm Position</button>';
+      } else if (action.actionType === 'RTG_PLACE_ON_YARD') {
         innerHtml += '<div style="display:flex;gap:3px;margin-top:2px"><button class="rtg-job-btn" style="font-size:9px;padding:1px 4px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Job Done</button><button class="rtg-asset-btn" style="font-size:9px;padding:1px 4px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Placed</button></div>';
       } else if (action.actionType === 'RTG_DRIVE') {
         innerHtml += '<button class="rtg-job-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Job Accept</button>';

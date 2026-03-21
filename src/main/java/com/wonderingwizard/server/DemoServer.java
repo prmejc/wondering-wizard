@@ -326,6 +326,7 @@ public class DemoServer {
         httpServer.createContext("/api/play", this::handlePlay);
         httpServer.createContext("/api/action-completed", this::handleActionCompleted);
         httpServer.createContext("/api/simulate-qc-event", this::handleSimulateQcEvent);
+        httpServer.createContext("/api/simulate-tt-position", this::handleSimulateTtPosition);
         httpServer.createContext("/api/simulate-rtg-asset-event", this::handleSimulateRtgAssetEvent);
         httpServer.createContext("/api/simulate-rtg-job-operation", this::handleSimulateRtgJobOperation);
         httpServer.createContext("/api/override-condition", this::handleOverrideCondition);
@@ -2374,6 +2375,80 @@ public class DemoServer {
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }
+    }
+
+    /**
+     * Sends a TT position confirmation to Kafka (when enabled) or processes directly.
+     * Used by the schedule viewer for TT drive actions (not handovers or buffer).
+     */
+    private void handleSimulateTtPosition(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            UUID actionId = UUID.fromString(requireField(body, "actionId"));
+            long workQueueId = Long.parseLong(requireField(body, "workQueueId"));
+
+            Action action = scheduleRunnerProcessor.getAction(workQueueId, actionId);
+            if (action == null) {
+                sendJsonResponse(exchange, 404, "{\"error\":\"Action not found\"}");
+                return;
+            }
+
+            String cheShortName = action.cheShortName() != null ? action.cheShortName() : "";
+            String toPosition = action.workInstructions().isEmpty() ? ""
+                    : (action.workInstructions().getFirst().toPosition() != null
+                            ? action.workInstructions().getFirst().toPosition() : "");
+
+            if (avroKafkaProducer != null) {
+                var schema = loadCheTargetPositionSchema();
+                var gpsSchema = schema.getField("coordinates").schema();
+                var coordinates = new org.apache.avro.generic.GenericData.Record(gpsSchema);
+                coordinates.put("latitude", 0.0);
+                coordinates.put("longitude", 0.0);
+                coordinates.put("hdop", 0.0);
+
+                var confirmation = new org.apache.avro.generic.GenericData.Record(schema);
+                confirmation.put("terminalCode", settings.terminalCode());
+                confirmation.put("cheShortName", cheShortName);
+                confirmation.put("equipmentInstructionId", actionId.toString());
+                confirmation.put("destinationNodeId", 0L);
+                confirmation.put("destinationNodeName", toPosition);
+                confirmation.put("confirmedMapNodeId", 0L);
+                confirmation.put("confirmedMapNodeName", toPosition);
+                confirmation.put("coordinates", coordinates);
+                confirmation.put("timeStamp", java.time.Instant.now().toEpochMilli());
+                confirmation.put("eventSource", "Schedule Viewer");
+
+                String topic = settings.cheTargetPositionConsumerConfiguration().topic();
+                avroKafkaProducer.send(new org.apache.kafka.clients.producer.ProducerRecord<>(topic, cheShortName, confirmation));
+                sendJsonResponse(exchange, 200, "{\"ok\":true,\"target\":\"kafka\"}");
+            } else {
+                var posEvent = new com.wonderingwizard.events.CheTargetPositionEvent(
+                        actionId.toString(), cheShortName, toPosition, settings.terminalCode());
+                processStep("TT position: " + cheShortName + " at " + toPosition, posEvent);
+                sendJsonResponse(exchange, 200, "{\"ok\":true,\"target\":\"direct\"}");
+            }
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    private org.apache.avro.Schema cheTargetPositionSchema;
+
+    private org.apache.avro.Schema loadCheTargetPositionSchema() {
+        if (cheTargetPositionSchema == null) {
+            try (var is = getClass().getResourceAsStream("/schemas/CheTargetPositionConfirmation.avro")) {
+                if (is == null) throw new IllegalStateException("CheTargetPositionConfirmation schema not found");
+                cheTargetPositionSchema = new org.apache.avro.Schema.Parser().parse(is);
+            } catch (java.io.IOException e) {
+                throw new IllegalStateException("Failed to load CheTargetPositionConfirmation schema", e);
+            }
+        }
+        return cheTargetPositionSchema;
     }
 
     /**
