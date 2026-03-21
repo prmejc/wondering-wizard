@@ -72,6 +72,171 @@
   document.getElementById('nav-home').href = API || '/';
 </script>
 
+<section class="release" id="v4.0.41">
+  <h2>v4.0.41</h2>
+  <div class="date">2026-03-21</div>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li>Action estimated times now update live on each TimeEvent as takt delays shift</li>
+    <li>Shared <code>ActionTimeCalculator</code> utility extracted &mdash; used by both <code>PlannedTimeStep</code> (schedule creation) and <code>EstimatedTimeCalculator</code> (runtime)</li>
+    <li><code>actualStartTime</code> set on first activation and preserved on re-activation and for skipped actions</li>
+    <li><code>actualEndTime</code> set on completion (normal or canceled)</li>
+    <li>Reads authoritative action state from <code>actionLookup</code> during estimated time recalculation to prevent actual times from being overwritten</li>
+  </ul>
+</section>
+
+<section class="release" id="v4.0.40">
+  <h2>v4.0.40</h2>
+  <div class="date">2026-03-21</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li><code>plannedStartTime</code>/<code>plannedEndTime</code>, <code>estimatedStartTime</code>/<code>estimatedEndTime</code>, and <code>actualStartTime</code>/<code>actualEndTime</code> added to Action record</li>
+    <li><code>SchedulePostProcessingStep</code> interface &mdash; runs on final takt list after dependency wiring</li>
+    <li><code>PlannedTimeStep</code> computes action planned and estimated times from same-device dependencies within each takt</li>
+    <li><code>EstimatedTimeCalculator</code> (ScheduleSubProcessor) recalculates takt estimated start times on each TimeEvent: last active takt anchors to <code>max(now - duration, plannedStartTime)</code>, earlier active takts backwards, waiting takts forwards</li>
+    <li>Takt converted from record to class with mutable <code>estimatedStartTime</code></li>
+    <li>Takts never activate before their <code>plannedStartTime</code></li>
+    <li>Dependency re-wiring on action cancellation &mdash; downstream same-device actions skip canceled actions and depend on predecessors</li>
+  </ul>
+
+  <h3>UI</h3>
+  <ul>
+    <li>Takt headers show delay-at-start, delay-at-finish, and deviation</li>
+    <li>Action tooltips show planned, estimated, and actual times on hover</li>
+    <li>Red time marker uses actual grid column positions for pixel-perfect alignment</li>
+  </ul>
+</section>
+
+<section class="release" id="v4.0.39">
+  <h2>v4.0.39</h2>
+  <div class="date">2026-03-21</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>TT drive actions show &ldquo;Confirm Position&rdquo; button that sends a <code>CheTargetPositionEvent</code> via Kafka (Avro) or directly through the engine</li>
+    <li>New <code>/api/simulate-tt-position</code> endpoint (accepts actionId + workQueueId, looks up truck name and destination position)</li>
+    <li>Handover actions and drive-to-buffer keep the generic Complete button</li>
+  </ul>
+</section>
+
+<section class="release" id="v4.0.38">
+  <h2>v4.0.38</h2>
+  <div class="date">2026-03-21</div>
+
+  <h3>Improvements</h3>
+  <ul>
+    <li>RTG job operations now sent as Avro to the <code>job-operation</code> Kafka topic (when enabled) instead of being processed directly</li>
+    <li>All complete/simulate buttons (QC, RTG, TT, generic) go gray with &ldquo;Sent&rdquo; text for 10 seconds after clicking</li>
+  </ul>
+</section>
+
+<section class="release" id="v4.0.37">
+  <h2>v4.0.37</h2>
+  <div class="date">2026-03-21</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>RTG actions in the schedule viewer now use real events instead of <code>ActionCompletedEvent</code></li>
+    <li>RTG_DRIVE: &ldquo;Job Accept&rdquo; button sends <code>JobOperationEvent</code> action=&ldquo;A&rdquo;</li>
+    <li>RTG_LIFT_FROM_TT: &ldquo;Complete&rdquo; button sends asset event &ldquo;RTGliftedContainerfromTruck&rdquo;</li>
+    <li>RTG_PLACE_ON_YARD: Two buttons &mdash; &ldquo;Job Done&rdquo; (JobOperationEvent &ldquo;D&rdquo;) and &ldquo;Placed&rdquo; (asset event). Both must be clicked to satisfy both completion conditions</li>
+    <li>New endpoints: <code>/api/simulate-rtg-asset-event</code>, <code>/api/simulate-rtg-job-operation</code></li>
+  </ul>
+</section>
+
+<section class="release" id="v4.0.36">
+  <h2>v4.0.36</h2>
+  <div class="date">2026-03-21</div>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Aligned QC operational event names with real system format: <code>QCliftedContainerfromVessel</code>, <code>QCplacedContaineronTruck</code>, <code>QCliftedContainerfromTruck</code>, <code>QCplacedContaineronVessel</code></li>
+    <li>Updated in simulator QCHandler, GraphScheduleBuilder completion conditions, and schedule viewer</li>
+  </ul>
+</section>
+
+<section class="release" id="v4.0.35">
+  <h2>v4.0.35</h2>
+  <div class="date">2026-03-21</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>QC complete button now sends a real QC asset event (like the terminal simulator) instead of <code>ActionCompletedEvent</code></li>
+    <li>New <code>/api/simulate-qc-event</code> endpoint (sends JSON to QC asset event Kafka topic)</li>
+    <li>Added <code>actionType</code> to <code>ActionView</code> and JSON serialization</li>
+    <li>Added <code>kafkaEnabled</code> to state response &mdash; frontend chooses the right endpoint</li>
+  </ul>
+</section>
+
+<section class="release" id="v4.0.34">
+  <h2>v4.0.34</h2>
+  <div class="date">2026-03-20</div>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Set JVM heap to 5GB (<code>-Xmx5g</code>) for 6Gi container &mdash; JVM defaulted to ~256MB causing <code>OutOfMemoryError</code> at startup</li>
+  </ul>
+</section>
+
+<section class="release" id="v4.0.33">
+  <h2>v4.0.33</h2>
+  <div class="date">2026-03-20</div>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Fixed <code>ActionCompletedEvaluator</code> being skipped on re-evaluation after action activation &mdash; removed the <code>firstIteration</code> skip, evaluator now always runs using actions from non-completed takts only</li>
+  </ul>
+</section>
+
+<section class="release" id="v4.0.32">
+  <h2>v4.0.32</h2>
+  <div class="date">2026-03-20</div>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Fixed <code>RTG_WAIT_FOR_TRUCK</code> not completing when <code>TT_DRIVE_TO_RTG_UNDER</code> was already done &mdash; <code>evaluateCompletionConditions</code> and <code>reactivateAllSchedules</code> now run in a loop until no more progress</li>
+  </ul>
+</section>
+
+<section class="release" id="v4.0.31">
+  <h2>v4.0.31</h2>
+  <div class="date">2026-03-20</div>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li>Fixed work queues page disappearing after step truncation &mdash; WQ list now reads from server&rsquo;s authoritative <code>wqMessageCache</code> instead of scanning the last 300 events</li>
+  </ul>
+</section>
+
+<section class="release" id="v4.0.30">
+  <h2>v4.0.30</h2>
+  <div class="date">2026-03-20</div>
+
+  <h3>New Features</h3>
+  <ul>
+    <li>F-31: Debounced schedule recreation when WIs arrive for active FES4 WQs (3-second quiet period, 5-minute EMT cutoff)</li>
+  </ul>
+
+  <h3>Bug Fixes</h3>
+  <ul>
+    <li><code>CompletionConditionEvaluator</code> now scopes results per action to prevent one event from satisfying conditions across all work queues</li>
+  </ul>
+
+  <h3>Performance</h3>
+  <ul>
+    <li>~83x realtime with 10 WQs &times; 240 WIs</li>
+    <li>Early-exit <code>evaluateCompletionConditions</code> for irrelevant event types</li>
+    <li>Filter PENDING/COMPLETED actions from evaluator hot paths (44k &rarr; ~300 actions)</li>
+    <li>Cache occupied positions and assigned trucks per reactivation iteration</li>
+    <li>Skip COMPLETED takts in all iteration paths</li>
+    <li>Kafka consumer poll intervals reduced to 100ms</li>
+    <li>Simulator: parallel consumer threads per equipment type</li>
+    <li>Max play speed raised to 600x</li>
+  </ul>
+</section>
+
 <section class="release" id="v4.0.29">
   <h2>v4.0.29</h2>
   <div class="date">2026-03-20</div>
