@@ -40,7 +40,7 @@ class ActionCompletedEvaluatorTest {
                 ? List.of(new CompletionCondition("test-condition", ActionCompletedEvaluator.CONDITION_TYPE, triggerActionType))
                 : List.of();
         return new Action(UUID.randomUUID(), deviceType, actionType, actionType.displayName(), Set.of(),
-                0, 30, 0, wis, List.of(), false, null, null, null, null, status, List.of(), conditions);
+                0, 30, 0, wis, List.of(), false, null, null, null, null, status, List.of(), conditions, null, null, null, null, null, null);
     }
 
     @Test
@@ -156,7 +156,7 @@ class ActionCompletedEvaluatorTest {
                 "rtg drive", Set.of(), 0, 30, 0,
                 List.of(wiWithContainer(CONTAINER_ID)), List.of(), false,
                 null, null, null, null, ActionStatus.ACTIVE, List.of(),
-                List.of(new CompletionCondition("rtg-job-accepted", RTGJobOperationEvaluator.CONDITION_TYPE, "A")));
+                List.of(new CompletionCondition("rtg-job-accepted", RTGJobOperationEvaluator.CONDITION_TYPE, "A")), null, null, null, null, null, null);
 
         Map<UUID, Action> allActions = new HashMap<>();
         allActions.put(ttAction.id(), ttAction);

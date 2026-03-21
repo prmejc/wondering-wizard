@@ -575,6 +575,12 @@ public final class JsonSerializer {
         }
         if (cheShortName != null) writeField(sb, "cheShortName", cheShortName, false);
         if (action.targetChe() != null) writeField(sb, "targetChe", action.targetChe(), false);
+        if (action.plannedStartTime() != null) writeField(sb, "plannedStartTime", action.plannedStartTime(), false);
+        if (action.plannedEndTime() != null) writeField(sb, "plannedEndTime", action.plannedEndTime(), false);
+        if (action.estimatedStartTime() != null) writeField(sb, "estimatedStartTime", action.estimatedStartTime(), false);
+        if (action.estimatedEndTime() != null) writeField(sb, "estimatedEndTime", action.estimatedEndTime(), false);
+        if (action.actualStartTime() != null) writeField(sb, "actualStartTime", action.actualStartTime(), false);
+        if (action.actualEndTime() != null) writeField(sb, "actualEndTime", action.actualEndTime(), false);
         sb.append('}');
     }
 
@@ -675,6 +681,12 @@ public final class JsonSerializer {
         writeValue(sb, view.containerIds() != null ? view.containerIds() : List.of());
         if (view.cheShortName() != null) writeField(sb, "cheShortName", view.cheShortName(), false);
         if (view.completionReason() != null) writeField(sb, "completionReason", view.completionReason(), false);
+        if (view.plannedStartTime() != null) writeField(sb, "plannedStartTime", view.plannedStartTime(), false);
+        if (view.plannedEndTime() != null) writeField(sb, "plannedEndTime", view.plannedEndTime(), false);
+        if (view.estimatedStartTime() != null) writeField(sb, "estimatedStartTime", view.estimatedStartTime(), false);
+        if (view.estimatedEndTime() != null) writeField(sb, "estimatedEndTime", view.estimatedEndTime(), false);
+        if (view.actualStartTime() != null) writeField(sb, "actualStartTime", view.actualStartTime(), false);
+        if (view.actualEndTime() != null) writeField(sb, "actualEndTime", view.actualEndTime(), false);
         sb.append('}');
     }
 

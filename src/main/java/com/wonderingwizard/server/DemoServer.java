@@ -55,6 +55,7 @@ import com.wonderingwizard.processors.RTGAssetEventEvaluator;
 import com.wonderingwizard.processors.DelayProcessor;
 import com.wonderingwizard.processors.DigitalMapProcessor;
 import com.wonderingwizard.processors.EventLogProcessor;
+import com.wonderingwizard.processors.PlannedTimeStep;
 import com.wonderingwizard.processors.RtgWaitDurationStep;
 import com.wonderingwizard.processors.QCAssetEventEvaluator;
 import com.wonderingwizard.processors.RTGJobOperationEvaluator;
@@ -62,6 +63,7 @@ import com.wonderingwizard.processors.TTPositionEventEvaluator;
 import com.wonderingwizard.processors.ScheduleRunnerProcessor;
 import com.wonderingwizard.processors.TTStateProcessor;
 import com.wonderingwizard.processors.ContainerMoveStoppedHandler;
+import com.wonderingwizard.processors.EstimatedTimeCalculator;
 import com.wonderingwizard.processors.TTUnavailableHandler;
 import com.wonderingwizard.processors.WIAbandonedHandler;
 import com.wonderingwizard.processors.WIResetHandler;
@@ -192,7 +194,10 @@ public class DemoServer {
                               ActionState status, Set<UUID> dependsOn, int containerIndex,
                               int durationSeconds, int deviceIndex, List<ConditionView> conditions,
                               List<String> containerIds, String cheShortName,
-                              String completionReason) {}
+                              String completionReason,
+                              Instant plannedStartTime, Instant plannedEndTime,
+                              Instant estimatedStartTime, Instant estimatedEndTime,
+                              Instant actualStartTime, Instant actualEndTime) {}
 
     /**
      * A command submitted to the single-threaded event processing queue.
@@ -272,6 +277,7 @@ public class DemoServer {
         var workQueueProcessor = new WorkQueueProcessor();
         workQueueProcessor.registerStep(digitalMapProcessor);
         workQueueProcessor.registerStep(new RtgWaitDurationStep());
+        workQueueProcessor.registerPostProcessingStep(new PlannedTimeStep());
         engine.register(digitalMapProcessor);
         engine.register(workQueueProcessor);
         this.ttStateProcessor = new TTStateProcessor();
@@ -286,6 +292,7 @@ public class DemoServer {
         scheduleRunnerProcessor.registerSubProcessor(new WIRevertHandler());
         scheduleRunnerProcessor.registerSubProcessor(new WQChangeHandler());
         scheduleRunnerProcessor.registerSubProcessor(new ContainerMoveStoppedHandler());
+        scheduleRunnerProcessor.registerSubProcessor(new EstimatedTimeCalculator());
         scheduleRunnerProcessor.registerCompletionEvaluator(new QCAssetEventEvaluator());
         scheduleRunnerProcessor.registerCompletionEvaluator(new TTPositionEventEvaluator());
         scheduleRunnerProcessor.registerCompletionEvaluator(new RTGJobOperationEvaluator());
@@ -968,7 +975,10 @@ public class DemoServer {
                             action.description(),
                             actionState, action.dependsOn(), action.containerIndex(),
                             action.durationSeconds(), action.deviceIndex(), List.of(), cIds,
-                            cheShortName, reason));
+                            cheShortName, reason,
+                            action.plannedStartTime(), action.plannedEndTime(),
+                            action.estimatedStartTime(), action.estimatedEndTime(),
+                            action.actualStartTime(), action.actualEndTime()));
                 }
                 TaktState taktState = scheduleRunnerProcessor != null
                         ? mapTaktState(scheduleRunnerProcessor.getTaktState(wqId, takt.name()))
@@ -1119,14 +1129,6 @@ public class DemoServer {
                                     - takt.durationSeconds());
                 }
 
-                // Update estimated start time for waiting takts based on total delay
-                Instant updatedEstimatedStart = takt.estimatedStartTime();
-                if (taktState == TaktState.WAITING && totalDelaySeconds > 0
-                        && takt.estimatedStartTime() != null) {
-                    updatedEstimatedStart = takt.plannedStartTime()
-                            .plusSeconds(totalDelaySeconds);
-                }
-
                 List<ActionView> updatedActions = new ArrayList<>();
                 Takt originalTakt = i < originalTakts.size() ? originalTakts.get(i) : null;
                 for (ActionView action : takt.actions()) {
@@ -1144,7 +1146,10 @@ public class DemoServer {
                             actionState, action.dependsOn(), action.containerIndex(),
                             action.durationSeconds(), action.deviceIndex(), actionConditions,
                             action.containerIds(), action.cheShortName(),
-                            action.completionReason()));
+                            action.completionReason(),
+                            action.plannedStartTime(), action.plannedEndTime(),
+                            action.estimatedStartTime(), action.estimatedEndTime(),
+                            action.actualStartTime(), action.actualEndTime()));
                 }
 
                 // Build conditions for WAITING takts
@@ -1156,7 +1161,7 @@ public class DemoServer {
                 }
 
                 updatedTakts.add(new TaktView(takt.name(), taktState,
-                        takt.plannedStartTime(), updatedEstimatedStart, actualStartTime,
+                        takt.plannedStartTime(), takt.estimatedStartTime(), actualStartTime,
                         completedAt, takt.durationSeconds(),
                         startDelay, taktDelay,
                         updatedActions, conditionViews));

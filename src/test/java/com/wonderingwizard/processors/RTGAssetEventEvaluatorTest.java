@@ -39,7 +39,7 @@ class RTGAssetEventEvaluatorTest {
                 List.of(wiWithPutChe(putChe)), List.of(), false,
                 null, null, null, null, status, List.of(),
                 List.of(new CompletionCondition("rtg-lifted-from-truck",
-                        RTGAssetEventEvaluator.CONDITION_TYPE, "RTGliftedContainerfromTruck")));
+                        RTGAssetEventEvaluator.CONDITION_TYPE, "RTGliftedContainerfromTruck")), null, null, null, null, null, null);
     }
 
     @Test

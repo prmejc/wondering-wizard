@@ -690,16 +690,24 @@ public class GraphScheduleBuilder {
                                    int qcMudaSeconds, LoadMode loadMode,
                                    long workQueueId, List<SchedulePipelineStep> pipelineSteps) {
         return createTakts(instructions, estimatedMoveTime, qcMudaSeconds, loadMode,
-                workQueueId, pipelineSteps, null);
+                workQueueId, pipelineSteps, null, List.of());
     }
 
-    /**
-     * Creates takts with pipeline steps and bollard position for path-based duration calculation.
-     */
     public List<Takt> createTakts(List<WorkInstructionEvent> instructions, Instant estimatedMoveTime,
                                    int qcMudaSeconds, LoadMode loadMode,
                                    long workQueueId, List<SchedulePipelineStep> pipelineSteps,
                                    String bollardPosition) {
+        return createTakts(instructions, estimatedMoveTime, qcMudaSeconds, loadMode,
+                workQueueId, pipelineSteps, bollardPosition, List.of());
+    }
+
+    /**
+     * Creates takts with pipeline steps, bollard position, and post-processing steps.
+     */
+    public List<Takt> createTakts(List<WorkInstructionEvent> instructions, Instant estimatedMoveTime,
+                                   int qcMudaSeconds, LoadMode loadMode,
+                                   long workQueueId, List<SchedulePipelineStep> pipelineSteps,
+                                   String bollardPosition, List<SchedulePostProcessingStep> postProcessingSteps) {
         if (pipelineSteps == null || pipelineSteps.isEmpty()) {
             return createTakts(instructions, estimatedMoveTime, qcMudaSeconds, loadMode);
         }
@@ -754,9 +762,15 @@ public class GraphScheduleBuilder {
 
         wireDependencies(allPlacedActions);
 
-        return takts.values().stream()
+        var result = takts.values().stream()
                 .sorted(Comparator.comparingInt(Takt::sequence))
                 .toList();
+
+        for (var step : postProcessingSteps) {
+            result = step.process(result);
+        }
+
+        return result;
     }
 
     private static boolean isTwinDischarge(WorkInstructionEvent wi, LoadMode loadMode) {

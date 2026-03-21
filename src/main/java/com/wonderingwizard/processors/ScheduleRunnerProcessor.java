@@ -672,8 +672,33 @@ public class ScheduleRunnerProcessor implements EventProcessor {
                 if (info.action().status() == ActionStatus.COMPLETED) return List.of();
 
                 // Update the action with completion reason and status
-                Action updatedAction = info.action().withCompletionReason(reason).withStatus(ActionStatus.COMPLETED);
+                Action canceledAction = info.action();
+                Action updatedAction = canceledAction.withCompletionReason(reason).withStatus(ActionStatus.COMPLETED);
                 state.actionLookup.put(actionId, new ActionInfo(info.taktName(), updatedAction));
+
+                // Re-wire dependencies: any action that depended on the canceled action
+                // should instead depend on the canceled action's same-device-type dependencies
+                Set<UUID> sameDeviceDeps = new HashSet<>();
+                if (canceledAction.dependsOn() != null) {
+                    for (UUID depId : canceledAction.dependsOn()) {
+                        ActionInfo depInfo = state.actionLookup.get(depId);
+                        if (depInfo != null && depInfo.action().deviceType() == canceledAction.deviceType()) {
+                            sameDeviceDeps.add(depId);
+                        }
+                    }
+                }
+                for (Map.Entry<UUID, ActionInfo> entry : state.actionLookup.entrySet()) {
+                    ActionInfo other = entry.getValue();
+                    Action otherAction = other.action();
+                    if (otherAction.dependsOn() != null && otherAction.dependsOn().contains(actionId)
+                            && otherAction.deviceType() == canceledAction.deviceType()) {
+                        Set<UUID> newDeps = new HashSet<>(otherAction.dependsOn());
+                        newDeps.remove(actionId);
+                        newDeps.addAll(sameDeviceDeps);
+                        Action rewired = otherAction.withDependencies(newDeps);
+                        state.actionLookup.put(entry.getKey(), new ActionInfo(other.taktName(), rewired));
+                    }
+                }
 
                 List<SideEffect> effects = new ArrayList<>();
                 effects.add(new ActionCompleted(
@@ -721,6 +746,25 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             @Override
             public Instant getCurrentTime() {
                 return currentTime;
+            }
+
+            @Override
+            public List<Takt> getTakts(long workQueueId) {
+                ScheduleState state = scheduleStates.get(workQueueId);
+                return state != null ? state.takts : List.of();
+            }
+
+            @Override
+            public TaktState getTaktState(long workQueueId, String taktName) {
+                return ScheduleRunnerProcessor.this.getTaktState(workQueueId, taktName);
+            }
+
+            @Override
+            public void replaceTakt(long workQueueId, int index, Takt takt) {
+                ScheduleState state = scheduleStates.get(workQueueId);
+                if (state != null && index >= 0 && index < state.takts.size()) {
+                    state.takts.set(index, takt);
+                }
             }
         };
     }
@@ -1064,9 +1108,9 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         for (Takt takt : state.takts) {
             List<TaktCondition> conditions = new ArrayList<>();
 
-            // Condition 1: Time — estimated start time must be reached
-            if (takt.estimatedStartTime() != null) {
-                conditions.add(new TimeCondition(takt.estimatedStartTime()));
+            // Condition 1: Time — planned start time must be reached
+            if (takt.plannedStartTime() != null) {
+                conditions.add(new TimeCondition(takt.plannedStartTime()));
             }
 
             // Condition 2: Dependencies — first actions' external dependencies must be completed
@@ -1574,6 +1618,11 @@ public class ScheduleRunnerProcessor implements EventProcessor {
             }
 
             if (!allSatisfied) {
+                continue;
+            }
+
+            // Never activate before planned start time
+            if (takt.plannedStartTime() != null && this.currentTime.isBefore(takt.plannedStartTime())) {
                 continue;
             }
 

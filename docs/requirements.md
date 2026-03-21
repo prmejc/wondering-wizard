@@ -1722,3 +1722,44 @@ mvn test -Dtest=WorkQueueProcessorTest
 **Implementation Files:**
 - `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java` (modified — debounce fields, TimeEvent handling, `checkDebouncedScheduleCreation()`)
 - `src/test/java/com/wonderingwizard/processors/WorkQueueProcessorTest.java` (modified — 4 new debounce tests)
+
+### F-32: Planned Action Times
+
+**Status:** Implemented
+
+**Description:**
+Compute `plannedStartTime` and `plannedEndTime` for each action in a schedule based on takt start times, action durations, and the dependency graph. This enables display of expected timing and future business logic that depends on when actions are planned to occur.
+
+**Timing Model:**
+- Actions with no dependencies start at the takt's `plannedStartTime`
+- Actions with dependencies start when the latest dependency ends (`max(dep.plannedEndTime)`)
+- Parallel actions (different devices, no mutual dependency) start at the same time
+- Cross-takt dependencies: if a dependency from a previous takt ends before the current takt starts, the action starts at the current takt's `plannedStartTime`
+
+**Architecture:**
+Implemented as a `SchedulePostProcessingStep` — a new extension point that runs on the final `List<Takt>` after actions are placed and dependencies wired by `GraphScheduleBuilder`. This is distinct from `SchedulePipelineStep`, which operates per-container before takt fitting.
+
+**Verification:**
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Action with no dependencies | `plannedStartTime = takt.plannedStartTime` |
+| 2 | Action depending on a 30s action | `plannedStartTime = takt.plannedStartTime + 30s` |
+| 3 | Action with two dependencies (10s and 60s) | `plannedStartTime = takt.plannedStartTime + 60s` |
+| 4 | Cross-takt dependency | Start time is max of dependency end and takt start |
+| 5 | Null takt planned start | Actions left unchanged |
+
+**Test Execution:**
+```bash
+mvn test -Dtest=PlannedTimeStepTest
+```
+
+**Implementation Files:**
+- `src/main/java/com/wonderingwizard/domain/takt/Action.java` (modified — added `plannedStartTime`, `plannedEndTime` fields and `withPlannedTimes()`)
+- `src/main/java/com/wonderingwizard/processors/SchedulePostProcessingStep.java` (new — interface for post-processing steps)
+- `src/main/java/com/wonderingwizard/processors/PlannedTimeStep.java` (new — computes planned times from dependency graph)
+- `src/main/java/com/wonderingwizard/processors/GraphScheduleBuilder.java` (modified — accepts and runs post-processing steps)
+- `src/main/java/com/wonderingwizard/processors/WorkQueueProcessor.java` (modified — registers and passes post-processing steps)
+- `src/main/java/com/wonderingwizard/server/DemoServer.java` (modified — registers `PlannedTimeStep`, passes planned times to `ActionView`)
+- `src/main/java/com/wonderingwizard/server/JsonSerializer.java` (modified — serializes `plannedStartTime`/`plannedEndTime`)
+- `src/test/java/com/wonderingwizard/processors/PlannedTimeStepTest.java` (new — 5 tests)

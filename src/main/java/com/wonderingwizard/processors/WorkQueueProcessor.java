@@ -83,6 +83,7 @@ public class WorkQueueProcessor implements EventProcessor {
     private final IntSupplier qcDriveTimeOffsetSupplier;
     private final boolean useGraphScheduleBuilder;
     private final List<SchedulePipelineStep> pipelineSteps = new ArrayList<>();
+    private final List<SchedulePostProcessingStep> postProcessingSteps = new ArrayList<>();
 
     public WorkQueueProcessor() {
         this(
@@ -114,6 +115,16 @@ public class WorkQueueProcessor implements EventProcessor {
      */
     public void registerStep(SchedulePipelineStep step) {
         pipelineSteps.add(step);
+    }
+
+    /**
+     * Registers a post-processing step to be executed after takt creation
+     * and dependency wiring.
+     *
+     * @param step the post-processing step to register
+     */
+    public void registerPostProcessingStep(SchedulePostProcessingStep step) {
+        postProcessingSteps.add(step);
     }
 
     @Override
@@ -430,7 +441,7 @@ public class WorkQueueProcessor implements EventProcessor {
         String bollard = bollardByQueue.get(workQueueId);
         List<Takt> takts = new GraphScheduleBuilder(driveTimeSupplier, qcDriveTimeOffsetSupplier)
                 .createTakts(allInstructions, estimatedMoveTime, qcMuda, loadMode,
-                        workQueueId, pipelineSteps, bollard);
+                        workQueueId, pipelineSteps, bollard, postProcessingSteps);
 
         String pointOfWork = pointOfWorkByQueue.get(workQueueId);
         if (pointOfWork != null && !pointOfWork.isBlank()) {
@@ -503,7 +514,7 @@ public class WorkQueueProcessor implements EventProcessor {
         List<Takt> takts = useGraphScheduleBuilder
                 ? new GraphScheduleBuilder(driveTimeSupplier, qcDriveTimeOffsetSupplier)
                         .createTakts(instructions, estimatedMoveTime, qcMuda, loadMode,
-                                workQueueId, pipelineSteps, bollard2)
+                                workQueueId, pipelineSteps, bollard2, postProcessingSteps)
                 : createTaktsFromWorkInstructionsPrimvs(instructions, estimatedMoveTime, qcMuda);
 
         // Assign QC device name from pointOfWorkName

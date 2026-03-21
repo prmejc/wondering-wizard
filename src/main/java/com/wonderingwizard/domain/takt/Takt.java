@@ -13,20 +13,38 @@ import java.util.List;
  *   <li><b>Planned start time:</b> Derived from the WorkInstruction's estimated move time.
  *       This is the originally scheduled time and does not change.</li>
  *   <li><b>Estimated start time:</b> The current best estimate for when this takt will start.
- *       Initially equal to the planned start time. Used for activation scheduling.</li>
+ *       Initially equal to the planned start time. Updated at runtime as delays accumulate.</li>
  *   <li><b>Actual start time:</b> The system time (last TimeEvent) when the takt was activated.
- *       Tracked at runtime by the ScheduleRunnerProcessor, not stored on this record.</li>
+ *       Tracked at runtime by the ScheduleRunnerProcessor.</li>
  * </ul>
- *
- * @param sequence the takt identifier (e.g., "PULSE97", "TAKT100")
- * @param actions the list of actions in this takt
- * @param plannedStartTime the originally scheduled start time from the work instruction
- * @param estimatedStartTime the current estimated start time (initially equal to plannedStartTime)
- * @param durationSeconds the duration of this takt in seconds (typically 115-135)
  */
-public record Takt(int sequence, List<Action> actions, Instant plannedStartTime, Instant estimatedStartTime, int durationSeconds) {
+public final class Takt {
 
     private static final int STARTING_TAKT_NUMBER = 100;
+
+    private final int sequence;
+    private final List<Action> actions;
+    private final Instant plannedStartTime;
+    private volatile Instant estimatedStartTime;
+    private final int durationSeconds;
+
+    public Takt(int sequence, List<Action> actions, Instant plannedStartTime, Instant estimatedStartTime, int durationSeconds) {
+        this.sequence = sequence;
+        this.actions = actions;
+        this.plannedStartTime = plannedStartTime;
+        this.estimatedStartTime = estimatedStartTime;
+        this.durationSeconds = durationSeconds;
+    }
+
+    public int sequence() { return sequence; }
+    public List<Action> actions() { return actions; }
+    public Instant plannedStartTime() { return plannedStartTime; }
+    public Instant estimatedStartTime() { return estimatedStartTime; }
+    public int durationSeconds() { return durationSeconds; }
+
+    public void setEstimatedStartTime(Instant estimatedStartTime) {
+        this.estimatedStartTime = estimatedStartTime;
+    }
 
     /**
      * Creates a Takt name for the given zero-based index.
@@ -48,7 +66,6 @@ public record Takt(int sequence, List<Action> actions, Instant plannedStartTime,
         if (sequence < 0) {
             return "PULSE" + (STARTING_TAKT_NUMBER + sequence);
         }
-
         return "TAKT" + (STARTING_TAKT_NUMBER + sequence);
     }
 }

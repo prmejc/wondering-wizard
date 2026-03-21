@@ -3,6 +3,7 @@ package com.wonderingwizard.processors;
 import com.wonderingwizard.domain.takt.Action;
 import com.wonderingwizard.domain.takt.ActionStatus;
 import com.wonderingwizard.domain.takt.CompletionReason;
+import com.wonderingwizard.domain.takt.Takt;
 import com.wonderingwizard.engine.SideEffect;
 
 import java.time.Instant;
@@ -67,4 +68,21 @@ public interface ScheduleContext {
      * Returns the current time from the latest TimeEvent.
      */
     Instant getCurrentTime();
+
+    /**
+     * Returns the takts for a given work queue.
+     */
+    default List<Takt> getTakts(long workQueueId) { return List.of(); }
+
+    /**
+     * Returns the takt state for a given takt.
+     */
+    default ScheduleRunnerProcessor.TaktState getTaktState(long workQueueId, String taktName) {
+        return ScheduleRunnerProcessor.TaktState.WAITING;
+    }
+
+    /**
+     * Replaces a takt at the given index in the schedule's takt list.
+     */
+    default void replaceTakt(long workQueueId, int index, Takt takt) {}
 }

@@ -226,6 +226,8 @@ com.wonderingwizard
 │   ├── WorkQueueProcessor.java      # Work queue schedule and takt generation (with pipeline + debounced WI recreation)
 │   ├── GraphScheduleBuilder.java    # Graph-based takt generation (supports pipeline steps)
 │   ├── SchedulePipelineStep.java    # Interface for schedule creation pipeline steps
+│   ├── SchedulePostProcessingStep.java # Interface for post-takt-creation processing steps
+│   ├── PlannedTimeStep.java         # Computes plannedStartTime/plannedEndTime on actions
 │   ├── DigitalMapProcessor.java     # Digital map parsing + pathfinding (EventProcessor + SchedulePipelineStep)
 │   ├── ResourceAction.java          # Legacy action template for imperative takt generation
 │   ├── ScheduleRunnerProcessor.java # Schedule execution and action state management
@@ -307,6 +309,14 @@ The `WorkQueueProcessor` supports a pluggable pipeline for schedule creation. Pi
 - **DigitalMapProcessor**: Dual-role processor — receives `DigitalMapEvent` as `EventProcessor` to store map state, and enriches TT drive durations as `SchedulePipelineStep` during schedule creation.
 - **Registration**: Steps are registered via `WorkQueueProcessor.registerStep()` at startup.
 - **Passthrough**: If no steps are registered or a step has no applicable data, templates pass through unchanged.
+
+### Post-Processing Steps (F-32)
+
+After takt fitting and dependency wiring, `SchedulePostProcessingStep` implementations run on the complete `List<Takt>`. Unlike pipeline steps (per-container, before fitting), post-processing steps have access to the full dependency graph and takt timing.
+
+- **SchedulePostProcessingStep**: Interface with `List<Takt> process(List<Takt>)`.
+- **PlannedTimeStep**: Computes `plannedStartTime` and `plannedEndTime` on each `Action` by walking the dependency graph from takt start times.
+- **Registration**: Via `WorkQueueProcessor.registerPostProcessingStep()` at startup.
 
 ### Conditional Actions (skipWhenGatesSatisfied)
 
