@@ -661,6 +661,7 @@ public final class JsonSerializer {
         sb.append('{');
         writeField(sb, "id", view.id(), true);
         writeField(sb, "deviceType", view.deviceType(), false);
+        writeField(sb, "actionType", view.actionType(), false);
         writeField(sb, "description", view.description(), false);
         writeField(sb, "status", view.status(), false);
         writeFieldKey(sb, "dependsOn", false);

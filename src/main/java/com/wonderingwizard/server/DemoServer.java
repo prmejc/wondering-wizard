@@ -133,6 +133,7 @@ public class DemoServer {
     private KafkaConsumerManager kafkaConsumerManager;
     private com.wonderingwizard.server.demo.DemoEventProducer demoEventProducer;
     private KafkaSideEffectPublisher sideEffectPublisher;
+    private org.apache.kafka.clients.producer.KafkaProducer<String, String> jsonKafkaProducer;
     private com.wonderingwizard.metrics.Metrics metrics;
     private final com.wonderingwizard.kafka.DeadLetterQueue deadLetterQueue = new com.wonderingwizard.kafka.DeadLetterQueue();
     private final SseConnectionManager sseManager = new SseConnectionManager();
@@ -185,7 +186,8 @@ public class DemoServer {
                             List<ConditionView> conditions) {}
 
     /** Action view within a takt. */
-    public record ActionView(UUID id, DeviceType deviceType, String description,
+    public record ActionView(UUID id, DeviceType deviceType, ActionType actionType,
+                              String description,
                               ActionState status, Set<UUID> dependsOn, int containerIndex,
                               int durationSeconds, int deviceIndex, List<ConditionView> conditions,
                               List<String> containerIds, String cheShortName,
@@ -322,6 +324,7 @@ public class DemoServer {
         httpServer.createContext("/api/tick", this::handleTick);
         httpServer.createContext("/api/play", this::handlePlay);
         httpServer.createContext("/api/action-completed", this::handleActionCompleted);
+        httpServer.createContext("/api/simulate-qc-event", this::handleSimulateQcEvent);
         httpServer.createContext("/api/override-condition", this::handleOverrideCondition);
         httpServer.createContext("/api/override-action-condition", this::handleOverrideActionCondition);
         httpServer.createContext("/api/step-back-to", this::handleStepBackTo);
@@ -371,6 +374,22 @@ public class DemoServer {
             startKafkaConsumers();
             startSideEffectPublisher();
             demoEventProducer = new com.wonderingwizard.server.demo.DemoEventKafkaProducer(settings);
+            // JSON producer for sending simulated asset events
+            var producerProps = new java.util.Properties();
+            var kafkaConfig = settings.kafkaConfiguration();
+            producerProps.put("bootstrap.servers", kafkaConfig.bootstrapServer());
+            producerProps.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+            producerProps.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+            if (kafkaConfig.securityProtocol() != null && !kafkaConfig.securityProtocol().isEmpty()) {
+                producerProps.put("security.protocol", kafkaConfig.securityProtocol());
+            }
+            if (kafkaConfig.saslMechanism() != null && !kafkaConfig.saslMechanism().isEmpty()) {
+                producerProps.put("sasl.mechanism", kafkaConfig.saslMechanism());
+                producerProps.put("sasl.jaas.config",
+                        "org.apache.kafka.common.security.plain.PlainLoginModule required username=\""
+                                + kafkaConfig.saslUsername() + "\" password=\"" + kafkaConfig.saslPassword() + "\";");
+            }
+            jsonKafkaProducer = new org.apache.kafka.clients.producer.KafkaProducer<>(producerProps);
         } else {
             demoEventProducer = new com.wonderingwizard.server.demo.DemoEventDirectProducer(this);
             logger.info("Kafka disabled (kafka.enabled=false)");
@@ -822,10 +841,11 @@ public class DemoServer {
         // Include all known work queues (survives step truncation)
         state.put("workQueues", new HashMap<>(wqMessageCache));
 
-        // Include play clock status
+        // Include play clock status and kafka mode
         state.put("playStatus", Map.of(
                 "playing", playClockThread != null,
                 "speed", playClockSpeed));
+        state.put("kafkaEnabled", settings.kafkaEnabled());
 
         return state;
     }
@@ -924,7 +944,8 @@ public class DemoServer {
                         };
                     }
                     actionViews.add(new ActionView(
-                            action.id(), action.deviceType(), action.description(),
+                            action.id(), action.deviceType(), action.actionType(),
+                            action.description(),
                             actionState, action.dependsOn(), action.containerIndex(),
                             action.durationSeconds(), action.deviceIndex(), List.of(), cIds,
                             cheShortName, reason));
@@ -1098,7 +1119,8 @@ public class DemoServer {
                                 satisfiedEventGates.getOrDefault(action.id(), Set.of()));
                     }
                     updatedActions.add(new ActionView(
-                            action.id(), action.deviceType(), action.description(),
+                            action.id(), action.deviceType(), action.actionType(),
+                            action.description(),
                             actionState, action.dependsOn(), action.containerIndex(),
                             action.durationSeconds(), action.deviceIndex(), actionConditions,
                             action.containerIds(), action.cheShortName(),
@@ -2288,6 +2310,48 @@ public class DemoServer {
 
             sendJsonResponse(exchange, 200, JsonSerializer.serialize(
                     Map.of("step", result.step(), "sideEffects", result.sideEffects())));
+        } catch (Exception e) {
+            sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
+        }
+    }
+
+    /**
+     * Sends a QC asset event to Kafka (when enabled) or processes it directly.
+     * Used by the schedule viewer "complete" button for QC_LIFT and QC_PLACE actions
+     * to flow through the real event path instead of the ActionCompletedEvent shortcut.
+     */
+    private void handleSimulateQcEvent(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            sendResponse(exchange, 405, "{\"error\":\"Method not allowed\"}");
+            return;
+        }
+
+        try {
+            Map<String, String> body = readJsonBody(exchange);
+            String cheId = requireField(body, "cheId");
+            String operationalEvent = requireField(body, "operationalEvent");
+            String moveKind = body.getOrDefault("moveKind", "DSCH");
+
+            String json = "{" +
+                    "\"move\":\"" + moveKind + "\"," +
+                    "\"operationalEvent\":\"" + operationalEvent + "\"," +
+                    "\"cheID\":\"" + cheId + "\"," +
+                    "\"terminalCode\":\"" + settings.terminalCode() + "\"," +
+                    "\"timestamp\":" + java.time.Instant.now().getEpochSecond() +
+                    "}";
+
+            if (jsonKafkaProducer != null) {
+                String topic = settings.assetEventQcConsumerConfiguration().topic();
+                jsonKafkaProducer.send(new org.apache.kafka.clients.producer.ProducerRecord<>(topic, cheId, json));
+                sendJsonResponse(exchange, 200, "{\"ok\":true,\"target\":\"kafka\",\"topic\":\"" + escapeJson(topic) + "\"}");
+            } else {
+                // Kafka disabled — process as direct AssetEvent
+                var assetEvent = new com.wonderingwizard.events.AssetEvent(
+                        moveKind, operationalEvent, cheId, settings.terminalCode(), java.time.Instant.now());
+                StepResult result = processStep("QC asset event: " + cheId + " " + operationalEvent, assetEvent);
+                sendJsonResponse(exchange, 200, JsonSerializer.serialize(
+                        Map.of("ok", true, "target", "direct", "sideEffects", result.sideEffects())));
+            }
         } catch (Exception e) {
             sendJsonResponse(exchange, 400, "{\"error\":\"" + escapeJson(e.getMessage()) + "\"}");
         }

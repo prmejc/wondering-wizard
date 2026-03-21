@@ -714,10 +714,20 @@ class ScheduleView extends HTMLElement {
       e.stopPropagation();
       btn.disabled = true;
       setTimeout(() => { btn.disabled = false; }, 5000);
-      await apiCall('/api/action-completed', {
-        actionId: btn.dataset.actionId,
-        workQueueId: btn.dataset.wq
-      });
+      // QC actions: send real asset event (via Kafka or direct) instead of ActionCompletedEvent
+      if (btn.dataset.actionType === 'QC_LIFT' || btn.dataset.actionType === 'QC_PLACE') {
+        var opEvent = btn.dataset.actionType === 'QC_LIFT' ? 'Lifted container from vessel' : 'Placed container on truck';
+        await apiCall('/api/simulate-qc-event', {
+          cheId: btn.dataset.cheId,
+          operationalEvent: opEvent,
+          moveKind: 'DSCH'
+        });
+      } else {
+        await apiCall('/api/action-completed', {
+          actionId: btn.dataset.actionId,
+          workQueueId: btn.dataset.wq
+        });
+      }
       const popup = btn.closest('.action-popup');
       if (popup) popup.remove();
       refreshState();
@@ -1224,7 +1234,7 @@ class ScheduleView extends HTMLElement {
     const truckLabel = action.cheShortName ? ' <span style="font-size:9px;color:#9a3412;font-weight:600" title="Assigned truck">' + action.cheShortName + '</span>' : '';
     let innerHtml = '<div style="display:flex;align-items:center;gap:3px;font-size:9px;font-weight:600;min-width:0">' + statusLabel + ' <span title="' + containerLabel + '" style="color:' + containerColor + ';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + containerLabel + '</span>' + truckLabel + conditionsIcon + '</div><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + action.description + '</div>';
     if (action.status === 'ACTIVE') {
-      innerHtml += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '">Complete</button>';
+      innerHtml += '<button class="complete-btn" style="margin-top:2px" data-action-id="' + action.id + '" data-wq="' + wqId + '" data-action-type="' + (action.actionType || '') + '" data-che-id="' + (action.cheShortName || '') + '">Complete</button>';
     }
 
     let h = '<div style="position:relative;background:' + bgColor + ';' + extraStyle + 'border:1px solid ' + borderColor + ';border-top:3px solid ' + containerColor + ';border-radius:4px;padding:' + (narrow ? '1px 2px' : '3px 5px') + ';opacity:' + textOpacity + ';font-size:11px;min-width:' + widthPx + 'px;width:' + widthPx + 'px;box-sizing:border-box;flex-shrink:0;overflow:hidden;cursor:' + (narrow ? 'pointer' : 'default') + '"' + (narrow ? ' data-popup-html="' + innerHtml.replace(/"/g, '&quot;') + '" data-popup-bg="' + bgColor + '" data-popup-border="' + borderColor + '" data-popup-container="' + containerColor + '"' : '') + '>';
