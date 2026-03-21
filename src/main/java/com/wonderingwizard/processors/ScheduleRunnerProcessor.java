@@ -777,19 +777,37 @@ public class ScheduleRunnerProcessor implements EventProcessor {
         }
         long t2 = System.nanoTime();
 
-        // Evaluate completion conditions — only when the event or prior side effects
-        // could actually satisfy a condition. Skips expensive all-actions iteration
-        // for events like TimeEvent, WorkInstructionEvent, etc.
-        if (canSatisfyCompletionConditions(event, sideEffects)) {
-            sideEffects.addAll(evaluateCompletionConditions(event));
+        // Evaluate completion conditions → activate new actions → re-evaluate.
+        // This loop handles the case where evaluateCompletionConditions completes an action
+        // (e.g., TT_DRIVE_TO_RTG_UNDER), reactivateAllSchedules then activates a dependent
+        // action (e.g., RTG_WAIT_FOR_TRUCK), and that newly activated action's completion
+        // condition is already satisfied (TT_DRIVE_TO_RTG_UNDER is COMPLETED).
+        boolean ccProgress = true;
+        while (ccProgress) {
+            ccProgress = false;
+            if (canSatisfyCompletionConditions(event, sideEffects)) {
+                List<SideEffect> ccEffects = evaluateCompletionConditions(event);
+                if (!ccEffects.isEmpty()) {
+                    sideEffects.addAll(ccEffects);
+                    ccProgress = true;
+                }
+            }
+
+            List<SideEffect> raEffects = reactivateAllSchedules();
+            if (!raEffects.isEmpty()) {
+                sideEffects.addAll(raEffects);
+                // If new actions were activated, their completion conditions
+                // may already be satisfiable — loop back to check
+                for (SideEffect e : raEffects) {
+                    if (e instanceof ActionActivated) {
+                        ccProgress = true;
+                        break;
+                    }
+                }
+            }
         }
         long t3 = System.nanoTime();
-
-        // Final activation pass: always run after all state mutations.
-        // This consolidates all activation logic into one place and ensures
-        // takts are always processed in sequence order for TT allocation priority.
-        sideEffects.addAll(reactivateAllSchedules());
-        long t4 = System.nanoTime();
+        long t4 = t3;
 
         long totalMs = (t4 - t0) / 1_000_000;
         if (totalMs > 5 && logger.isLoggable(java.util.logging.Level.FINE)) {
